@@ -92,7 +92,13 @@ function Resolve-Defaults {
         $script:WslDistro = if ($env:NOVEL_AGENT_WSL_DISTRO) { $env:NOVEL_AGENT_WSL_DISTRO } else { "Ubuntu" }
     }
     if (-not $script:OriginalBoundParameters.ContainsKey("DifyComposeDir") -or [string]::IsNullOrWhiteSpace($DifyComposeDir)) {
-        $script:DifyComposeDir = if ($env:NOVEL_AGENT_DIFY_COMPOSE_DIR) { $env:NOVEL_AGENT_DIFY_COMPOSE_DIR } else { "/home/zzy/dify/docker" }
+        $script:DifyComposeDir = if ($env:NOVEL_AGENT_DIFY_COMPOSE_DIR) {
+            $env:NOVEL_AGENT_DIFY_COMPOSE_DIR
+        } elseif ($env:USERNAME) {
+            "/home/$($env:USERNAME)/dify/docker"
+        } else {
+            "/opt/dify/docker"
+        }
     }
     if (-not $script:OriginalBoundParameters.ContainsKey("BackupDir") -or [string]::IsNullOrWhiteSpace($BackupDir)) {
         $script:BackupDir = $env:DIFY_SANITIZED_BACKUP_DIR

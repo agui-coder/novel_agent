@@ -80,8 +80,8 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
-  "book_dir": "C:/.../storage/donk_93845573"
+  "book_id": "demo_book_12345678",
+  "book_dir": "C:/.../storage/demo_book_12345678"
 }
 ```
 
@@ -92,7 +92,7 @@ Body:
 
 ```json
 {
-  "book_name": "重生CS",
+  "book_name": "示例作品",
   "book_id": "optional_explicit_id"
 }
 ```
@@ -107,10 +107,10 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "zhongshengcs_xxxxxxxx",
-  "book_name": "重生CS",
-  "book_dir": "C:/.../storage/zhongshengcs_xxxxxxxx",
-  "metadata_path": "C:/.../storage/zhongshengcs_xxxxxxxx/metadata.json"
+  "book_id": "demo_book_xxxxxxxx",
+  "book_name": "示例作品",
+  "book_dir": "C:/.../storage/demo_book_xxxxxxxx",
+  "metadata_path": "C:/.../storage/demo_book_xxxxxxxx/metadata.json"
 }
 ```
 
@@ -124,12 +124,12 @@ Success example:
 ```json
 {
   "status": "success",
-  "query": "donk",
+  "query": "示例作品",
   "total": 1,
   "matches": [
     {
-      "book_id": "donk_93845573",
-      "book_name": "donk",
+      "book_id": "demo_book_12345678",
+      "book_name": "示例作品",
       "score": 1.0
     }
   ]
@@ -156,10 +156,10 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "chapter_index": 1,
-  "title": "第1章 重生与天命",
-  "file_path": "C:/.../chapters/0001_第1章_重生与天命.md"
+  "title": "第1章 开篇事件",
+  "file_path": "C:/.../chapters/0001_第1章_开篇事件.md"
 }
 ```
 
@@ -188,7 +188,7 @@ Success example:
   "status": "success",
   "saved_count": 156,
   "total_parsed": 156,
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "commit_id": "abcdef1234..."
 }
 ```
@@ -217,7 +217,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "commit_id": "abcdef1234...",
   "file_path": "C:/.../world_model.md"
 }
@@ -262,7 +262,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "branch": "draft/world_model",
   "mainline_branch": "master",
   "human_commit_id": "a1b2c3...",
@@ -292,7 +292,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "branch": "draft/world_model",
   "commit_id": "a1b2c3...",
   "content": "# rolled back markdown"
@@ -319,7 +319,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "mainline_branch": "master",
   "merged_branch": "draft/world_model",
   "commit_id": "f0e1d2...",
@@ -355,7 +355,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "branch": "master",
   "file_name": "world_model.md",
   "content": "# current file content",
@@ -431,7 +431,7 @@ SSE event contract:
 
 ```json
 {
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "world_model.md",
   "branch": "draft/sandbox",
   "commit_id": "0f19c6...",
@@ -452,14 +452,14 @@ Query:
 
 Example:
 
-`/checkout?book_name=donk&include=world_model, summary, status_card, chapters&last_n=3`
+`/checkout?book_name=示例作品&include=world_model, summary, status_card, chapters&last_n=3`
 
 Success example:
 
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "payload": {
     "include": ["world_model", "summary", "status_card", "chapters"],
     "last_n": 3,
@@ -482,7 +482,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "total": 3,
   "history": [
     {
@@ -509,7 +509,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "total": 4,
   "commits": [
     {
@@ -566,7 +566,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "chapter_index": 12,
   "file_path": "C:/.../chapters/0012_xxx.md",
   "keywords": ["高利贷", "大满贯", "流浪汉"],
@@ -596,7 +596,7 @@ No-hit example (still `200`):
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "chapter_index": 12,
   "context_sentences": 2,
   "total_chars_in_chapter": 12073,
@@ -689,7 +689,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "status_card.md",
   "file_path": "C:/.../status_card.md",
   "etag": "sha256hex...",
@@ -720,7 +720,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "summary.md",
   "file_path": "C:/.../summary.md",
   "etag": "sha256hex...",
@@ -769,7 +769,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "world_model.md",
   "file_path": "C:/.../world_model.md",
   "etag": "sha256hex...",
@@ -813,8 +813,8 @@ Query:
 - `book_id` or `book_name`
 
 `section_path` formats:
-- JSON array string: `["人物","陈末","当前状态"]`
-- fallback plain string: `人物 > 陈末 > 当前状态`
+- JSON array string: `["人物","主角","当前状态"]`
+- fallback plain string: `人物 > 主角 > 当前状态`
 
 Constraints:
 - Reuses the same path-safety guard and virtual-core behavior as `/books/get_file`.
@@ -836,7 +836,7 @@ Body:
     {
       "file_name": "chapter_outline.md",
       "op": "replace_section",
-      "section_path": ["篇章二：ESL Pro League Season 17（3-4月）—— 连胜的预警"],
+      "section_path": ["篇章二：阶段试炼（3-4月）—— 连胜的预警"],
       "content": "## 新区块正文",
       "base_etag": "sha256..."
     }
@@ -858,7 +858,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "branch": "draft/sandbox",
   "mainline_branch": "main",
   "commit_id": "abcdef1234",
@@ -880,7 +880,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "world_model.md",
   "file_path": "C:/.../world_model.md",
   "etag": "sha256hex...",
@@ -888,8 +888,8 @@ Success example:
   "virtual": false,
   "title": "当前状态",
   "level": 3,
-  "section_path": ["人物", "陈末", "当前状态"],
-  "raw_section_path": ["人物", "陈末", "当前状态"],
+  "section_path": ["人物", "主角", "当前状态"],
+  "raw_section_path": ["人物", "主角", "当前状态"],
   "heading_line": 42,
   "content_start_line": 43,
   "end_line": 47,
@@ -965,7 +965,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "chapters/0123_demo.md",
   "real_file_name": "0123_demo.md",
   "file_path": "C:/.../chapters/0123_demo.md",
@@ -1036,7 +1036,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "error_archive.md",
   "file_path": "C:/.../error_archive.md",
   "etag": "sha256hex...",
@@ -1051,11 +1051,11 @@ Conflict example (`409 WRITE_CONFLICT`):
   "status": "error",
   "code": "WRITE_CONFLICT",
   "message": "文件已被其他协作者更新，请重新读取后再提交。",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "world_model.md",
   "base_etag": "stale_sha256...",
   "current_etag": "latest_sha256...",
-  "draft_file": "C:/.../storage/donk_93845573/conflicts/20260220T120000Z_world_model.md_update.ai_conflict_draft.md"
+  "draft_file": "C:/.../storage/demo_book_12345678/conflicts/20260220T120000Z_world_model.md_update.ai_conflict_draft.md"
 }
 ```
 
@@ -1108,7 +1108,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "summary.md",
   "file_path": "C:/.../summary.md",
   "appended_chars": 12,
@@ -1146,7 +1146,7 @@ Success example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "world_model.md",
   "file_path": "C:/.../world_model.md",
   "prepended_chars": 16,
@@ -1161,7 +1161,7 @@ No-change short-circuit example:
 ```json
 {
   "status": "success",
-  "book_id": "donk_93845573",
+  "book_id": "demo_book_12345678",
   "file_name": "summary.md",
   "appended_chars": 0,
   "message": "No append content provided, file is unchanged.",

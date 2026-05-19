@@ -426,7 +426,7 @@
         "description": "Strengthen error_archive.md template with concrete negative constraints examples.",
         "target_file": "novel_git_server/utils/book_storage.py",
         "acceptance": [
-          "template embeds at least three explicit ???? examples",
+          "template embeds at least three explicit negative examples",
           "cold start can directly guide reviewer negative constraints"
         ],
         "tested_at": "2026-02-15T20:42:00"
@@ -456,7 +456,7 @@
         "tested_at": "2026-02-15T21:15:00",
         "acceptance": [
           "legacy_attic/tools contains cleantxt.py and view_outlines.py",
-          "legacy_attic/docs contains dify_world_agent_v2_4.md and ????.md"
+          "legacy_attic/docs contains dify_world_agent_v2_4.md and task_list.md"
         ]
       },
       {

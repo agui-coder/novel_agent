@@ -1487,8 +1487,8 @@ continuation repair that forbids trading context-pack fidelity for exposition, t
 
 ## Chapter 6 Write Loop Guard
 
-R30-CH6-DELTA-2 closes the failure mode exposed by the real `西游记` regression book
-`regression_xiyouji_20260515_153036`: the continuation Agent kept making tiny repair commits to Chapter 6 while length
+R30-CH6-DELTA-2 closes the failure mode exposed by a loop-structured regression book
+`regression_loop_book_20260515_153036`: the continuation Agent kept making tiny repair commits to Chapter 6 while length
 and style gates remained unresolved.
 
 The fix is deliberately at the tool boundary. `chapter_draft.md` writes now have an AI write-loop budget: when recent
@@ -1536,7 +1536,7 @@ Live review result:
 
 | Field | Value |
 | --- | --- |
-| book | `regression_xiyouji_20260515_153036` |
+| book | `regression_loop_book_20260515_153036` |
 | local thread | `r30_ch6_bridge1_20260515` |
 | Dify task id | `a1b1640c-918d-4ee6-af73-9c00ffe9290b` |
 | routed agent | `review_agent` |
@@ -1563,7 +1563,7 @@ STYLE-ADVISORY-1 changes the rolling loop's failure semantics after the Chapter 
 style gate. Deterministic style diagnostics still run and still record the same metrics, but style failures are now
 author-facing and continuation-facing advisory evidence rather than a scheduler lock.
 
-Same-case Chapter 6 evidence on `regression_xiyouji_20260515_153036`:
+Same-case Chapter 6 evidence on `regression_loop_book_20260515_153036`:
 
 | Check | Result |
 | --- | --- |

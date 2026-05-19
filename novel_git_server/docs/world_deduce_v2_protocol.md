@@ -88,8 +88,8 @@ Recommended incremental patch ops at Dify layer:
     {
       "file_name": "world_model.md",
       "op": "replace_section",
-      "section_path": ["人物", "陈末", "当前状态"],
-      "content": "### 当前状态\n- 右手轻微震颤\n"
+      "section_path": ["人物", "主角", "当前状态"],
+      "content": "### 当前状态\n- 状态发生可追踪变化\n"
     }
   ]
 }
@@ -101,8 +101,8 @@ Recommended incremental patch ops at Dify layer:
     {
       "file_name": "world_model.md",
       "op": "append_under_section",
-      "section_path": ["人物", "陈末"],
-      "content": "### 新增弱点\n- 对修正力更敏感\n"
+      "section_path": ["人物", "主角"],
+      "content": "### 新增弱点\n- 新增一个后续章节需要承接的弱点\n"
     }
   ]
 }

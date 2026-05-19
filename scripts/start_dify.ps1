@@ -2,12 +2,29 @@ param(
     [switch]$Stop,
     [switch]$Status,
     [string]$WslDistro = "Ubuntu",
-    [string]$ComposeDir = "/home/zzy/dify/docker",
+    [string]$ComposeDir = "",
     [string]$ConsoleUrl = "http://localhost",
     [string]$ApiBaseUrl = "http://localhost/v1"
 )
 
 $ErrorActionPreference = "Stop"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RootDir = Split-Path -Parent $ScriptDir
+
+function Resolve-DefaultDifyComposeDir {
+    if ($env:NOVEL_AGENT_DIFY_COMPOSE_DIR) {
+        return $env:NOVEL_AGENT_DIFY_COMPOSE_DIR
+    }
+    if ($env:USERNAME) {
+        return "/home/$($env:USERNAME)/dify/docker"
+    }
+    return "/opt/dify/docker"
+}
+
+if ([string]::IsNullOrWhiteSpace($ComposeDir)) {
+    $ComposeDir = Resolve-DefaultDifyComposeDir
+}
 
 function Test-HttpReachable {
     param([string]$Url)
@@ -121,7 +138,7 @@ function Get-DbPersistenceStatus {
 }
 
 function Get-LatestBackup {
-    $backupRoot = "C:/csptr/linuxptr/novel_agent/.dify_backups"
+    $backupRoot = Join-Path $RootDir ".dify_backups"
     if (-not (Test-Path $backupRoot)) { return "no_backups" }
     $latest = Get-ChildItem -Path $backupRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
     if (-not $latest) { return "no_backups" }

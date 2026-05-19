@@ -879,7 +879,7 @@
     "/tools/generate_style_diagnostics": {
       "post": {
         "operationId": "generate_style_diagnostics",
-        "description": "??????????????????????????????????????????? Agent ??????????????????????????????",
+        "description": "生成文风诊断三件套，供文风助手和续写 Agent 读取；只读分析原文与草稿，不写入正式文件。",
         "requestBody": {
           "required": true,
           "content": {
@@ -898,16 +898,16 @@
                     "minimum": 1,
                     "maximum": 30,
                     "default": 8,
-                    "description": "???????????"
+                    "description": "用于抽样的原文章节数量。"
                   },
                   "draft_file": {
                     "type": "string",
                     "default": "chapter_draft.md",
-                    "description": "????????? chapter_draft.md??????? Markdown ???"
+                    "description": "需要诊断的草稿文件，默认 chapter_draft.md。"
                   },
                   "draft_chapters": {
                     "type": "string",
-                    "description": "?????????? 162,163,164??????????????"
+                    "description": "需要额外关注的草稿章节编号，例如 162,163,164。"
                   }
                 },
                 "additionalProperties": false
@@ -917,13 +917,13 @@
         },
         "responses": {
           "200": {
-            "description": "???? outputs?style_fingerprint.md?style_review.md?style_constraints_for_continuation.md?"
+            "description": "返回 outputs：style_fingerprint.md、style_review.md、style_constraints_for_continuation.md。"
           },
           "400": {
-            "description": "?????? draft_file ???"
+            "description": "参数错误或 draft_file 不合法。"
           },
           "404": {
-            "description": "??????"
+            "description": "找不到目标书籍。"
           }
         }
       }

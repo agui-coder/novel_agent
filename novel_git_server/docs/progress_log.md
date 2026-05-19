@@ -520,15 +520,15 @@ egister_world_agent(...)。
 ## 2026-02-15 v3.1 Final Polish
 - task: r15_style_guide_template_init
 - change: extended `ensure_book_layout` to initialize `style_guide.md` and expose `style_guide_path` in returned paths.
-- template: added structured modules `# ????`, `# ????`, `# ????` for high-density style guidance.
+- template: added structured modules for source rhythm, prose texture, and continuation constraints.
 - verification: `python -m unittest novel_git_server.tests.test_v31_addressing -v` (includes style_guide existence checks) passed.
 - checklist: set `r15_style_guide_template_init` done, added r16/r17 as pending.
 - task: r16_error_archive_negative_constraints
 - change: strengthened default `error_archive.md` with explicit negative constraints for logic/persona/style cold start.
 - template_examples:
-  - ??????????????????
-  - ??????????????????
-  - ???AI ?????????????
+  - 不要让角色在没有铺垫的情况下突然转性。
+  - 不要用解释性段落替代场景推进。
+  - 不要让 AI 自行覆盖作者已经确认的关键设定。
 - verification: `python -m unittest novel_git_server.tests.test_v31_addressing -v` (includes template content assertions) passed.
 - checklist: set `r16_error_archive_negative_constraints` to done.
 - task: r17_update_file_rollback_visibility
@@ -544,7 +544,7 @@ egister_world_agent(...)。
   - `novel_git_server/legacy_attic/tools/cleantxt.py`
   - `novel_git_server/legacy_attic/tools/view_outlines.py`
   - `novel_git_server/legacy_attic/docs/dify_world_agent_v2_4.md`
-  - `novel_git_server/legacy_attic/docs/????.md`
+  - `novel_git_server/legacy_attic/docs/task_list.md`
 - result: active `docs/` and `tools/` now only keep v3.1 runtime-relevant files.
 - checklist: added `phase_v31_cleanup` and marked `c1_archive_legacy_artifacts` done.
 - task: c2_isolate_legacy_broken_tests

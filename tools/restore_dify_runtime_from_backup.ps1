@@ -1,6 +1,6 @@
 param(
-    [string]$ComposeDir = "/home/zzy/dify/docker",
-    [string]$BackupDir = "/home/zzy/dify/backups",
+    [string]$ComposeDir = "",
+    [string]$BackupDir = "",
     [string]$BackupPath = "",
     [string]$PluginBackupPath = "",
     [string]$DbContainer = "docker-db_postgres-1",
@@ -12,6 +12,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ComposeDir)) {
+    if ($env:NOVEL_AGENT_DIFY_COMPOSE_DIR) {
+        $ComposeDir = $env:NOVEL_AGENT_DIFY_COMPOSE_DIR
+    } elseif ($env:USERNAME) {
+        $ComposeDir = "/home/$($env:USERNAME)/dify/docker"
+    } else {
+        $ComposeDir = "/opt/dify/docker"
+    }
+}
+if ([string]::IsNullOrWhiteSpace($BackupDir)) {
+    if ($env:DIFY_SANITIZED_BACKUP_DIR) {
+        $BackupDir = $env:DIFY_SANITIZED_BACKUP_DIR
+    } elseif ($env:USERNAME) {
+        $BackupDir = "/home/$($env:USERNAME)/dify/backups"
+    } else {
+        $BackupDir = "/opt/dify/backups"
+    }
+}
 
 function Assert-Tool {
     param([string]$Name)

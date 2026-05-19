@@ -6,7 +6,7 @@ param(
     [int]$BackendPort = 8000,
     [int]$FrontendPort = 5173,
     [string]$WslDistro = "Ubuntu",
-    [string]$DifyComposeDir = "/home/zzy/dify/docker"
+    [string]$DifyComposeDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +28,20 @@ $difyScript = Join-Path $ScriptsDir "start_dify.ps1"
 $backendScript = Join-Path $ScriptsDir "start_backend.ps1"
 $frontendScript = Join-Path $ScriptsDir "start_frontend.ps1"
 $difyEndpointSyncScript = Join-Path $ScriptsDir "sync_dify_tool_provider_endpoint.py"
+
+function Resolve-DefaultDifyComposeDir {
+    if ($env:NOVEL_AGENT_DIFY_COMPOSE_DIR) {
+        return $env:NOVEL_AGENT_DIFY_COMPOSE_DIR
+    }
+    if ($env:USERNAME) {
+        return "/home/$($env:USERNAME)/dify/docker"
+    }
+    return "/opt/dify/docker"
+}
+
+if ([string]::IsNullOrWhiteSpace($DifyComposeDir)) {
+    $DifyComposeDir = Resolve-DefaultDifyComposeDir
+}
 
 function Invoke-LayerScript {
     param(

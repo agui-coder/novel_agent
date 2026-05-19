@@ -14,9 +14,11 @@ Run: python scripts/patch_reading_archive_workflow.py
 """
 import json
 import copy
+from pathlib import Path
 
-DRAFT_PATH = "C:/csptr/linuxptr/novel_agent/.runtime/dify_dushu_draft.json"
-OUTPUT_PATH = "C:/csptr/linuxptr/novel_agent/.runtime/dify_dushu_patched.json"
+ROOT = Path(__file__).resolve().parents[1]
+DRAFT_PATH = ROOT / ".runtime" / "dify_dushu_draft.json"
+OUTPUT_PATH = ROOT / ".runtime" / "dify_dushu_patched.json"
 
 with open(DRAFT_PATH, encoding="utf-8") as f:
     graph = json.loads(f.read().strip())

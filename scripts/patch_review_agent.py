@@ -20,6 +20,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / ".runtime"
+QUESTION_CLUSTER_MARKER = "?" * 4
 
 DB_CONTAINER = "docker-db_postgres-1"
 DB_NAME = "dify"
@@ -58,7 +59,7 @@ TOOL_DESCRIPTION_OVERRIDES = {
 
 STALE_TEXT_FRAGMENTS = (
     "donk",
-    "????",
+    QUESTION_CLUSTER_MARKER,
     "Flat append tool",
     "Flat replace tool",
     "Dify Agents",

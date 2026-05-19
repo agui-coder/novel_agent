@@ -166,12 +166,13 @@ Dify 工作台入口（需在本机登录态访问）：
 - 本地 YAML 不是运行时权威。
 - 若 YAML 中仍出现 `update_file` 或 `style_card.md`，视为待清理的提示词遗留，而不是后端契约。
 
-### 6.3 读书存档 Agent（导入链路，不是互动写作主链路）
+### 6.3 读书存档 Agent（历史兼容，不是当前摘要入口）
 关键事实：
-- 包含 code 节点直调 `tools/adaptive_slice`、`books/batch_import`、`books/commit_summary`。
+- 当前 `summary.md` 首次生成和显式重建由后端摘要归档管线负责。
+- `dify_workflows/读书存档agent.yml` 只保留为历史兼容、审计和旧实验回放材料。
 
 结论：
-- 该 workflow 主要用于归档导入/摘要，不应替代 `draft/sandbox` 互动写作事务。
+- 新链路不应把该 workflow 当作主动摘要生产入口，也不应替代 `draft/sandbox` 互动写作事务。
 
 ---
 

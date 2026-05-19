@@ -1,10 +1,16 @@
 param(
     [string]$WslDistro = "Ubuntu",
-    [string]$OutDir = "C:/csptr/linuxptr/novel_agent/.dify_backups",
+    [string]$OutDir = "",
     [string]$Container = "docker-db_postgres-1"
 )
 
 $ErrorActionPreference = "Stop"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RootDir = Split-Path -Parent $ScriptDir
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $OutDir = Join-Path $RootDir ".dify_backups"
+}
 
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $dest = Join-Path $OutDir $stamp

@@ -21,6 +21,7 @@ from typing import Any, Iterable
 ROOT = Path(__file__).resolve().parents[1]
 DB_CONTAINER = "docker-db_postgres-1"
 DB_NAME = "dify"
+QUESTION_CLUSTER_MARKER = "?" * 4
 
 HARDCODED_TERMS = (
     "donk",
@@ -56,7 +57,7 @@ ENGLISH_PATTERNS = (
 
 MOJIBAKE_MARKERS = (
     "\ufffd",
-    "????",
+    QUESTION_CLUSTER_MARKER,
     "褰撳",
     "涔﹀",
     "鐩",
@@ -163,8 +164,8 @@ def english_hits(text: str) -> list[str]:
 def mojibake_hits(text: str) -> list[str]:
     hits = [marker for marker in MOJIBAKE_MARKERS if marker in text]
     question_clusters = re.findall(r"\?{4,}", text)
-    if question_clusters and "????" not in hits:
-        hits.append("????")
+    if question_clusters and QUESTION_CLUSTER_MARKER not in hits:
+        hits.append(QUESTION_CLUSTER_MARKER)
     return hits
 
 

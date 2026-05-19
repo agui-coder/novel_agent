@@ -71,7 +71,7 @@ Dify 承担语义编排和 Agent 决策。
 
 当前核心 Agent：
 
-- 读书存档 Agent：从章节中抽取资料和摘要。
+- 后端摘要归档管线：从导入章节中生成和重建 `summary.md`，作为后续蒸馏的资料底座。
 - 世界模型 Agent：维护世界观、机制、状态卡和题材规则。
 - 文风学习 Agent：生成叙事结构指纹、作者可读审查和续写硬约束。
 - 灵感大纲 Agent：支持 brainstorm、master outline、arc outline、chapter outline。
@@ -119,8 +119,8 @@ novel_git_server/storage/<book_id>/
 番茄 bulk_files
   -> 章节解析和质量门槛
   -> chapters/*.md + import_report.json
-  -> 读书存档
-  -> summary / world_model / status_card
+  -> 后端摘要归档管线生成 summary.md
+  -> 世界模型 / 状态卡
   -> 文风指纹和续写硬约束
   -> 大纲底座
 ```
@@ -129,7 +129,7 @@ novel_git_server/storage/<book_id>/
 
 - 导入器只做确定性清洗，不重写原文。
 - 质量门槛只拦明显坏数据，不替作者判断文学质量。
-- 导入后的章节可以被 `get_cold_archive_range` 读取，供读书存档 Agent 分段消费。
+- 导入后的章节可以被 `get_cold_archive_range` 读取，供后端摘要归档、世界模型和其他 Agent 分段取证。
 
 ## 创作循环链路
 
