@@ -1,0 +1,424 @@
+{
+  "schema_version": 1,
+  "repository": "novel_agent",
+  "generated_at": "2026-05-13T14:29:14+08:00",
+  "source_evidence": [
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "novel_git_server/app.py route map",
+    "novel_git_server/utils/book_storage.py",
+    "novel_git_server/utils/session_runtime.py",
+    "novel_git_server/utils/dify_registry.py",
+    "read-only Dify Postgres route/workflow/plugin evidence",
+    "dify_workflows/*.yml as exported evidence only",
+    "docs/DEPLOYMENT.md"
+  ],
+  "file_index": [
+    {
+      "pattern": "frontend/src/App.tsx",
+      "node": "frontend-workbench",
+      "role": "main workbench orchestrator"
+    },
+    {
+      "pattern": "frontend/src/store/index.ts",
+      "node": "frontend-workbench",
+      "role": "client FSM and state store"
+    },
+    {
+      "pattern": "frontend/src/types/store.d.ts",
+      "node": "frontend-workbench",
+      "role": "client state type contract"
+    },
+    {
+      "pattern": "frontend/src/components/*",
+      "node": "frontend-workbench",
+      "role": "workbench UI components"
+    },
+    {
+      "pattern": "frontend/src/api/*",
+      "node": "frontend-workbench",
+      "role": "Flask API clients"
+    },
+    {
+      "pattern": "frontend/vite.config.ts",
+      "node": "frontend-workbench",
+      "role": "Vite dev-server host and proxy configuration used by local and compose demo frontends"
+    },
+    {
+      "pattern": "frontend/src/bookshelf/*",
+      "node": "frontend-bookshelf-import",
+      "role": "bookshelf/import UI"
+    },
+    {
+      "pattern": "novel_git_server/app.py",
+      "node": "flask-backend-api",
+      "role": "Flask app factory and blueprint composition"
+    },
+    {
+      "pattern": "novel_git_server/agents/library.py",
+      "node": "flask-backend-api",
+      "role": "book list/search/delete/init routes"
+    },
+    {
+      "pattern": "novel_git_server/agents/archive.py",
+      "node": "book-storage-git",
+      "role": "markdown archive, draft write tools, and chapter_draft.md AI write loop budget guard"
+    },
+    {
+      "pattern": "novel_git_server/agents/world_draft.py",
+      "node": "dify-bridge",
+      "role": "deduce stream, draft review, Dify bridge"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/world_model_init.py",
+      "node": "batch-pipeline",
+      "role": "canonical backend owner for world_model.md and status_card.md initialization"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/*.py",
+      "node": "batch-pipeline",
+      "role": "local batch extraction/parsing helpers, including backend-owned summary archive generation"
+    },
+    {
+      "pattern": "novel_git_server/agents/tomato_import.py",
+      "node": "tomato-import-pipeline",
+      "role": "Tomato local and online import routes plus backend summary archive trigger"
+    },
+    {
+      "pattern": "novel_git_server/agents/session.py",
+      "node": "session-runtime",
+      "role": "conversation API routes"
+    },
+    {
+      "pattern": "novel_git_server/agents/git_console.py",
+      "node": "book-storage-git",
+      "role": "per-book Git console API"
+    },
+    {
+      "pattern": "novel_git_server/utils/book_storage.py",
+      "node": "book-storage-git",
+      "role": "book layout and metadata protocol"
+    },
+    {
+      "pattern": "novel_git_server/utils/git_utils.py",
+      "node": "book-storage-git",
+      "role": "Git subprocess and locking helpers"
+    },
+    {
+      "pattern": "novel_git_server/utils/dify_client.py",
+      "node": "dify-bridge",
+      "role": "Dify HTTP and SSE client"
+    },
+    {
+      "pattern": "novel_git_server/utils/dify_registry.py",
+      "node": "dify-bridge",
+      "role": "agent route/read/write scope registry, including world/status/domain constraint surfaces, outline quartet ownership, outline evidence-mode gating, DISCUSS/COMMIT ideation-versus-landing boundaries, and continuation chapter_draft.md ownership; reading_archive_agent is retired from active summary.md production"
+    },
+    {
+      "pattern": "novel_git_server/utils/style_diagnostics.py",
+      "node": "flask-backend-api",
+      "role": "deterministic style diagnostics, source-evidence-based style diagnostic profile selection, and metric inputs for rolling style advisory/repair deltas"
+    },
+    {
+      "pattern": "novel_git_server/utils/chapter_length.py",
+      "node": "flask-backend-api",
+      "role": "deterministic continuation chapter length measurement used by LoreGit validate_chapter_lengths"
+    },
+    {
+      "pattern": "scripts/patch_continuation_agent.py",
+      "node": "dify-workflows-runtime",
+      "role": "reproducible live Dify ToolProvider and continuation workflow patch script"
+    },
+    {
+      "pattern": "novel_git_server/tools/style_fingerprint.py",
+      "node": "flask-backend-api",
+      "role": "local CLI wrapper for generating the three style diagnostics artifacts"
+    },
+    {
+      "pattern": "novel_git_server/utils/session_runtime.py",
+      "node": "session-runtime",
+      "role": "conversation index and JSONL persistence"
+    },
+    {
+      "pattern": "novel_git_server/utils/tomato_*.py",
+      "node": "tomato-import-pipeline",
+      "role": "Tomato parser/search/download adapters"
+    },
+    {
+      "pattern": "dify_workflows/*.yml",
+      "node": "dify-workflows-runtime",
+      "role": "exported workflow evidence only; live DB is authoritative"
+    },
+    {
+      "pattern": "start_all.ps1",
+      "node": "startup-orchestrator",
+      "role": "top-level runtime orchestration"
+    },
+    {
+      "pattern": "scripts/start_*.ps1",
+      "node": "startup-orchestrator",
+      "role": "layer start/stop/status scripts"
+    },
+    {
+      "pattern": "scripts/runtime_ports.ps1",
+      "node": "startup-orchestrator",
+      "role": "shared smart port allocation and runtime manifest helper"
+    },
+    {
+      "pattern": ".runtime/ports.json",
+      "node": "startup-orchestrator",
+      "role": "local runtime port manifest generated by start_all.ps1"
+    },
+    {
+      "pattern": "docs/DEPLOYMENT.md",
+      "node": "deployment-repro-pack",
+      "role": "human entrypoint for local and compose demo deployment"
+    },
+    {
+      "pattern": "deploy/demo/**",
+      "node": "deployment-repro-pack",
+      "role": "local demo bootstrap, environment examples, restore helpers, and smoke checks"
+    },
+    {
+      "pattern": "deploy/demo/backend.Dockerfile",
+      "node": "deployment-repro-pack",
+      "role": "backend container image for reproducible demo startup"
+    },
+    {
+      "pattern": "deploy/demo/frontend.Dockerfile",
+      "node": "deployment-repro-pack",
+      "role": "frontend container image for reproducible demo startup"
+    },
+    {
+      "pattern": "deploy/demo/compose_smoke.py",
+      "node": "deployment-repro-pack",
+      "role": "compose smoke verification script"
+    },
+    {
+      "pattern": ".env.example",
+      "node": "deployment-repro-pack",
+      "role": "repository-safe environment template without secrets"
+    },
+    {
+      "pattern": ".dockerignore",
+      "node": "deployment-repro-pack",
+      "role": "compose build-context hygiene and secret/storage exclusion"
+    },
+    {
+      "pattern": "docker-compose.demo.yml",
+      "node": "deployment-repro-pack",
+      "role": "repository-owned compose entrypoint for reproducible demo services"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/__init__.py",
+      "node": "batch-pipeline",
+      "role": "pipelines subpackage init"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/world_model_init.py",
+      "node": "batch-pipeline",
+      "role": "single-shot world model batch initialization pipeline"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/extract_schema.py",
+      "node": "batch-pipeline",
+      "role": "delta extraction schema (legacy from two-phase approach)"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/merge_template.py",
+      "node": "batch-pipeline",
+      "role": "merge template (legacy from two-phase approach)"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/batch_parser.py",
+      "node": "batch-pipeline",
+      "role": "LLM output parser for structured section extraction"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/rolling_chapter.py",
+      "node": "rolling-production-orchestrator",
+      "role": "read-only chapter cursor derivation, continuation workbench state projection, batch action planner, review bridge packet builder, style advisory and metric-delta evidence builder, and chapter context pack builder"
+    },
+    {
+      "pattern": "scripts/rolling_chapter_production.py",
+      "node": "rolling-production-orchestrator",
+      "role": "CLI wrapper for dry-run and live rolling chapter probes"
+    },
+    {
+      "pattern": "docs/ROLLING_CHAPTER_WORKFLOW_CASE.md",
+      "node": "rolling-production-orchestrator",
+      "role": "versioned case-study evidence for repository presentation"
+    },
+    {
+      "pattern": ".runtime/rolling_chapter_*.json",
+      "node": "rolling-production-orchestrator",
+      "role": "local rolling production evidence artifacts"
+    },
+    {
+      "pattern": ".runtime/rolling_review_*.json",
+      "node": "rolling-production-orchestrator",
+      "role": "local review bridge packets, review recommendations, and human unlock evidence"
+    },
+    {
+      "pattern": "dev_repo/state.json",
+      "node": "dev-repo-runtime",
+      "role": "process runtime state"
+    },
+    {
+      "pattern": "dev_repo/conversations/**",
+      "node": "session-runtime",
+      "role": "local conversation runtime data"
+    },
+    {
+      "pattern": "dev_repo/architecture/**",
+      "node": "dev-repo-runtime",
+      "role": "versioned architecture and data-model truth"
+    },
+    {
+      "pattern": "novel_git_server/pipelines/style_artifact_init.py",
+      "node": "batch-pipeline",
+      "role": "canonical backend owner for promptless style diagnostics trio initialization and rebuild"
+    },
+    {
+      "pattern": "novel_git_server/agents/style_init.py",
+      "node": "flask-backend-api",
+      "role": "SSE route adapter for /api/style/init_pipeline"
+    },
+    {
+      "pattern": "scripts/patch_style_agent.py",
+      "node": "dify-workflows-runtime",
+      "role": "reproducible live Dify style workflow patch script for post-init discussion/refinement role"
+    }
+  ],
+  "route_index": [
+    {
+      "route": "/health",
+      "node": "flask-backend-api",
+      "entity_focus": "RuntimeHealth"
+    },
+    {
+      "route": "/books/list",
+      "node": "frontend-bookshelf-import",
+      "entity_focus": "BookWorkspace"
+    },
+    {
+      "route": "/books/init",
+      "node": "book-storage-git",
+      "entity_focus": "BookWorkspace"
+    },
+    {
+      "route": "DELETE /books/<book_id>",
+      "node": "frontend-bookshelf-import",
+      "entity_focus": "PendingDeleteMarker"
+    },
+    {
+      "route": "/books/tomato/*",
+      "node": "tomato-import-pipeline",
+      "entity_focus": "TomatoSourceBook"
+    },
+    {
+      "route": "/books/tomato/summary_status",
+      "node": "tomato-import-pipeline",
+      "entity_focus": "KnowledgeFile"
+    },
+    {
+      "route": "/books/get_file",
+      "node": "book-storage-git",
+      "entity_focus": "KnowledgeFile"
+    },
+    {
+      "route": "/api/draft/*",
+      "node": "book-storage-git",
+      "entity_focus": "DraftSandbox, ChapterFile"
+    },
+    {
+      "route": "/api/world/deduce_stream",
+      "node": "dify-bridge",
+      "entity_focus": "DifyWorkflowRun"
+    },
+    {
+      "route": "/api/conversations/*",
+      "node": "session-runtime",
+      "entity_focus": "SessionConversationIndex"
+    },
+    {
+      "route": "/books/git_*",
+      "node": "book-storage-git",
+      "entity_focus": "GitRepositoryState"
+    },
+    {
+      "route": "/tools/*",
+      "node": "flask-backend-api",
+      "entity_focus": "KnowledgeFile"
+    },
+    {
+      "route": "/tools/validate_chapter_lengths",
+      "node": "flask-backend-api",
+      "entity_focus": "KnowledgeFile"
+    },
+    {
+      "route": "/api/world/batch_init_stream",
+      "node": "dify-bridge",
+      "entity_focus": "BatchWorldModelInit"
+    },
+    {
+      "route": "/api/style/init_pipeline",
+      "node": "flask-backend-api",
+      "entity_focus": "KnowledgeFile"
+    },
+    {
+      "route": "/api/rolling/state",
+      "node": "rolling-production-orchestrator",
+      "entity_focus": "RollingProductionRun"
+    },
+    {
+      "route": "/api/rolling/run_stream",
+      "node": "rolling-production-orchestrator",
+      "entity_focus": "DifyWorkflowRun"
+    }
+  ],
+  "amendment_triggers": {
+    "architecture": [
+      "subsystem boundary changes",
+      "public interface ownership changes",
+      "Dify workflow ownership or plugin dependency changes",
+      "world model creative constraint ownership changes",
+      "world-model constraint lifecycle values, applicability scopes, or downstream current-active consumption rules",
+      "outline layer control semantics, evidence-mode gating, DISCUSS/COMMIT ideation-versus-landing duties, or outline initialization ownership changes",
+      "continuation production ownership, chapter-card execution semantics, chapter length gate semantics, or chapter_draft.md ownership changes",
+      "continuation style advisory/metric-delta repair loop semantics or protected-metric stop-condition changes",
+      "chapter context pack source-reference or derived-evidence semantics changes",
+      "deterministic style diagnostic profile semantics, profile-selection evidence source, or scheduler-lock changes",
+      "rolling chapter production cursor, replenishment, stop-gate, review bridge, human unlock, or evidence semantics changes",
+      "accepted chapter canonization semantics from confirmed chapter_draft.md to chapters/*.md",
+      "startup topology changes",
+      "runtime port fact ownership changes",
+      "Dify LoreGit ToolProvider endpoint synchronization semantics",
+      "deployment reproducibility topology, sanitized Dify restore authority, or secret/demo-data boundary changes",
+      "review/draft runtime flow changes",
+      "batch pipeline execution model or section schema changes",
+      "style initialization ownership between backend pipeline and Dify workflow",
+      "summary archive ownership between backend pipeline and Dify reading archive workflow",
+      "promptless workbench action launch/progress semantics",
+      "continuation workbench state projection, launch, progress, or review handoff semantics"
+    ],
+    "data_model": [
+      "Book workspace identity or deletion semantics changes",
+      "Book deletion cancellation or pending-cleanup semantics changes",
+      "tracked layout file changes",
+      "conversation log format changes",
+      "world/status/domain_rules creative role changes",
+      "world-model constraint lifecycle or applicability-scope semantics",
+      "outline quartet creative role, evidence-mode semantics, ideation-versus-landing semantics, or write ownership changes",
+      "continuation chapter_draft.md production semantics or length validation requirements",
+      "accepted chapter canonization semantics between chapter_draft.md and chapters/*.md",
+      "style advisory or metric-delta repair evidence semantics",
+      "chapter context pack derived-evidence semantics",
+      "RollingProductionRun source/derived semantics, cursor derivation, continuation workbench projection, replenishment, review bridge, human unlock, or review gate semantics",
+      "Dify cost accounting source changes",
+      "import report schema changes",
+      "batch pipeline section schema or world_model.md output format changes",
+      "summary.md source/derived ownership, output format, metadata boundary, or rebuild semantics"
+    ]
+  }
+}

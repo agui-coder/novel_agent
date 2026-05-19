@@ -1,0 +1,25 @@
+erDiagram
+    BookWorkspace ||--|| BookMetadata : owns
+    BookWorkspace ||--o{ ChapterFile : contains
+    BookWorkspace ||--o{ KnowledgeFile : maintains
+    ChapterFile }o--|| KnowledgeFile : derives_summary_archive
+    KnowledgeFile ||--o{ ChapterFile : canonizes_accepted_draft
+    BookWorkspace ||--o| ImportReport : records_latest_import
+    BookWorkspace ||--|| GitRepositoryState : versions
+    BookWorkspace ||--o| PendingDeleteMarker : may_have
+    BookWorkspace ||--o{ SessionConversationIndex : has_agent_threads
+
+    SessionConversationIndex ||--o{ ConversationMessageLog : indexes
+
+    DifyAgentRoute }o--|| DifyWorkflowDefinition : routes_to
+    DifyAgentRoute ||--o{ KnowledgeFile : constrains
+    DifyAgentRoute ||--o{ KnowledgeFile : outline_controls
+    DifyWorkflowDefinition }o--o{ KnowledgeFile : updates_via_tools
+    DifyWorkflowDefinition }o--o{ KnowledgeFile : preserves_constraint_lifecycle
+    DifyWorkflowDefinition ||--o{ DifyWorkflowRun : produces
+    DifyWorkflowRun ||--o{ DifyNodeExecution : contains
+    CostObservation }o--o{ DifyNodeExecution : derives_from
+    DifyWorkflowDefinition }o--o{ ToolProvider : calls
+    DifyWorkflowDefinition }o--o{ DifyPluginPackage : requires
+
+    RuntimeContract ||--o{ ArchitectureTruthArtifact : references_boundaries

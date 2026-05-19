@@ -1,0 +1,15 @@
+flowchart LR
+    Author["Author in browser"] --> Frontend["React/Vite workbench and bookshelf"]
+    Frontend --> Flask["Flask backend API"]
+    Flask --> Storage["storage/<book_id> Markdown + nested Git"]
+    Flask --> DevRepo["dev_repo runtime and architecture truth"]
+    Flask --> Batch["Backend batch pipelines"]
+    Batch --> Storage
+    Flask --> Dify["Dify Service API"]
+    Dify --> Tools["LoreGit OpenAPI tools on Flask"]
+    Tools --> Flask
+    Dify --> PluginStorage["Dify plugin storage"]
+    Dify --> DifyDb["Dify PostgreSQL"]
+    Startup["start_all.ps1"] --> Frontend
+    Startup --> Flask
+    Startup --> Dify

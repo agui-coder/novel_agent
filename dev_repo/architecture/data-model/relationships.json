@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-13T14:29:14+08:00",
+  "relationships": [
+    {
+      "id": "bookworkspace-has-metadata",
+      "from": "BookWorkspace",
+      "to": "BookMetadata",
+      "cardinality": "1:1",
+      "kind": "ownership",
+      "deletion_semantics": "Deleting the book workspace deletes metadata unless cleanup is pending.",
+      "source_artifacts": ["novel_git_server/storage/<book_id>/metadata.json"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-chapters",
+      "from": "BookWorkspace",
+      "to": "ChapterFile",
+      "cardinality": "1:many",
+      "kind": "containment",
+      "deletion_semantics": "Deleting the book workspace first cancels active Tomato download/summary work, then deletes chapters unless cleanup is pending. Chapter files may come from import/manual archive or deterministic canonization of human-confirmed chapter_draft.md sections.",
+      "source_artifacts": ["novel_git_server/storage/<book_id>/chapters/*.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-knowledge-files",
+      "from": "BookWorkspace",
+      "to": "KnowledgeFile",
+      "cardinality": "1:many",
+      "kind": "containment",
+      "deletion_semantics": "Deleting the book workspace deletes knowledge files unless cleanup is pending.",
+      "source_artifacts": ["novel_git_server/utils/book_storage.py TRACKED_LAYOUT_FILES"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-import-report",
+      "from": "BookWorkspace",
+      "to": "ImportReport",
+      "cardinality": "1:0..1",
+      "kind": "latest-report",
+      "deletion_semantics": "Deleted with the book workspace after active Tomato import work for that book_id is cancelled.",
+      "source_artifacts": ["novel_git_server/agents/tomato_import.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-git-state",
+      "from": "BookWorkspace",
+      "to": "GitRepositoryState",
+      "cardinality": "1:1",
+      "kind": "versioning",
+      "deletion_semantics": "Deleted with the book workspace.",
+      "source_artifacts": ["novel_git_server/storage/<book_id>/.git"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-may-have-pending-delete",
+      "from": "BookWorkspace",
+      "to": "PendingDeleteMarker",
+      "cardinality": "1:0..1",
+      "kind": "cleanup-marker",
+      "deletion_semantics": "Marker may outlive the locked directory until cleanup succeeds.",
+      "source_artifacts": ["novel_git_server/storage/_pending_delete/<book_id>.json"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-session-indexes",
+      "from": "BookWorkspace",
+      "to": "SessionConversationIndex",
+      "cardinality": "1:many",
+      "kind": "runtime-index",
+      "deletion_semantics": "Book deletion and successful fresh/rebuild import clear dev_repo conversation indexes and logs for the same book_id before the workspace is exposed again; failed or collision-blocked imports leave them intact.",
+      "source_artifacts": ["dev_repo/conversations/<agent>/<book_id>.index.json"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "session-index-indexes-message-log",
+      "from": "SessionConversationIndex",
+      "to": "ConversationMessageLog",
+      "cardinality": "1:many",
+      "kind": "index-to-log",
+      "deletion_semantics": "Conversation delete removes the selected JSONL log and updates the index.",
+      "source_artifacts": ["novel_git_server/utils/session_runtime.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "agent-route-routes-to-workflow",
+      "from": "DifyAgentRoute",
+      "to": "DifyWorkflowDefinition",
+      "cardinality": "many:1",
+      "kind": "runtime-routing",
+      "deletion_semantics": "Deleting a Dify app invalidates the route until env/API key is rebound.",
+      "source_artifacts": ["novel_git_server/utils/dify_registry.py", "Dify apps table"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "world-route-constrains-knowledge-files",
+      "from": "DifyAgentRoute",
+      "to": "KnowledgeFile",
+      "cardinality": "1:many",
+      "kind": "post-init creative-constraint-io",
+      "deletion_semantics": "Deleting a book workspace deletes the files; changing route ownership, moving initialization ownership, or changing constraint lifecycle/applicability semantics requires ER/data-model amendment.",
+      "source_artifacts": ["novel_git_server/utils/dify_registry.py", "world_model.md", "status_card.md", "domain_rules.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "outline-route-controls-knowledge-files",
+      "from": "DifyAgentRoute",
+      "to": "KnowledgeFile",
+      "cardinality": "1:many",
+      "kind": "outline-control-io",
+      "deletion_semantics": "Deleting a book workspace deletes the files; changing outline write ownership, adding/removing outline targets, changing SOURCE_FACT/AUTHOR_PROPOSAL/WORLD_MODEL_REQUIRED semantics, or allowing outline to treat historical/retired/disabled world constraints as current-active requires ER/data-model amendment.",
+      "source_artifacts": ["novel_git_server/utils/dify_registry.py", "brainstorm.md", "master_outline.md", "arc_outline.md", "chapter_outline.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "continuation-route-produces-chapter-draft",
+      "from": "DifyAgentRoute",
+      "to": "KnowledgeFile",
+      "cardinality": "1:1",
+      "kind": "continuation-production-io",
+      "deletion_semantics": "Deleting a book workspace deletes chapter_draft.md if materialized; changing continuation write ownership, length-gate semantics, or current-active constraint consumption semantics requires ER/data-model amendment.",
+      "source_artifacts": ["novel_git_server/utils/dify_registry.py", "chapter_draft.md", "chapter_outline.md", "style_constraints_for_continuation.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "review-route-records-editorial-findings",
+      "from": "DifyAgentRoute",
+      "to": "KnowledgeFile",
+      "cardinality": "1:1",
+      "kind": "review-bridge-io",
+      "deletion_semantics": "Deleting a book workspace deletes error_archive.md if materialized; changing review write ownership or allowing review to write chapter_draft.md requires ER/data-model amendment.",
+      "source_artifacts": ["novel_git_server/utils/dify_registry.py", "error_archive.md", "chapter_draft.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-observes-bookworkspace",
+      "from": "RollingProductionRun",
+      "to": "BookWorkspace",
+      "cardinality": "many:1",
+      "kind": "derived-evidence-for-book",
+      "deletion_semantics": "Rolling runtime artifacts may outlive the live book state as repository evidence; deleting a book does not rewrite committed case-study docs.",
+      "source_artifacts": [".runtime/rolling_chapter_*.json", "docs/ROLLING_CHAPTER_WORKFLOW_CASE.md"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-derives-from-knowledge-files",
+      "from": "RollingProductionRun",
+      "to": "KnowledgeFile",
+      "cardinality": "many:many",
+      "kind": "cursor-and-workbench-projection",
+      "deletion_semantics": "The derived pending-review cursor, continuation workbench projection, and any style advisory, metric delta, or constraint lifecycle reference is invalidated if the underlying outline, draft, world/status/domain, or style diagnostics source artifacts are deleted or rewritten. Accepted cursor state comes from ChapterFile artifacts, not unconfirmed draft headings.",
+      "source_artifacts": ["chapter_outline.md", "chapter_draft.md", "world_model.md", "status_card.md", "domain_rules.md", "style diagnostics artifacts"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "confirmed-draft-canonizes-chapter-files",
+      "from": "KnowledgeFile",
+      "to": "ChapterFile",
+      "cardinality": "1:many",
+      "kind": "confirm-time-canonization",
+      "deletion_semantics": "Accepted chapter_draft.md sections become formal chapters/*.md only after human confirmation. Canonization preserves accepted text and must fail rather than overwrite conflicting existing chapter files.",
+      "source_artifacts": ["chapter_draft.md", "chapters/*.md", "/api/draft/confirm"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-records-style-metric-delta",
+      "from": "RollingProductionRun",
+      "to": "DifyWorkflowDefinition",
+      "cardinality": "many:1",
+      "kind": "advisory-evaluator-repair-evidence",
+      "deletion_semantics": "Style advisory summaries and metric deltas are derived evidence for continuation repair or author revision. Deleting or changing a Dify workflow invalidates future repair prompts but does not rewrite historical deltas.",
+      "source_artifacts": ["generate_style_diagnostics artifacts", "scripts/rolling_chapter_production.py", "novel_git_server/pipelines/rolling_chapter.py", "scripts/patch_continuation_agent.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-records-chapter-context-pack",
+      "from": "RollingProductionRun",
+      "to": "KnowledgeFile",
+      "cardinality": "many:many",
+      "kind": "derived-current-chapter-execution-brief",
+      "deletion_semantics": "Chapter context packs are derived evidence for continuation repair. Deleting or changing source outline/world/status/style/advisory/gate artifacts invalidates future packs but does not rewrite historical evidence. Packs must preserve world/status constraint lifecycle so historical-only, retired, disabled, inherited-residue, or unresolved constraints are not promoted to current-active facts.",
+      "source_artifacts": [
+        "chapter_outline.md",
+        "world_model.md",
+        "status_card.md",
+        "domain_rules.md",
+        "summary.md",
+        "style_constraints_for_continuation.md",
+        "style diagnostics artifacts",
+        "error_archive.md",
+        "novel_git_server/pipelines/rolling_chapter.py",
+        "scripts/rolling_chapter_production.py"
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-triggers-workflows",
+      "from": "RollingProductionRun",
+      "to": "DifyWorkflowRun",
+      "cardinality": "1:many",
+      "kind": "agent-execution-evidence",
+      "deletion_semantics": "Historical Dify run rows are controlled by Dify retention; rolling reports keep run ids as evidence.",
+      "source_artifacts": ["Dify workflow_runs table", ".runtime/rolling_chapter_*.json"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-routes-review-bridge",
+      "from": "RollingProductionRun",
+      "to": "DifyAgentRoute",
+      "cardinality": "many:1",
+      "kind": "hard-gate-and-story-risk-review-bridge",
+      "deletion_semantics": "Rolling review packets are derived evidence. Deleting a Dify route invalidates future bridge calls but does not rewrite historical packets or human decisions.",
+      "source_artifacts": [".runtime/rolling_review_*.json", "novel_git_server/utils/dify_registry.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-run-records-draft-sandbox",
+      "from": "RollingProductionRun",
+      "to": "DraftSandbox",
+      "cardinality": "many:1",
+      "kind": "review-gate-evidence",
+      "deletion_semantics": "Rolling evidence records draft/sandbox commit ids but does not replace Git history.",
+      "source_artifacts": ["Git branch draft/sandbox", ".runtime/rolling_chapter_*.json"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "workflow-updates-knowledge-files",
+      "from": "DifyWorkflowDefinition",
+      "to": "KnowledgeFile",
+      "cardinality": "many:many",
+      "kind": "post-init agent-mediated-update",
+      "deletion_semantics": "Workflow definitions do not own summary.md first-create/rebuild or initial world/status creation; post-init writes occur through Flask/LoreGit tools and per-book Git. World workflow updates must preserve constraint lifecycle and applicability scope, and post-confirm status/world maintenance belongs to the world route. Outline workflow writes may include production proposals, but proposed durable world-rule changes remain WORLD_MODEL_REQUIRED until accepted by the world-model layer. Continuation workflow writes may materialize chapter_draft.md only, may consume style metric deltas as repair guidance, and must keep unresolved or non-current-active constraints out of canon prose. Legacy reading archive workflow rows remain historical evidence only.",
+      "source_artifacts": ["Dify workflow graph", "LoreGit draft_append_markdown_section", "LoreGit draft_replace_markdown_section", "LoreGit draft_sync_markdown_sections"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "backend-pipeline-generates-summary-archive",
+      "from": "ChapterFile",
+      "to": "KnowledgeFile",
+      "cardinality": "many:1",
+      "kind": "backend-derived-summary-archive",
+      "deletion_semantics": "summary.md is invalidated when source chapters are deleted or fully replaced. Future first-create/rebuild is owned by the backend summary archive pipeline; historical Dify-generated summary.md files remain valid book history.",
+      "source_artifacts": ["chapters/*.md", "summary.md", "future summary archive pipeline module", "novel_git_server/agents/tomato_import.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "backend-pipeline-initializes-world-status",
+      "from": "DifyAgentRoute",
+      "to": "KnowledgeFile",
+      "cardinality": "1:many",
+      "kind": "backend-owned-initialization-entrypoint",
+      "deletion_semantics": "The route exposes the backend initialization endpoint; per-book files remain owned by BookWorkspace and GitRepositoryState.",
+      "source_artifacts": ["frontend/src/App.tsx", "frontend/src/api/orchestration.ts", "novel_git_server/agents/world_draft.py", "novel_git_server/pipelines/world_model_init.py"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "workflow-produces-runs",
+      "from": "DifyWorkflowDefinition",
+      "to": "DifyWorkflowRun",
+      "cardinality": "1:many",
+      "kind": "execution-history",
+      "deletion_semantics": "Historical Dify rows are controlled by Dify retention/DB operations.",
+      "source_artifacts": ["Dify workflow_runs table"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "run-contains-node-executions",
+      "from": "DifyWorkflowRun",
+      "to": "DifyNodeExecution",
+      "cardinality": "1:many",
+      "kind": "execution-detail",
+      "deletion_semantics": "Historical Dify rows are controlled by Dify retention/DB operations.",
+      "source_artifacts": ["Dify workflow_node_executions table"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "cost-observation-derived-from-node-executions",
+      "from": "CostObservation",
+      "to": "DifyNodeExecution",
+      "cardinality": "many:many",
+      "kind": "derived-accounting",
+      "deletion_semantics": "Derived observation disappears when evidence query is not rerun.",
+      "source_artifacts": ["workflow_node_executions.execution_metadata.total_price"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "workflow-requires-plugin-package",
+      "from": "DifyWorkflowDefinition",
+      "to": "DifyPluginPackage",
+      "cardinality": "many:many",
+      "kind": "runtime-dependency",
+      "deletion_semantics": "Missing plugin package can break otherwise restored workflow DB rows.",
+      "source_artifacts": ["Dify plugin storage", "workflow node type evidence"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "workflow-calls-tool-provider",
+      "from": "DifyWorkflowDefinition",
+      "to": "ToolProvider",
+      "cardinality": "many:many",
+      "kind": "tool-call",
+      "deletion_semantics": "Missing provider or schema breaks Dify tool nodes.",
+      "source_artifacts": ["Dify tool_api_providers table", "LoreGit OpenAPI schema"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "runtime-contract-references-architecture",
+      "from": "RuntimeContract",
+      "to": "ArchitectureTruthArtifact",
+      "cardinality": "many:many",
+      "kind": "governance-reference",
+      "deletion_semantics": "Architecture truth is versioned; runtime contract references should remain readable.",
+      "source_artifacts": ["dev_repo/architecture/**"],
+      "confidence": "confirmed"
+    }
+  ]
+}

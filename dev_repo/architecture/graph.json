@@ -1,0 +1,947 @@
+{
+  "schema_version": 1,
+  "repository": "novel_agent",
+  "generated_at": "2026-05-13T14:29:14+08:00",
+  "confidence_legend": {
+    "confirmed": "Proven by code, config, scripts, runtime files, or read-only database evidence.",
+    "inferred": "Reconstructed from naming, layout, imports, or observed usage.",
+    "unknown": "Requires future probe or human confirmation."
+  },
+  "nodes": [
+    {
+      "id": "frontend-workbench",
+      "purpose": "Main author IDE for file view, agent chat, review, Git panels, streaming traces, FSM, and promptless workbench actions including continuation production controls.",
+      "owned_files": [
+        "frontend/src/App.tsx",
+        "frontend/src/store/index.ts",
+        "frontend/src/types/store.d.ts",
+        "frontend/src/components/*",
+        "frontend/src/api/*",
+        "frontend/src/lib/*",
+        "frontend/vite.config.ts"
+      ],
+      "public_interfaces": [
+        "Browser UI on Vite dev server",
+        "Flask API clients under frontend/src/api",
+        "Vite dev-server host/proxy configuration",
+        "Continuation workbench action surface"
+      ],
+      "depends_on": [
+        "flask-backend-api",
+        "session-runtime",
+        "book-storage-git",
+        "dify-bridge",
+        "rolling-production-orchestrator"
+      ],
+      "depended_on_by": [
+        "frontend-bookshelf-import"
+      ],
+      "invariants": [
+        "Frontend never writes storage directly.",
+        "Review UI must be backed by draft metadata and changed files.",
+        "Hydration must not discard active local UI trace without cause.",
+        "Promptless continuation controls must not become hidden chat prompts or chatMessages."
+      ],
+      "allowed_change_types": [
+        "UI composition",
+        "API client wiring",
+        "FSM presentation changes"
+      ],
+      "requires_amendment_when": [
+        "Changing source of truth for file writes",
+        "Changing review or draft ownership",
+        "Moving persistence into frontend",
+        "Changing continuation workbench promptless launch/progress semantics"
+      ],
+      "verification": [
+        "npm run build",
+        "docker compose smoke when Vite host/proxy settings change",
+        "manual Playwright/Playwriter UI walkthrough for interaction changes"
+      ],
+      "known_debt": [
+        "frontend/src/App.tsx is a large orchestrator with multiple responsibilities."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "frontend-bookshelf-import",
+      "purpose": "Bookshelf, online import, summary/download progress, and book deletion UX.",
+      "owned_files": [
+        "frontend/src/bookshelf/BookshelfApp.tsx",
+        "frontend/src/api/library.ts",
+        "frontend/src/api/tomatoImport.ts",
+        "frontend/src/components/TomatoImportPanel.tsx"
+      ],
+      "public_interfaces": [
+        "Bookshelf browser surface",
+        "Book open/import/delete actions"
+      ],
+      "depends_on": [
+        "flask-backend-api",
+        "tomato-import-pipeline",
+        "book-storage-git"
+      ],
+      "depended_on_by": [],
+      "invariants": [
+        "Locked-book delete may hide the book while cleanup remains pending.",
+        "Book delete must cancel active Tomato download and reading-summary work before physical cleanup.",
+        "Import progress must surface download and summary generation state."
+      ],
+      "allowed_change_types": [
+        "Bookshelf UI",
+        "Import flow display",
+        "Delete feedback"
+      ],
+      "requires_amendment_when": [
+        "Changing import persistence semantics",
+        "Changing deletion semantics for locked directories"
+      ],
+      "verification": [
+        "npm run build",
+        "manual UI delete/import flow"
+      ],
+      "known_debt": [],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "flask-backend-api",
+      "purpose": "Local deterministic API shell and blueprint composition.",
+      "owned_files": [
+        "novel_git_server/app.py",
+        "novel_git_server/agents/*.py",
+        "novel_git_server/tests/*"
+      ],
+      "public_interfaces": [
+        "/health",
+        "/books/*",
+        "/api/world/*",
+        "/api/draft/*",
+        "/api/conversations/*",
+        "/tools/generate_style_diagnostics",
+        "/tools/*",
+        "/checkout",
+        "/api/style/init_pipeline",
+        "/api/rolling/state",
+        "/api/rolling/run_stream"
+      ],
+      "depends_on": [
+        "book-storage-git",
+        "dify-bridge",
+        "session-runtime",
+        "tomato-import-pipeline",
+        "batch-pipeline",
+        "rolling-production-orchestrator"
+      ],
+      "depended_on_by": [
+        "frontend-workbench",
+        "frontend-bookshelf-import",
+        "dify-workflows-runtime",
+        "startup-orchestrator"
+      ],
+      "invariants": [
+        "JSON responses use UTF-8.",
+        "Book addressing resolves explicit book_id before book_name.",
+        "Legacy v2 routes remain forbidden.",
+        "Style diagnostics returns style_fingerprint.md, style_review.md, and style_constraints_for_continuation.md outputs for the promptless backend style initialization pipeline and post-init advisory evidence.",
+        "Style diagnostic profile selection must use source outline-card evidence when selecting specialized tolerances such as bridge/exposition or arc-tail choice; draft prose alone must not select a more permissive profile.",
+        "Style diagnostics are rolling-loop advisory evidence by default and must not lock the scheduler without a separate hard gate.",
+        "Tomato summary generation is a backend batch-pipeline job, not a Dify chat turn or reading_archive_agent workflow.",
+        "Rolling workbench APIs are control-plane endpoints and must not write prose directly.",
+        "Draft confirm may deterministically canonize accepted chapter_draft.md sections into chapters/*.md, but must preserve accepted prose and fail on ambiguous or conflicting chapter files."
+      ],
+      "allowed_change_types": [
+        "Blueprint endpoint additions",
+        "Error envelope improvements",
+        "Deterministic validation"
+      ],
+      "requires_amendment_when": [
+        "Changing public route ownership",
+        "Changing book addressing semantics",
+        "Changing the error envelope contract",
+        "Changing deterministic style diagnostic profile semantics, profile-selection evidence source, or scheduler-lock semantics",
+        "Changing rolling workbench public route ownership or prose-write boundary",
+        "Changing accepted chapter canonization semantics"
+      ],
+      "verification": [
+        "targeted backend unittest",
+        "GET /health"
+      ],
+      "known_debt": [
+        "novel_git_server/docs/api.md is older than the runtime route map."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "book-storage-git",
+      "purpose": "Per-book filesystem layout, metadata, nested Git repository, branch/diff/review persistence.",
+      "owned_files": [
+        "novel_git_server/utils/book_storage.py",
+        "novel_git_server/utils/git_utils.py",
+        "novel_git_server/agents/archive.py",
+        "novel_git_server/agents/git_console.py",
+        "novel_git_server/agents/checkout.py",
+        "novel_git_server/agents/history.py"
+      ],
+      "public_interfaces": [
+        "storage/<book_id>/ layout",
+        "Git console routes",
+        "Markdown read/write routes"
+      ],
+      "depends_on": [
+        "local-filesystem",
+        "git"
+      ],
+      "depended_on_by": [
+        "flask-backend-api",
+        "dify-bridge",
+        "tomato-import-pipeline",
+        "frontend-workbench",
+        "frontend-bookshelf-import"
+      ],
+      "invariants": [
+        "Book paths must stay inside storage root.",
+        "Important writes must commit or return explicit failure.",
+        "Draft writes belong on draft/sandbox until confirmed.",
+        "Accepted continuation chapters become formal ChapterFile artifacts only through deterministic confirm-time canonization into chapters/*.md.",
+        "chapter_draft.md AI write loops must be bounded by recent repair-like Git history so continuation repair cannot create unbounded tiny draft commits."
+      ],
+      "allowed_change_types": [
+        "Layout repair",
+        "Git command hardening",
+        "Markdown read/write tools"
+      ],
+      "requires_amendment_when": [
+        "Changing tracked layout files",
+        "Changing branch names or merge semantics",
+        "Changing source-versus-derived classification of book files",
+        "Changing how confirmed chapter_draft.md sections become chapters/*.md",
+        "Changing AI write loop budget semantics for chapter_draft.md"
+      ],
+      "verification": [
+        "backend storage/Git tests",
+        "git status/diff checks inside a test book repository"
+      ],
+      "known_debt": [],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "dify-bridge",
+      "purpose": "Bridge Flask/session/file targets to Dify App API and active local agent route registry. Retired reading-archive compatibility must not be used as the summary.md production path.",
+      "owned_files": [
+        "novel_git_server/utils/dify_client.py",
+        "novel_git_server/utils/dify_registry.py",
+        "novel_git_server/agents/world_draft.py"
+      ],
+      "public_interfaces": [
+        "/api/world/deduce_stream",
+        "/api/world/stop_generation",
+        "Dify /v1/chat-messages",
+        "Dify file upload"
+      ],
+      "depends_on": [
+        "dify-workflows-runtime",
+        "book-storage-git",
+        "session-runtime"
+      ],
+      "depended_on_by": [
+        "frontend-workbench"
+      ],
+      "invariants": [
+        "Local conversation ids are not the same as upstream Dify conversation ids.",
+        "Agent file read/write scope is controlled by the route registry.",
+        "Stale Dify conversation ids may be retried without losing local thread state.",
+        "World-model routes treat world_model.md, status_card.md, and domain_rules.md as creative constraint surfaces.",
+        "World-model route outputs and downstream route inputs must preserve constraint lifecycle and applicability scope instead of flattening every source-backed item into current-active hard constraints.",
+        "Dify world routes are post-initialization interactive routes; backend batch pipeline owns initial world/status creation.",
+        "Outline routes write only brainstorm.md, master_outline.md, arc_outline.md, and chapter_outline.md; they prepare webnovel control plans rather than prose chapters.",
+        "Outline artifacts must distinguish SOURCE_FACT, AUTHOR_PROPOSAL, and WORLD_MODEL_REQUIRED before downstream agents treat them as constraints.",
+        "Outline DISCUSS is the read-only ideation duty; outline COMMIT is the explicit landing/write duty.",
+        "Continuation routes execute chapter_outline.md cards into chapter_draft.md and may write only chapter_draft.md.",
+        "Post-confirm status/world maintenance belongs to the world route; review may not update status_card.md or world_model.md.",
+        "Continuation style repair may consume metric-delta evidence from deterministic gates, but the Dify route remains the only prose writer.",
+        "The legacy reading_archive_agent route is retired from active summary.md ownership and must not be the default import summary path."
+      ],
+      "allowed_change_types": [
+        "Agent route config",
+        "SSE parsing",
+        "Dify error hardening"
+      ],
+      "requires_amendment_when": [
+        "Changing agent ownership of file scopes",
+        "Changing Dify conversation identity semantics",
+        "Changing draft write flow",
+        "Changing outline evidence-mode, DISCUSS/COMMIT ideation-versus-landing semantics, or world-model gating semantics",
+        "Changing world-model constraint lifecycle or scope consumption semantics",
+        "Changing continuation production ownership, chapter-card execution semantics, or chapter length gate semantics",
+        "Changing post-confirm world/status maintenance ownership",
+        "Changing continuation style advisory or metric-delta repair loop semantics",
+        "Re-enabling Dify reading_archive_agent as active summary.md owner"
+      ],
+      "verification": [
+        "targeted Dify bridge tests",
+        "manual Dify-backed UI flow when live behavior changes"
+      ],
+      "known_debt": [
+        "Cost governance is query/report based rather than enforced by budget guards."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "dify-workflows-runtime",
+      "purpose": "Live Dify apps, workflow graphs, plugin packages, model/tool providers, workflow run/cost evidence for active semantic agents. Legacy reading archive workflows are historical/compatibility evidence only.",
+      "owned_files": [
+        "dify_workflows/*.yml",
+        "Dify PostgreSQL apps/workflows/workflow_runs/workflow_node_executions",
+        "Dify plugin storage"
+      ],
+      "public_interfaces": [
+        "Dify console",
+        "Dify Service API",
+        "LoreGit OpenAPI tool provider",
+        "LoreGit generate_style_diagnostics operation",
+        "LoreGit validate_chapter_lengths operation"
+      ],
+      "depends_on": [
+        "docker-dify-stack",
+        "flask-backend-api",
+        "dify-bridge"
+      ],
+      "depended_on_by": [
+        "dify-bridge"
+      ],
+      "invariants": [
+        "Agent node workflows require langgenius/agent plugin package.",
+        "Model provider requires langgenius/deepseek provider.",
+        "Local DSL exports are evidence, not the sole source of live truth.",
+        "World model workflow output must explain creative function before archival breadth.",
+        "World model workflow output must preserve constraint lifecycle and applicability scope for changing states, abilities, relationships, timelines, loops, and rule systems.",
+        "Dify world workflows must not be treated as the canonical owner of initial world/status creation.",
+        "Dify style workflows are post-initialization discussion/refinement agents and must hand initialization/rebuild back to /api/style/init_pipeline.",
+        "Outline initialization/rebuild must generate brainstorm.md, master_outline.md, arc_outline.md, and chapter_outline.md as a webnovel serial control layer through draft/sandbox tools.",
+        "Outline DISCUSS_AGENT should provide multiple source-aware creative routes without writing; outline COMMIT_AGENT should compress explicit author intent into reviewable outline edits.",
+        "Outline production proposals that create durable world rules must stay WORLD_MODEL_REQUIRED until the world-model layer accepts them.",
+        "LoreGit ToolProvider host.docker.internal endpoint must be synchronized to the startup-orchestrator selected backend port.",
+        "Continuation workflow must execute chapter_outline.md cards into chapter_draft.md and validate chapter lengths through LoreGit before claiming completion.",
+        "Bridge/exposition and arc-tail choice style diagnostic profiles are deterministic comparison profiles, not scheduler locks.",
+        "Continuation repair prompts may consume structured style metric deltas, but those deltas are advisory evaluator evidence and do not alter chapter_draft.md ownership.",
+        "Retired reading archive workflows must not be treated as active summary.md producers."
+      ],
+      "allowed_change_types": [
+        "Workflow graph patch",
+        "Plugin/package restoration",
+        "Tool provider schema update"
+      ],
+      "requires_amendment_when": [
+        "Changing workflow ownership or node strategy",
+        "Changing required plugins",
+        "Changing cost accounting source",
+        "Changing outline production-control evidence modes",
+        "Changing world-model constraint lifecycle or applicability-scope prompt semantics",
+        "Changing outline ideation or landing role semantics",
+        "Changing LoreGit ToolProvider endpoint synchronization semantics",
+        "Changing continuation workflow chapter-card execution, length-gate semantics, or chapter_draft.md write ownership",
+        "Changing deterministic style diagnostic profile semantics, profile-selection evidence source, or scheduler-lock semantics",
+        "Changing style metric-delta advisory/repair evidence semantics or protected-metric stop conditions",
+        "Changing style initialization ownership between backend pipeline and Dify workflow",
+        "Re-enabling Dify reading archive workflow ownership for summary.md"
+      ],
+      "verification": [
+        "Dify DB read-only or backup-backed verification",
+        "Live workflow smoke when runtime changes"
+      ],
+      "known_debt": [
+        "Dify runtime restoration can leave DB rows valid while plugin storage is incomplete."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "tomato-import-pipeline",
+      "purpose": "Parse local Tomato bulk exports, online Tomato search/download fallback, import report, and backend summary archive trigger.",
+      "owned_files": [
+        "novel_git_server/agents/tomato_import.py",
+        "novel_git_server/utils/tomato_importer.py",
+        "novel_git_server/utils/tomato_search.py",
+        "novel_git_server/utils/tomato_download_adapter.py",
+        "novel_git_server/utils/tomato_exe_client.py",
+        "novel_git_server/utils/tomato_txt_parser.py"
+      ],
+      "public_interfaces": [
+        "/books/tomato/search",
+        "/books/tomato/book_info",
+        "/books/tomato/online_import",
+        "/books/tomato/preview",
+        "/books/tomato/confirm",
+        "/books/tomato/summary_status",
+        "/books/tomato/download_status"
+      ],
+      "depends_on": [
+        "book-storage-git",
+        "batch-pipeline"
+      ],
+      "depended_on_by": [
+        "frontend-bookshelf-import",
+        "flask-backend-api"
+      ],
+      "invariants": [
+        "Import writes chapters plus import_report.json.",
+        "Quality gates must block or require explicit force.",
+        "Summary generation progress is tracked separately from download progress.",
+        "Online download and summary work must honor per-book cancellation before writing book files.",
+        "Summary generation calls the backend summary archive pipeline rather than Dify reading_archive_agent."
+      ],
+      "allowed_change_types": [
+        "Parser hardening",
+        "Downloader fallback",
+        "Progress reporting"
+      ],
+      "requires_amendment_when": [
+        "Changing import report schema",
+        "Changing source authority for chapters",
+        "Changing force/quality gate semantics",
+        "Changing summary archive ownership or progress semantics"
+      ],
+      "verification": [
+        "tomato importer tests",
+        "manual import walkthrough for UI-facing changes"
+      ],
+      "known_debt": [],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "rolling-production-orchestrator",
+      "purpose": "Coordinate three-chapter rolling production by deriving accepted chapter state from chapters/*.md, pending-review draft state from chapter_draft.md, executable card state from chapter_outline.md, selecting the next batch, exposing continuation workbench state, triggering outline or continuation routes, and recording evidence without writing prose.",
+      "owned_files": [
+        "novel_git_server/pipelines/rolling_chapter.py",
+        "scripts/rolling_chapter_production.py",
+        "docs/ROLLING_CHAPTER_WORKFLOW_CASE.md",
+        ".runtime/rolling_chapter_*.json",
+        ".runtime/rolling_chapter_*.md"
+      ],
+      "public_interfaces": [
+        "dry-run CLI planner",
+        "live rolling probe artifacts",
+        "repository case-study documentation",
+        "/api/rolling/state",
+        "/api/rolling/run_stream"
+      ],
+      "depends_on": [
+        "book-storage-git",
+        "dify-bridge",
+        "dify-workflows-runtime",
+        "dev-repo-runtime"
+      ],
+      "depended_on_by": [],
+      "invariants": [
+        "Never write novel prose directly.",
+        "Derive accepted consumed chapter cards from chapters/*.md and pending-review draft cards from chapter_draft.md rather than hidden source state.",
+        "Use continuation route for chapter_draft.md production and outline route for chapter-card replenishment.",
+        "Stop at human review gates before accepting the next rolling batch.",
+        "Record workflow run ids, validation outputs, Git commits, and stop reasons for each rolling cycle.",
+        "Record deterministic style diagnostic profile metadata as style_advisory evidence only; orchestration code must not use it to rewrite prose or lock the scheduler by default.",
+        "Package blocked hard-gate evidence for the review Agent before requesting human unlock.",
+        "Treat review Agent recommendations as advisory evidence; only an explicit human unlock artifact may release a blocked structural action.",
+        "Record style metric deltas as derived advisory evaluator evidence for continuation repair or author revision; do not treat them as source prose, hidden outline state, approval, or a default scheduler lock.",
+        "Record chapter context packs as derived current-chapter execution evidence; do not treat them as source prose, hidden canon, hidden outline state, or approval.",
+        "When rolling evidence packages world/status constraints, it must preserve lifecycle labels so historical-only, retired, disabled, or unresolved constraints cannot masquerade as current-active blockers.",
+        "Continuation workbench state is transient projection over outline/draft/review state and must not physically mutate chapter_outline.md."
+      ],
+      "allowed_change_types": [
+        "Read-only cursor derivation",
+        "CLI orchestration",
+        "Evidence packaging",
+        "Case-study documentation",
+        "Promptless frontend workbench state and stream endpoints"
+      ],
+      "requires_amendment_when": [
+        "Changing chapter-card consumption semantics",
+        "Changing accepted-versus-pending chapter cursor semantics",
+        "Changing replenishment ownership",
+        "Changing human review stop gates",
+        "Changing review bridge or human unlock semantics",
+        "Changing constraint lifecycle handling inside rolling context packs or review packets",
+        "Changing deterministic style diagnostic evidence or scheduler-lock semantics",
+        "Changing style metric-delta advisory/repair evidence semantics or repair-regression stop conditions",
+        "Changing chapter context pack derived-evidence semantics, source-reference requirements, or continuation consumption rules",
+        "Changing continuation workbench state projection, launch, or review handoff semantics",
+        "Allowing orchestration code to write book prose or source outline content directly"
+      ],
+      "verification": [
+        "targeted rolling planner tests",
+        "dry-run cursor JSON against a real book workspace",
+        "live Dify-backed rolling probe before repository claims are updated",
+        "frontend workbench smoke for promptless launch and review handoff"
+      ],
+      "known_debt": [
+        "Continuation workbench implementation is being added under CONT-WB; CLI evidence remains the fallback."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "session-runtime",
+      "purpose": "Local per-agent conversation index and JSONL message persistence.",
+      "owned_files": [
+        "novel_git_server/utils/session_runtime.py",
+        "novel_git_server/agents/session.py",
+        "dev_repo/conversations/**"
+      ],
+      "public_interfaces": [
+        "/api/conversations/context",
+        "/api/conversations/create",
+        "/api/conversations/activate",
+        "/api/conversations/rename",
+        "/api/conversations/archive",
+        "/api/conversations/delete"
+      ],
+      "depends_on": [
+        "dev-repo-runtime"
+      ],
+      "depended_on_by": [
+        "frontend-workbench",
+        "dify-bridge"
+      ],
+      "invariants": [
+        "Only supported agent keys may own sessions.",
+        "Local and upstream conversation ids must remain distinct.",
+        "Deleting or archiving a conversation must leave a valid active pointer or null."
+      ],
+      "allowed_change_types": [
+        "Conversation metadata fields",
+        "Hydration behavior",
+        "Archive/delete UX support"
+      ],
+      "requires_amendment_when": [
+        "Changing durable conversation identity",
+        "Changing message log file format",
+        "Changing deletion semantics"
+      ],
+      "verification": [
+        "session runtime tests",
+        "manual conversation switch/delete flow when UI-facing"
+      ],
+      "known_debt": [
+        "Conversation logs are local runtime data and intentionally not versioned."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "startup-orchestrator",
+      "purpose": "Start/stop/status orchestration for local Dify, backend, frontend, smart port allocation, and health checks.",
+      "owned_files": [
+        "start_all.ps1",
+        "scripts/start_dify.ps1",
+        "scripts/start_backend.ps1",
+        "scripts/start_frontend.ps1",
+        "scripts/runtime_ports.ps1",
+        ".runtime/ports.json"
+      ],
+      "public_interfaces": [
+        ".\\start_all.ps1",
+        ".\\start_all.ps1 -Status",
+        ".\\start_all.ps1 -Stop",
+        ".runtime/ports.json"
+      ],
+      "depends_on": [
+        "docker-dify-stack",
+        "flask-backend-api",
+        "frontend-workbench"
+      ],
+      "depended_on_by": [],
+      "invariants": [
+        "Do not reuse noncanonical backend/frontend processes as healthy runtime.",
+        "Dify readiness requires both required containers and API reachability.",
+        "Backend must listen on the configured host/port used by Dify sandbox checks.",
+        "The selected backend/frontend ports are the runtime port fact and must be recorded in .runtime/ports.json.",
+        "Frontend proxy and Dify LoreGit ToolProvider endpoints must match the selected backend port.",
+        "Dynamic port allocation must not treat noncanonical port owners as healthy runtime."
+      ],
+      "allowed_change_types": [
+        "Health checks",
+        "Port/process detection",
+        "Runtime status reporting",
+        "Smart port allocation and manifest writing"
+      ],
+      "requires_amendment_when": [
+        "Changing process ownership model",
+        "Changing Dify deployment topology",
+        "Changing canonical runtime commands",
+        "Changing runtime port fact ownership",
+        "Changing Dify ToolProvider endpoint synchronization responsibility"
+      ],
+      "verification": [
+        ".\\start_all.ps1 -Status",
+        "GET /health",
+        ".\\start_all.ps1 produces .runtime/ports.json",
+        "Dify sandbox reaches host.docker.internal:<selected_backend_port>/health"
+      ],
+      "known_debt": [],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "deployment-repro-pack",
+      "purpose": "Reproducible demo packaging for local Windows bootstrap and containerized demo startup.",
+      "owned_files": [
+        "docs/DEPLOYMENT.md",
+        "deploy/demo/**",
+        "deploy/demo/backend.Dockerfile",
+        "deploy/demo/frontend.Dockerfile",
+        "deploy/demo/compose_smoke.py",
+        ".env.example",
+        ".dockerignore",
+        "docker-compose.demo.yml"
+      ],
+      "public_interfaces": [
+        ".\\deploy\\demo\\bootstrap.ps1",
+        "docker compose --env-file deploy/demo/.env -f docker-compose.demo.yml up -d",
+        "deployment smoke healthcheck command"
+      ],
+      "depends_on": [
+        "startup-orchestrator",
+        "dify-workflows-runtime",
+        "flask-backend-api",
+        "frontend-workbench",
+        "book-storage-git"
+      ],
+      "depended_on_by": [],
+      "invariants": [
+        "Deployment scripts must not commit API keys, model credentials, private Dify backups, or real book storage.",
+        "Dify live PostgreSQL plus plugin storage remain the runtime source of truth; exported workflow YAML is evidence only unless explicitly synchronized.",
+        "Sanitized Dify runtime seeds may restore demo apps and tools but must exclude secrets and private books.",
+        "Generated outline and prose must still be produced by project Dify Agents through LoreGit tools; deployment scripts may only orchestrate and verify.",
+        "All local absolute paths, including Dify compose locations, must be configurable."
+      ],
+      "allowed_change_types": [
+        "Bootstrap wrappers",
+        "Environment examples",
+        "Sanitized restore helpers",
+        "Compose demo packaging",
+        "Smoke checks",
+        "Deployment documentation"
+      ],
+      "requires_amendment_when": [
+        "Changing Dify runtime truth or restore authority",
+        "Changing deployment topology",
+        "Changing secret or demo data boundary",
+        "Allowing deployment scripts to generate outline or prose directly"
+      ],
+      "verification": [
+        "PowerShell parser checks for bootstrap scripts",
+        "docker compose config validation for demo pack",
+        "Docker Compose config validation",
+        "backend/frontend/Dify smoke checks",
+        "git status boundary check for secrets and storage"
+      ],
+      "known_debt": [
+        "Implementation is split across DEPLOY-LOCAL-1, DEPLOY-DIFY-1, DEPLOY-COMPOSE-1, and DEPLOY-E2E-1."
+      ],
+      "confidence": "inferred"
+    },
+    {
+      "id": "dev-repo-runtime",
+      "purpose": "Campaign runtime, evidence index, conversation logs, and architecture/data-model truth.",
+      "owned_files": [
+        "dev_repo/state.json",
+        "dev_repo/journal.jsonl",
+        "dev_repo/evidence_index.json",
+        "dev_repo/tree.md",
+        "dev_repo/conversations/**",
+        "dev_repo/architecture/**"
+      ],
+      "public_interfaces": [
+        "Repository runtime truth files",
+        "Architecture and data-model constitutions"
+      ],
+      "depends_on": [
+        "contract-skills",
+        "git"
+      ],
+      "depended_on_by": [
+        "session-runtime",
+        "all-planning-and-execution"
+      ],
+      "invariants": [
+        "Volatile runtime remains ignored.",
+        "Architecture truth is versioned.",
+        "Runtime truth outranks oral summaries during takeover."
+      ],
+      "allowed_change_types": [
+        "Campaign bookkeeping",
+        "Architecture census",
+        "Data-model census"
+      ],
+      "requires_amendment_when": [
+        "Changing contract lifecycle semantics",
+        "Changing architecture truth schema",
+        "Changing data-model truth schema"
+      ],
+      "verification": [
+        "JSON parse checks",
+        "git status boundary check"
+      ],
+      "known_debt": [
+        "Existing runtime files contain historical encoding damage."
+      ],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "batch-pipeline",
+      "purpose": "Local LangGraph/batch processing layer and canonical owner for promptless derived archive initialization/rebuild jobs, including summary.md, world/status, and style diagnostics.",
+      "owned_files": [
+        "novel_git_server/pipelines/__init__.py",
+        "novel_git_server/pipelines/world_model_init.py",
+        "novel_git_server/pipelines/extract_schema.py",
+        "novel_git_server/pipelines/merge_template.py",
+        "novel_git_server/pipelines/batch_parser.py",
+        "novel_git_server/pipelines/style_artifact_init.py",
+        "future summary archive pipeline module"
+      ],
+      "public_interfaces": [
+        "run_pipeline() called from world_draft.py SSE endpoint",
+        "/api/world/init_batch_pipeline for user-facing world initialization",
+        "batch_parser.parse_sections() for LLM output extraction",
+        "run_pipeline() called from style_init.py SSE endpoint",
+        "/api/style/init_pipeline for user-facing style initialization",
+        "Summary archive pipeline called by Tomato import and future rebuild actions"
+      ],
+      "depends_on": [
+        "book-storage-git",
+        "model-provider-config"
+      ],
+      "depended_on_by": [
+        "dify-bridge",
+        "tomato-import-pipeline",
+        "flask-backend-api"
+      ],
+      "invariants": [
+        "Pipeline runs locally without Dify multi-turn orchestration.",
+        "The pipeline owns initial creation or rebuild of world_model.md and status_card.md together.",
+        "Successful initialization must produce a per-book Git commit that includes both world_model.md and status_card.md.",
+        "World-model initialization must preserve constraint lifecycle and applicability scope for evolving story rules instead of collapsing all source-backed facts into one active hard-constraint pool.",
+        "Single-shot extraction is the current architecture; extract_schema and merge_template are legacy artifacts from the two-phase delta approach.",
+        "SSE progress events stream back to the frontend during batch initialization.",
+        "The pipeline owns initial creation or rebuild of style_fingerprint.md, style_review.md, and style_constraints_for_continuation.md together.",
+        "Successful style initialization must produce a per-book Git commit when any style artifact changes.",
+        "SSE progress events stream back to the frontend during style initialization.",
+        "The pipeline owns first-create or explicit rebuild of summary.md from chapters/*.md and import metadata.",
+        "Successful summary generation must update summary metadata and leave the per-book Git repository clean after commit.",
+        "Summary archive generation must not call Dify reading_archive_agent as the active path."
+      ],
+      "allowed_change_types": [
+        "Pipeline step additions",
+        "Parser improvements",
+        "Schema evolution"
+      ],
+      "requires_amendment_when": [
+        "Changing pipeline execution model (e.g. single-shot back to multi-phase)",
+        "Adding new pipeline types beyond world_model_init",
+        "Changing the section schema or output format",
+        "Changing constraint lifecycle values, applicability scopes, or current-active output semantics",
+        "Moving initialization ownership back to Dify or another subsystem",
+        "Moving style initialization ownership back to Dify or another subsystem",
+        "Changing style initialization artifact set or commit semantics",
+        "Moving summary archive ownership back to Dify or another subsystem",
+        "Changing summary archive output format, metadata boundary, or commit semantics"
+      ],
+      "verification": [
+        "world_model.md generated with required sections",
+        "status_card.md generated with no blank required fields",
+        "per-book Git commit contains both world_model.md and status_card.md",
+        "npm run build for frontend changes",
+        "style_fingerprint.md, style_review.md, and style_constraints_for_continuation.md generated by /api/style/init_pipeline",
+        "per-book Git commit contains changed style artifact files",
+        "summary.md generated from chapters/*.md through backend pipeline",
+        "per-book Git commit contains summary.md and metadata changes when applicable"
+      ],
+      "known_debt": [
+        "extract_schema.py and merge_template.py are unused legacy artifacts from the two-phase delta approach."
+      ],
+      "confidence": "confirmed"
+    }
+  ],
+  "edges": [
+    {
+      "from": "frontend-workbench",
+      "to": "flask-backend-api",
+      "relation": "calls_http_and_sse"
+    },
+    {
+      "from": "frontend-bookshelf-import",
+      "to": "flask-backend-api",
+      "relation": "calls_http"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "book-storage-git",
+      "relation": "delegates_file_and_git"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "book-storage-git",
+      "relation": "canonizes_confirmed_chapter_draft_to_chapters"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "dify-bridge",
+      "relation": "delegates_agent_calls"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "session-runtime",
+      "relation": "serves_conversation_api"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "tomato-import-pipeline",
+      "relation": "serves_import_api"
+    },
+    {
+      "from": "dify-bridge",
+      "to": "dify-workflows-runtime",
+      "relation": "calls_dify_apps"
+    },
+    {
+      "from": "dify-workflows-runtime",
+      "to": "flask-backend-api",
+      "relation": "calls_loregit_openapi_tools"
+    },
+    {
+      "from": "dify-bridge",
+      "to": "book-storage-git",
+      "relation": "reads_and_writes_world_constraint_files"
+    },
+    {
+      "from": "dify-bridge",
+      "to": "book-storage-git",
+      "relation": "executes_outline_cards_into_chapter_draft"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "book-storage-git",
+      "relation": "derives_chapter_cursor_from_chapters_outline_and_draft"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "dify-bridge",
+      "relation": "triggers_outline_and_continuation_routes"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "dify-bridge",
+      "relation": "passes_chapter_context_pack_to_continuation_route"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "dify-bridge",
+      "relation": "routes_quality_gate_packets_to_review_agent"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "dify-workflows-runtime",
+      "relation": "records_workflow_run_evidence"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "dev-repo-runtime",
+      "relation": "packages_case_study_and_runtime_evidence"
+    },
+    {
+      "from": "tomato-import-pipeline",
+      "to": "book-storage-git",
+      "relation": "writes_chapters_and_reports"
+    },
+    {
+      "from": "tomato-import-pipeline",
+      "to": "batch-pipeline",
+      "relation": "triggers_backend_summary_archive"
+    },
+    {
+      "from": "session-runtime",
+      "to": "dev-repo-runtime",
+      "relation": "stores_conversations_under"
+    },
+    {
+      "from": "startup-orchestrator",
+      "to": "flask-backend-api",
+      "relation": "starts_and_checks"
+    },
+    {
+      "from": "startup-orchestrator",
+      "to": "frontend-workbench",
+      "relation": "starts_and_checks"
+    },
+    {
+      "from": "startup-orchestrator",
+      "to": "dify-workflows-runtime",
+      "relation": "starts_docker_stack"
+    },
+    {
+      "from": "startup-orchestrator",
+      "to": "dify-workflows-runtime",
+      "relation": "synchronizes_loregit_tool_provider_endpoint"
+    },
+    {
+      "from": "deployment-repro-pack",
+      "to": "startup-orchestrator",
+      "relation": "wraps_local_startup_and_status"
+    },
+    {
+      "from": "deployment-repro-pack",
+      "to": "dify-workflows-runtime",
+      "relation": "restores_or_checks_sanitized_dify_runtime"
+    },
+    {
+      "from": "deployment-repro-pack",
+      "to": "flask-backend-api",
+      "relation": "healthchecks_backend_and_loregit_tools"
+    },
+    {
+      "from": "deployment-repro-pack",
+      "to": "frontend-workbench",
+      "relation": "starts_or_serves_demo_frontend"
+    },
+    {
+      "from": "deployment-repro-pack",
+      "to": "book-storage-git",
+      "relation": "mounts_or_seeds_demo_storage_without_real_books"
+    },
+    {
+      "from": "dify-bridge",
+      "to": "batch-pipeline",
+      "relation": "calls_run_pipeline_for_batch_init"
+    },
+    {
+      "from": "batch-pipeline",
+      "to": "book-storage-git",
+      "relation": "reads_summary_md_and_writes_world_and_status_files"
+    },
+    {
+      "from": "batch-pipeline",
+      "to": "book-storage-git",
+      "relation": "reads_chapters_and_writes_summary_archive"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "batch-pipeline",
+      "relation": "serves_promptless_style_init_pipeline"
+    },
+    {
+      "from": "batch-pipeline",
+      "to": "book-storage-git",
+      "relation": "reads_source_text_and_writes_style_artifacts"
+    },
+    {
+      "from": "frontend-workbench",
+      "to": "flask-backend-api",
+      "relation": "launches_promptless_workbench_actions"
+    },
+    {
+      "from": "frontend-workbench",
+      "to": "rolling-production-orchestrator",
+      "relation": "displays_continuation_workbench_projection"
+    },
+    {
+      "from": "flask-backend-api",
+      "to": "rolling-production-orchestrator",
+      "relation": "serves_rolling_workbench_state_and_stream"
+    }
+  ]
+}

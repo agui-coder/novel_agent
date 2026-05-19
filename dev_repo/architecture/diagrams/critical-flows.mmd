@@ -1,0 +1,26 @@
+flowchart TD
+    subgraph ImportFlow["Tomato Import And Summary Archive"]
+        B1["Bookshelf import UI"] --> B2["/books/tomato/online_import"]
+        B2 --> B3["Download or fallback adapter"]
+        B3 --> B4["chapters/*.md + import_report.json"]
+        B4 --> B5["Book Git commit"]
+        B5 --> B6["Backend summary archive pipeline"]
+        B6 --> B7["summary.md"]
+    end
+
+    subgraph AgentFlow["Agent Draft Review"]
+        A1["Active file"] --> A2["Resolve agent route"]
+        A2 --> A3["/api/world/deduce_stream"]
+        A3 --> A4["Dify workflow"]
+        A4 --> A5["LoreGit tools"]
+        A5 --> A6["draft/sandbox commit"]
+        A6 --> A7["Frontend review diff"]
+        A7 --> A8["Confirm or rollback"]
+    end
+
+    subgraph SessionFlow["Conversation Runtime"]
+        S1["Frontend chat"] --> S2["Local conversation_id"]
+        S2 --> S3["dev_repo/conversations/<agent>/*.index.json"]
+        S2 --> S4["JSONL message log"]
+        S2 --> S5["Upstream Dify conversation_id"]
+    end
