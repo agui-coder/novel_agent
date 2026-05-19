@@ -101,8 +101,21 @@ For details, read README.md and docs/DEPLOYMENT.md.
 
 Set-Content -LiteralPath (Join-Path $StageDir "RELEASE_README.md") -Value $releaseReadme -Encoding UTF8
 
-$stageContents = Join-Path $StageDir "*"
-Compress-Archive -Path $stageContents -DestinationPath $ZipPath -Force
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    $stageFullPath = (Resolve-Path -LiteralPath $StageDir).Path.TrimEnd("\", "/")
+    $stagePrefixLength = $stageFullPath.Length + 1
+    Get-ChildItem -LiteralPath $StageDir -Recurse -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($stagePrefixLength)
+        $entryName = $relativePath.Replace("\", "/")
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+}
+finally {
+    $zip.Dispose()
+}
 if (-not (Test-Path -LiteralPath $ZipPath -PathType Leaf)) {
     throw "release zip was not created: $ZipPath"
 }
