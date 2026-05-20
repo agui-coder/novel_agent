@@ -235,6 +235,11 @@
       "role": "LLM output parser for structured section extraction"
     },
     {
+      "pattern": "novel_git_server/pipelines/summary_archive.py",
+      "node": "batch-pipeline",
+      "role": "schema-locked backend summary archive pipeline with concurrent extraction and deterministic Markdown rendering"
+    },
+    {
       "pattern": "novel_git_server/pipelines/rolling_chapter.py",
       "node": "rolling-production-orchestrator",
       "role": "read-only chapter cursor derivation, continuation workbench state projection, batch action planner, review bridge packet builder, style advisory and metric-delta evidence builder, and chapter context pack builder"

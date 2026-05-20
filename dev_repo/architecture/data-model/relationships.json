@@ -239,8 +239,8 @@
       "to": "KnowledgeFile",
       "cardinality": "many:1",
       "kind": "backend-derived-summary-archive",
-      "deletion_semantics": "summary.md is invalidated when source chapters are deleted or fully replaced. Future first-create/rebuild is owned by the backend summary archive pipeline; historical Dify-generated summary.md files remain valid book history.",
-      "source_artifacts": ["chapters/*.md", "summary.md", "future summary archive pipeline module", "novel_git_server/agents/tomato_import.py"],
+      "deletion_semantics": "summary.md is invalidated when source chapters are deleted or fully replaced. Future first-create/rebuild is owned by the backend summary archive pipeline; historical Dify-generated summary.md files remain valid book history. New backend output is rendered only after structured batch validation proves chapter coverage and required sections.",
+      "source_artifacts": ["chapters/*.md", "summary.md", "novel_git_server/pipelines/summary_archive.py", "novel_git_server/agents/tomato_import.py"],
       "confidence": "confirmed"
     },
     {

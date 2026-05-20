@@ -14,6 +14,7 @@
 - `import_report.json` is derived evidence from an import operation.
 - Knowledge markdown files are mixed source/derived because humans and agents can both edit them.
 - `summary.md` first-create/rebuild is derived from `chapters/*.md` by the backend summary archive pipeline. Historical Dify-generated summaries remain valid history, but Dify `reading_archive_agent` is retired from active ownership.
+- New backend-generated `summary.md` is rendered from validated structured batch data. Parallel extraction results are intermediate derived data and must not become a durable source artifact unless all source chapters are covered and the renderer can produce the canonical Chinese archive sections.
 - `chapter_draft.md` is virtual/defaulted until materialized.
 - `chapter_draft.md` remains a continuation review surface even after its accepted sections are canonized into `chapters/*.md`; it is not the formal long-term chapter archive.
 - After successful canonization, `chapter_draft.md` should return to the lightweight default draft placeholder and must not retain already archived chapter prose. This reset is a post-success workspace cleanup, not prose generation or rewriting.
