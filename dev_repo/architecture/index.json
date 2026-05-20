@@ -243,7 +243,7 @@
     {
       "pattern": "novel_git_server/pipelines/rolling_chapter.py",
       "node": "rolling-production-orchestrator",
-      "role": "read-only chapter cursor derivation, continuation workbench state projection, batch action planner, review bridge packet builder, style advisory and metric-delta evidence builder, and chapter context pack builder"
+      "role": "read-only chapter cursor derivation, continuation workbench state projection, outline repair/replenishment planner, review bridge packet builder, style advisory and metric-delta evidence builder, and chapter context pack builder"
     },
     {
       "pattern": "scripts/rolling_chapter_production.py",
@@ -374,6 +374,11 @@
     },
     {
       "route": "/api/rolling/state",
+      "node": "rolling-production-orchestrator",
+      "entity_focus": "RollingProductionRun"
+    },
+    {
+      "route": "/api/rolling/outline_handoff_payload",
       "node": "rolling-production-orchestrator",
       "entity_focus": "RollingProductionRun"
     },

@@ -423,6 +423,7 @@
         "live rolling probe artifacts",
         "repository case-study documentation",
         "/api/rolling/state",
+        "/api/rolling/outline_handoff_payload",
         "/api/rolling/run_stream"
       ],
       "depends_on": [
@@ -435,7 +436,7 @@
       "invariants": [
         "Never write novel prose directly.",
         "Derive accepted consumed chapter cards from chapters/*.md and pending-review draft cards from chapter_draft.md rather than hidden source state.",
-        "Use continuation route for chapter_draft.md production and outline route for chapter-card replenishment.",
+        "Use continuation route for chapter_draft.md production and outline route for chapter-card repair or replenishment.",
         "Stop at human review gates before accepting the next rolling batch.",
         "Record workflow run ids, validation outputs, Git commits, and stop reasons for each rolling cycle.",
         "Record deterministic style diagnostic profile metadata as style_advisory evidence only; orchestration code must not use it to rewrite prose or lock the scheduler by default.",
@@ -444,7 +445,8 @@
         "Record style metric deltas as derived advisory evaluator evidence for continuation repair or author revision; do not treat them as source prose, hidden outline state, approval, or a default scheduler lock.",
         "Record chapter context packs as derived current-chapter execution evidence; do not treat them as source prose, hidden canon, hidden outline state, or approval.",
         "When rolling evidence packages world/status constraints, it must preserve lifecycle labels so historical-only, retired, disabled, or unresolved constraints cannot masquerade as current-active blockers.",
-        "Continuation workbench state is transient projection over outline/draft/review state and must not physically mutate chapter_outline.md."
+        "Continuation workbench state is transient projection over outline/draft/review state and must not physically mutate chapter_outline.md.",
+        "When next_action is repair_outline_cards or replenish_outline, the workbench may request an outline handoff payload but only the outline route may write reviewable outline edits."
       ],
       "allowed_change_types": [
         "Read-only cursor derivation",
@@ -456,7 +458,7 @@
       "requires_amendment_when": [
         "Changing chapter-card consumption semantics",
         "Changing accepted-versus-pending chapter cursor semantics",
-        "Changing replenishment ownership",
+        "Changing outline repair or replenishment ownership",
         "Changing human review stop gates",
         "Changing review bridge or human unlock semantics",
         "Changing constraint lifecycle handling inside rolling context packs or review packets",
@@ -953,7 +955,7 @@
     {
       "from": "flask-backend-api",
       "to": "rolling-production-orchestrator",
-      "relation": "serves_rolling_workbench_state_and_stream"
+      "relation": "serves_rolling_workbench_state_outline_handoff_and_stream"
     }
   ]
 }
