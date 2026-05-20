@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchApi, ApiError } from '../api/client';
 import { BookListItem, deleteBook } from '../api/library';
+import { RuntimeConfigPanel } from '../components/RuntimeConfigPanel';
 import {
     searchTomatoNovels,
     onlineImportTomatoNovel,
@@ -23,6 +24,7 @@ export function BookshelfApp() {
     const [pageState, setPageState] = useState<PageState>('loading');
     const [books, setBooks] = useState<BookListItem[]>([]);
     const [toast, setToast] = useState<{ text: string; ts: number } | null>(null);
+    const [runtimeConfigOpen, setRuntimeConfigOpen] = useState(false);
 
     // Online search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -291,6 +293,19 @@ export function BookshelfApp() {
                 <div className="absolute left-[18%] top-0 h-[38vh] w-[42vw] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_72%)] opacity-55 blur-3xl" />
                 <div className="absolute bottom-[-18vh] right-[14%] h-[46vh] w-[34vw] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.035)_0%,rgba(255,255,255,0)_74%)] opacity-70 blur-3xl" />
             </div>
+
+            <button
+                type="button"
+                onClick={() => setRuntimeConfigOpen(true)}
+                className="fixed right-5 top-5 z-20 inline-flex items-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-[#171a20]/90 px-3.5 py-2 text-xs font-semibold text-[var(--color-dark-text-muted)] shadow-[0_10px_30px_rgba(0,0,0,0.32)] backdrop-blur transition-colors hover:border-[rgba(115,134,255,0.36)] hover:bg-[rgba(115,134,255,0.12)] hover:text-[var(--color-dark-text-main)]"
+                title="本机配置"
+            >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4" aria-hidden="true">
+                    <path d="M8.6 2.8h2.8l.45 2.05a5.6 5.6 0 0 1 1.2.7l2-.65 1.4 2.4-1.55 1.4c.05.43.05.87 0 1.3l1.55 1.4-1.4 2.4-2-.65c-.37.28-.77.52-1.2.7l-.45 2.05H8.6l-.45-2.05a5.6 5.6 0 0 1-1.2-.7l-2 .65-1.4-2.4L5.1 10a5.62 5.62 0 0 1 0-1.3L3.55 7.3l1.4-2.4 2 .65c.37-.28.77-.52 1.2-.7L8.6 2.8Z" />
+                    <path d="M10 7.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Z" />
+                </svg>
+                <span>本机配置</span>
+            </button>
 
             <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-8 px-8">
                 {/* Logo + Title */}
@@ -648,6 +663,12 @@ export function BookshelfApp() {
                     {toast.text}
                 </div>
             )}
+
+            <RuntimeConfigPanel
+                isOpen={runtimeConfigOpen}
+                onClose={() => setRuntimeConfigOpen(false)}
+                onSaved={() => setToast({ text: '本机配置已保存，后端 Dify 路由已热刷新。', ts: Date.now() })}
+            />
         </div>
     );
 }

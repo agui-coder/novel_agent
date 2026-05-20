@@ -26,7 +26,6 @@ import { ReviewDiffFullscreen } from './components/ReviewDiffFullscreen';
 import { ReviewInspectorPanel } from './components/ReviewInspectorPanel';
 import { ReviewReadyNotice } from './components/ReviewReadyNotice';
 import { WorkbenchActionDock } from './components/WorkbenchActionDock';
-import { RuntimeConfigPanel } from './components/RuntimeConfigPanel';
 
 import { fetchHotFiles, fetchMainlineFile, fetchRepoIntegrity, repairBookLayout, updateMainlineFile } from './api/checkout';
 
@@ -112,7 +111,6 @@ export default function App() {
     // ── Human edit mode (extracted to useHumanEditMode) ──
     const [suppressedBackendErrors, setSuppressedBackendErrors] = useState<SuppressedBackendErrorLog[]>([]);
     const [suppressedDebugOpen, setSuppressedDebugOpen] = useState(false);
-    const [runtimeConfigOpen, setRuntimeConfigOpen] = useState(false);
     const [bootstrapState, setBootstrapState] = useState<'bootstrapping' | 'loaded'>('bootstrapping');
     const [repoIntegrity, setRepoIntegrity] = useState<RepoIntegrity | null>(null);
     const [mainlineFileState, setMainlineFileState] = useState<{ exists: boolean; virtual: boolean } | null>(null);
@@ -2673,7 +2671,6 @@ export default function App() {
             onRefreshRollingState: handleRefreshRollingState,
             onRunRollingContinuation: handleRunRollingContinuation,
             onRunRollingOutlineHandoff: handleRunRollingOutlineHandoff,
-            onOpenRuntimeConfig: () => setRuntimeConfigOpen(true),
             onRunPostConfirmHandoff: handleRunPostConfirmHandoff,
         },
     );
@@ -2714,11 +2711,6 @@ export default function App() {
                 workbenchMode={store.workbenchMode}
                 repoNeedsRepair={Boolean(repoIntegrity?.needsRepair)}
                 actions={workbenchActions}
-            />
-            <RuntimeConfigPanel
-                isOpen={runtimeConfigOpen}
-                onClose={() => setRuntimeConfigOpen(false)}
-                onSaved={() => store.setUiNotice({ type: 'success', message: '本机配置已保存，后端 Dify 路由已热刷新。', ts: Date.now() })}
             />
             <ToastNotice notice={store.uiNotice} onClose={store.clearUiNotice} />
         </>

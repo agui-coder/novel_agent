@@ -47,7 +47,6 @@ export interface WorkbenchActionHandlers {
     onRefreshRollingState: () => void;
     onRunRollingContinuation: () => void;
     onRunRollingOutlineHandoff: () => void;
-    onOpenRuntimeConfig: () => void;
     onRunPostConfirmHandoff: () => void;
 }
 
@@ -152,28 +151,6 @@ export function buildWorkbenchActions(
         && context.postConfirmRunState !== 'running';
 
     return [
-        {
-            id: 'runtime-config',
-            label: '本机配置中心',
-            description: '配置 Dify App API key、Dify 地址、DeepSeek key 和本地批处理模型。保存后后端会热刷新，下一次 Agent 调用立即生效。',
-            guidance: [
-                '这是工作台控制面，不是聊天消息；密钥不会进入对话记录或书库文件。',
-                '如果 Dify 调用失败、思考模式或 Agent key 不对，先来这里检查本机配置是否齐全。',
-            ],
-            executionKind: 'external_panel',
-            requiresPrompt: false,
-            status: 'available',
-            meta: '/api/runtime/config',
-            controls: [
-                {
-                    id: 'open',
-                    label: '打开配置',
-                    description: '打开本机配置中心，读取脱敏状态并保存本机 API 配置。',
-                    tone: 'primary',
-                    onRun: handlers.onOpenRuntimeConfig,
-                },
-            ],
-        },
         {
             id: 'world-init',
             label: '初始化/重建世界模型',
