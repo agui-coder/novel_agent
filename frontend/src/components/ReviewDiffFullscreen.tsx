@@ -7,12 +7,15 @@ import { codeReviewDiffStyles } from './diffStyles';
 interface ReviewDiffFullscreenProps {
     isOpen: boolean;
     fileName: string;
+    changedFiles: string[];
     branch: string;
     draftCommitId: string | null;
     mainlineContent: string;
     draftContent: string;
     fsmState: FsmState;
     draftActionPending: DraftActionPending;
+    isLoadingTarget?: boolean;
+    onSelectFile: (fileName: string) => void;
     onConfirm: () => void;
     onRollback: () => void;
     onClose: () => void;
@@ -26,12 +29,15 @@ function lineCount(text: string): number {
 export const ReviewDiffFullscreen: React.FC<ReviewDiffFullscreenProps> = ({
     isOpen,
     fileName,
+    changedFiles,
     branch,
     draftCommitId,
     mainlineContent,
     draftContent,
     fsmState,
     draftActionPending,
+    isLoadingTarget = false,
+    onSelectFile,
     onConfirm,
     onRollback,
     onClose,
@@ -79,7 +85,7 @@ export const ReviewDiffFullscreen: React.FC<ReviewDiffFullscreenProps> = ({
             >
                 <header className="flex min-h-[72px] shrink-0 items-center justify-between gap-4 border-b border-[var(--color-dark-border)] px-5 py-3">
                     <div className="min-w-0">
-                        <div className="cursor-section-label">全屏 Diff 审批</div>
+                        <div className="cursor-section-label">全屏差异审阅</div>
                         <div className="mt-1 truncate text-[15px] font-semibold text-[var(--color-dark-text-main)]">{fileName}</div>
                         <div className="mt-0.5 truncate text-[11px] text-[var(--color-dark-text-faint)]">
                             {branch} · {draftCommitId ? draftCommitId.slice(0, 8) : 'pending'} · 主线 {stats.mainlineLines} 行 / 草稿 {stats.draftLines} 行
@@ -93,7 +99,7 @@ export const ReviewDiffFullscreen: React.FC<ReviewDiffFullscreenProps> = ({
                             type="button"
                             onClick={onConfirm}
                             disabled={!canConfirm}
-                            title={isChapterDraftReview ? '把续写草稿归档为正式 chapters/*.md，并触发状态卡/世界模型接棒。' : '批准当前草稿并合入主线。'}
+                            title={isChapterDraftReview ? '把续写草稿归档为正式章节，并触发状态卡与世界模型接棒。' : '批准当前草稿并合入主线。'}
                             className="rounded-[10px] border border-[var(--tone-success-border)] bg-[var(--tone-success-bg)] px-3 py-2 text-xs font-semibold text-[var(--tone-success-text)] transition-colors hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             {confirmLabel}
@@ -104,7 +110,7 @@ export const ReviewDiffFullscreen: React.FC<ReviewDiffFullscreenProps> = ({
                             disabled={!canRollback}
                             className="rounded-[10px] border border-[var(--tone-danger-border)] px-3 py-2 text-xs font-semibold text-[var(--tone-danger-text)] transition-colors hover:bg-[var(--tone-danger-bg)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                            湮灭回滚
+                            放弃回滚
                         </button>
                         <button
                             type="button"
@@ -121,8 +127,30 @@ export const ReviewDiffFullscreen: React.FC<ReviewDiffFullscreenProps> = ({
                         <div className="border-r border-[rgba(255,255,255,0.05)] px-3 py-1.5">左侧：主线</div>
                         <div className="px-3 py-1.5">右侧：草稿</div>
                     </div>
-                    <div className="text-[10px] font-mono text-[var(--color-dark-text-faint)]">左右对照 Diff</div>
+                    <div className="text-[10px] font-mono text-[var(--color-dark-text-faint)]">左右对照差异</div>
                 </div>
+
+                {changedFiles.length > 1 ? (
+                    <div className="border-b border-[rgba(255,255,255,0.035)] px-5 py-2">
+                        <div className="app-scrollbar flex max-w-full gap-1.5 overflow-x-auto pb-1">
+                            {changedFiles.map((changedFile) => (
+                                <button
+                                    key={changedFile}
+                                    type="button"
+                                    onClick={() => onSelectFile(changedFile)}
+                                    disabled={isLoadingTarget || changedFile === fileName}
+                                    className={`shrink-0 rounded-[8px] border px-2.5 py-1 text-[10px] font-mono transition-colors ${
+                                        changedFile === fileName
+                                            ? 'border-[var(--tone-success-border)] bg-[var(--tone-success-bg)] text-[var(--tone-success-text)]'
+                                            : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.025)] text-[var(--color-dark-text-muted)] hover:bg-[rgba(255,255,255,0.07)] hover:text-[var(--color-dark-text-main)]'
+                                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                                >
+                                    {changedFile}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
 
                 <div className="app-scrollbar min-h-0 flex-1 overflow-auto bg-[rgba(9,11,15,0.72)] p-5">
                     <ReactDiffViewer

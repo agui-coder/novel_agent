@@ -152,6 +152,7 @@ export default function App() {
     const [repairPending, setRepairPending] = useState(false);
     const [commandInput, setCommandInput] = useState('');
     const [rewriteUserMessageId, setRewriteUserMessageId] = useState<string | null>(null);
+    const [reviewTargetLoading, setReviewTargetLoading] = useState(false);
     const [worldInitActionState, setWorldInitActionState] = useState<{
         runState: 'idle' | 'running' | 'success' | 'error';
         progress: {
@@ -630,6 +631,7 @@ export default function App() {
         reviewDiffFullscreenOpen,
         setReviewDiffFullscreenOpen,
         loadReviewTargetMainline,
+        loadReviewTargetFromDraftBranch,
         handleConfirm,
         handleRollback,
         handleRefreshLock,
@@ -643,6 +645,41 @@ export default function App() {
         loadMainline,
         onPostConfirm: runPostConfirmWorldDistillFromResult,
     });
+
+    const reviewChangedFiles = useMemo(() => {
+        const seen = new Set<string>();
+        const files = [
+            ...store.reviewChangedFiles,
+            ...(store.reviewReadyNotice?.changedFiles || []),
+            ...(store.reviewTargetFile ? [store.reviewTargetFile] : []),
+        ];
+        return files.filter((fileName) => {
+            if (!fileName || seen.has(fileName)) return false;
+            seen.add(fileName);
+            return true;
+        });
+    }, [
+        store.reviewChangedFiles,
+        store.reviewReadyNotice?.changedFiles,
+        store.reviewTargetFile,
+    ]);
+
+    const handleSelectReviewTargetFile = useCallback(async (fileName: string) => {
+        if (!fileName || fileName === useAppStore.getState().reviewTargetFile) return;
+        setReviewTargetLoading(true);
+        try {
+            const loaded = await loadReviewTargetFromDraftBranch(fileName, reviewChangedFiles);
+            if (!loaded) {
+                store.setUiNotice({
+                    type: 'error',
+                    message: `无法加载 ${fileName} 的草稿差异`,
+                    ts: Date.now(),
+                });
+            }
+        } finally {
+            setReviewTargetLoading(false);
+        }
+    }, [loadReviewTargetFromDraftBranch, reviewChangedFiles, store]);
 
     const {
         loadGitWorkbench,
@@ -2497,6 +2534,9 @@ export default function App() {
             ? (store.reviewMainlineContent || store.mainlineContent)
             : store.reviewMainlineContent
     ), [reviewTargetFile, store.activeFile, store.reviewMainlineContent, store.mainlineContent]);
+    const currentReviewDraftAttachment = latestDraftAttachment?.fileName === reviewTargetFile
+        ? latestDraftAttachment
+        : null;
     const handleEnterReviewFromNotice = () => {
         store.setWorkbenchMode('review');
         store.clearReviewReadyNotice();
@@ -2620,10 +2660,13 @@ export default function App() {
             <div className={store.fsmState === 'CONFLICT' ? 'min-h-0 flex-1 pt-16' : 'min-h-0 flex-1'}>
                 <ReviewCanvasPanel
                     fileName={reviewTargetFile}
+                    changedFiles={reviewChangedFiles}
                     mainlineContent={reviewMainlineContent}
                     draftContent={store.draftContent}
                     draftCommitId={store.draftCommitId}
                     fsmState={store.fsmState}
+                    isLoadingTarget={reviewTargetLoading}
+                    onSelectFile={handleSelectReviewTargetFile}
                     onOpenFullscreen={() => setReviewDiffFullscreenOpen(true)}
                 />
             </div>
@@ -2671,13 +2714,16 @@ export default function App() {
             <div className="min-h-[220px] flex-[0_0_42%] border-b border-[rgba(255,255,255,0.04)]">
                 <ReviewInspectorPanel
                     fileName={reviewTargetFile}
-                    branch={latestDraftAttachment?.branch || store.draftBranch}
+                    changedFiles={reviewChangedFiles}
+                    branch={currentReviewDraftAttachment?.branch || store.draftBranch}
                     draftCommitId={store.draftCommitId}
                     draftContent={store.draftContent}
                     mainlineContent={reviewMainlineContent}
-                    draftAttachment={latestDraftAttachment}
+                    draftAttachment={currentReviewDraftAttachment}
                     fsmState={store.fsmState}
                     draftActionPending={store.draftActionPending}
+                    isLoadingTarget={reviewTargetLoading}
+                    onSelectFile={handleSelectReviewTargetFile}
                     onConfirm={handleConfirm}
                     onRollback={handleRollback}
                     onRunReviewAgent={reviewTargetFile === 'chapter_draft.md' ? handleRunReviewAgent : undefined}
@@ -2752,12 +2798,15 @@ export default function App() {
             <ReviewDiffFullscreen
                 isOpen={hasReviewWorkspace && reviewDiffFullscreenOpen}
                 fileName={reviewTargetFile}
-                branch={latestDraftAttachment?.branch || store.draftBranch}
+                changedFiles={reviewChangedFiles}
+                branch={currentReviewDraftAttachment?.branch || store.draftBranch}
                 draftCommitId={store.draftCommitId}
                 mainlineContent={reviewMainlineContent}
                 draftContent={store.draftContent}
                 fsmState={store.fsmState}
                 draftActionPending={store.draftActionPending}
+                isLoadingTarget={reviewTargetLoading}
+                onSelectFile={handleSelectReviewTargetFile}
                 onConfirm={handleConfirm}
                 onRollback={handleRollback}
                 onClose={() => setReviewDiffFullscreenOpen(false)}

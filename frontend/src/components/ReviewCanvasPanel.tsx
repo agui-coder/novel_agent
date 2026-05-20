@@ -8,10 +8,13 @@ type ReviewSurfaceMode = 'diff' | 'draft' | 'mainline';
 
 interface ReviewCanvasPanelProps {
     fileName: string;
+    changedFiles: string[];
     mainlineContent: string;
     draftContent: string;
     draftCommitId: string | null;
     fsmState: FsmState;
+    isLoadingTarget?: boolean;
+    onSelectFile: (fileName: string) => void;
     onOpenFullscreen: () => void;
 }
 
@@ -22,10 +25,13 @@ function lineCount(text: string): number {
 
 export const ReviewCanvasPanel: React.FC<ReviewCanvasPanelProps> = ({
     fileName,
+    changedFiles,
     mainlineContent,
     draftContent,
     draftCommitId,
     fsmState,
+    isLoadingTarget = false,
+    onSelectFile,
     onOpenFullscreen,
 }) => {
     const copy = useUiCopy();
@@ -63,6 +69,30 @@ export const ReviewCanvasPanel: React.FC<ReviewCanvasPanelProps> = ({
                         </button>
                     </div>
                 </div>
+                {changedFiles.length > 1 ? (
+                    <div className="mt-3">
+                        <div className="mb-1 text-[10px] font-semibold text-[var(--color-dark-text-faint)]">
+                            变更文件
+                        </div>
+                        <div className="app-scrollbar flex max-w-full gap-1.5 overflow-x-auto pb-1">
+                            {changedFiles.map((changedFile) => (
+                                <button
+                                    key={changedFile}
+                                    type="button"
+                                    onClick={() => onSelectFile(changedFile)}
+                                    disabled={isLoadingTarget || changedFile === fileName}
+                                    className={`shrink-0 rounded-[8px] border px-2.5 py-1 text-[10px] font-mono transition-colors ${
+                                        changedFile === fileName
+                                            ? 'border-[var(--tone-success-border)] bg-[var(--tone-success-bg)] text-[var(--tone-success-text)]'
+                                            : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.025)] text-[var(--color-dark-text-muted)] hover:bg-[rgba(255,255,255,0.07)] hover:text-[var(--color-dark-text-main)]'
+                                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                                >
+                                    {changedFile}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
             </div>
 
             <div className="border-b border-[rgba(255,255,255,0.03)] px-4 py-2">

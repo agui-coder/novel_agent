@@ -33,6 +33,73 @@ export function useDraftReview(deps: {
         }
     }, [store.bookRef.kind, store.bookRef.value]);
 
+    const loadReviewTargetFromDraftBranch = useCallback(async (
+        targetFile: string,
+        changedFiles: string[] = [],
+    ) => {
+        const runtimeState = useAppStore.getState();
+        if (!runtimeState.bookRef.value || !targetFile) return false;
+
+        try {
+            const branchesPayload = await fetchGitBranches(runtimeState.bookRef);
+            const draftBranch = branchesPayload.branches.find((row) => row.name === runtimeState.draftBranch);
+            if (!draftBranch?.headCommit) return false;
+
+            let mainlineFile: { content: string; etag: string } = { content: '', etag: runtimeState.baseEtag };
+            let draftContent = '';
+            try {
+                const commitDiff = await fetchGitDiffView(runtimeState.bookRef, {
+                    scope: 'commit',
+                    path: targetFile,
+                    commitId: draftBranch.headCommit,
+                });
+                if (!commitDiff.changed) throw new Error('draft head commit has no file diff');
+                mainlineFile = {
+                    content: commitDiff.oldText,
+                    etag: runtimeState.baseEtag,
+                };
+                draftContent = commitDiff.newText;
+            } catch {
+                try {
+                    const gitMainlineFile = await fetchGitFileView(runtimeState.bookRef, targetFile, branchesPayload.mainlineBranch);
+                    mainlineFile = {
+                        content: gitMainlineFile.content,
+                        etag: runtimeState.baseEtag,
+                    };
+                } catch {
+                    try {
+                        const checkoutMainlineFile = await fetchMainlineFile(runtimeState.bookRef, targetFile);
+                        mainlineFile = {
+                            content: checkoutMainlineFile.content,
+                            etag: checkoutMainlineFile.etag,
+                        };
+                    } catch {
+                        mainlineFile = { content: '', etag: runtimeState.baseEtag };
+                    }
+                }
+                const draftFile = await fetchGitFileView(runtimeState.bookRef, targetFile, runtimeState.draftBranch);
+                draftContent = draftFile.content;
+            }
+
+            const nextChangedFiles = (changedFiles.length > 0 ? changedFiles : runtimeState.reviewChangedFiles)
+                .filter((fileName, index, allFiles) => Boolean(fileName) && allFiles.indexOf(fileName) === index);
+            const reviewChangedFiles = nextChangedFiles.includes(targetFile)
+                ? nextChangedFiles
+                : [targetFile, ...nextChangedFiles];
+
+            const latestStore = useAppStore.getState();
+            latestStore.setReviewTarget(targetFile, reviewChangedFiles);
+            latestStore.setReviewMainlineFact(mainlineFile.content, mainlineFile.etag);
+            latestStore.setSandboxDraft(draftContent, draftBranch.headCommit);
+            latestStore.setFsmState(runtimeState.fsmState === 'CONFLICT' ? 'CONFLICT' : 'REVIEW');
+            latestStore.setWorkbenchMode('review');
+            return true;
+        } catch (err) {
+            console.warn('Failed to load review target from draft branch:', err);
+            return false;
+        }
+    }, []);
+
     const hydrateDraftReviewFromBranch = useCallback(async (targetFile?: string) => {
         const runtimeState = useAppStore.getState();
         if (!runtimeState.bookRef.value) return false;
@@ -297,6 +364,7 @@ export function useDraftReview(deps: {
         reviewDiffFullscreenOpen,
         setReviewDiffFullscreenOpen,
         loadReviewTargetMainline,
+        loadReviewTargetFromDraftBranch,
         hydrateDraftReviewFromBranch,
         handleConfirm,
         handleRollback,

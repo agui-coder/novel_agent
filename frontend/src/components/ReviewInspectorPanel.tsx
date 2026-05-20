@@ -5,6 +5,7 @@ import { measureChapterLengths } from '../lib/chapterLength';
 
 interface ReviewInspectorPanelProps {
     fileName: string;
+    changedFiles: string[];
     branch: string;
     draftCommitId: string | null;
     draftContent: string;
@@ -12,6 +13,8 @@ interface ReviewInspectorPanelProps {
     draftAttachment: DiffAttachment | null;
     fsmState: FsmState;
     draftActionPending: DraftActionPending;
+    isLoadingTarget?: boolean;
+    onSelectFile: (fileName: string) => void;
     onConfirm: () => void;
     onRollback: () => void;
     onRunReviewAgent?: () => void;
@@ -28,6 +31,7 @@ function lineCount(text: string): number {
 
 export const ReviewInspectorPanel: React.FC<ReviewInspectorPanelProps> = ({
     fileName,
+    changedFiles,
     branch,
     draftCommitId,
     draftContent,
@@ -35,6 +39,8 @@ export const ReviewInspectorPanel: React.FC<ReviewInspectorPanelProps> = ({
     draftAttachment,
     fsmState,
     draftActionPending,
+    isLoadingTarget = false,
+    onSelectFile,
     onConfirm,
     onRollback,
     onRunReviewAgent,
@@ -72,6 +78,37 @@ export const ReviewInspectorPanel: React.FC<ReviewInspectorPanelProps> = ({
             </div>
 
             <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-3">
+                {changedFiles.length > 0 ? (
+                    <div className="workspace-strip-muted rounded-[10px] px-3 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="cursor-section-label">变更文件</div>
+                            <div className="text-[10px] font-mono text-[var(--color-dark-text-faint)]">
+                                {changedFiles.length}
+                            </div>
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                            {changedFiles.map((changedFile) => (
+                                <button
+                                    key={changedFile}
+                                    type="button"
+                                    onClick={() => onSelectFile(changedFile)}
+                                    disabled={isLoadingTarget || changedFile === fileName}
+                                    className={`flex w-full items-center justify-between gap-2 rounded-[8px] border px-2.5 py-2 text-left text-[11px] transition-colors ${
+                                        changedFile === fileName
+                                            ? 'border-[var(--tone-success-border)] bg-[var(--tone-success-bg)] text-[var(--tone-success-text)]'
+                                            : 'border-[rgba(255,255,255,0.055)] bg-[rgba(255,255,255,0.014)] text-[var(--color-dark-text-muted)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--color-dark-text-main)]'
+                                    } disabled:cursor-not-allowed disabled:opacity-65`}
+                                >
+                                    <span className="min-w-0 truncate font-mono">{changedFile}</span>
+                                    {changedFile === fileName ? (
+                                        <span className="shrink-0 text-[10px] font-semibold">当前</span>
+                                    ) : null}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
                 <div className="workspace-strip-muted rounded-[10px] px-3 py-3">
                     <div className="cursor-section-label">{copy.review.currentDraft}</div>
                     <div className="mt-2 text-sm font-semibold text-[var(--color-dark-text-main)]">
