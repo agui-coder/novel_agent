@@ -58,15 +58,15 @@ class V72SummaryArchivePipelineTests(unittest.TestCase):
             return """
 ## Batch Archive: CH1-2
 
-## Batch Overview
-- two source chapters are archived
+## 批次概览
+- 两个源章节已经归档，G2 与 AWP 这类专名可以保留，但说明必须是中文。
 
-## Batch Index
-- CH1: setup
-- CH2: turn
+## 章节索引
+- 第1章：开局
+- 第2章：转折
 
-## Irreversible Facts
-- fact
+## 不可逆事实
+- 已发生事实
 """
 
         result = pipeline.run_pipeline(
@@ -80,9 +80,23 @@ class V72SummaryArchivePipelineTests(unittest.TestCase):
         self.assertEqual(result["chapter_count"], 2)
         self.assertEqual(result["total_batches"], 1)
         self.assertEqual(len(prompts), 1)
+        self.assertIn("所有标题、解释、总结、项目符号都必须使用简体中文", prompts[0])
+        self.assertIn("专有名词可以保留原文", prompts[0])
+        self.assertNotIn("Write in the same language", prompts[0])
         summary = (self.repo_dir / "summary.md").read_text(encoding="utf-8")
         self.assertIn(pipeline.ARCHIVE_MARKER, summary)
-        self.assertIn("## Batch Archive: CH1-2", summary)
+        self.assertIn("# 全书阅读档案索引", summary)
+        self.assertIn("## 批次归档：第1-2章", summary)
+        self.assertIn("### 章节索引摘录", summary)
+        for stale_heading in [
+            "Full Book Archive Index",
+            "Batch Archive",
+            "Batch Overview",
+            "Batch Index",
+            "Irreversible Facts",
+            "Batch Archives",
+        ]:
+            self.assertNotIn(stale_heading, summary)
         metadata = json.loads((self.repo_dir / "metadata.json").read_text(encoding="utf-8"))
         self.assertTrue(metadata["summary_complete"])
         self.assertEqual(metadata["total_chapters"], 2)
@@ -95,9 +109,9 @@ class V72SummaryArchivePipelineTests(unittest.TestCase):
         events: list[dict] = []
 
         def fake_model(prompt: str) -> str:
-            if "CH1-1" in prompt:
-                return "## Batch Archive: CH1-1\n\n## Batch Overview\n- first\n\n## Batch Index\n- CH1\n"
-            return "## Batch Archive: CH2-2\n\n## Batch Overview\n- second\n\n## Batch Index\n- CH2\n"
+            if "第1-1章" in prompt:
+                return "## 批次归档：第1-1章\n\n## 批次概览\n- 第一批\n\n## 章节索引\n- 第1章\n"
+            return "## 批次归档：第2-2章\n\n## 批次概览\n- 第二批\n\n## 章节索引\n- 第2章\n"
 
         result = pipeline.run_pipeline(
             book_id="book",

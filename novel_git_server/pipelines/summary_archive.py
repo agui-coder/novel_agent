@@ -114,40 +114,41 @@ def _build_batch_prompt(
     start = batch[0].index
     end = batch[-1].index
     chapter_block = "\n\n---CHAPTER---\n\n".join(chapter.markdown for chapter in batch)
-    return f"""You are the backend reading archive pipeline for a webnovel authoring workspace.
+    return f"""你是网文创作工作台的后端阅读归档管线。
 
-Task:
-- Distill the provided source chapters into a reusable archive for downstream agents.
-- Preserve plot facts, irreversible facts, open loops, relationship changes, promises, constraints, and payoffs.
-- Do not invent new plot, outline cards, or continuation prose.
-- Write in the same language as the source chapters.
+任务：
+- 把输入的原文章节蒸馏为可复用的阅读档案，供世界模型、文风、大纲、续写、审查等后续模块读取。
+- 保留剧情事实、不可逆事实、未闭合线索、人物关系变化、承诺、约束、回收点。
+- 不要发明新剧情，不要写大纲卡，不要写续写正文。
+- 无论原文包含多少英文专名，所有标题、解释、总结、项目符号都必须使用简体中文。
+- 队名、人名、赛事名、技能名、型号名等专有名词可以保留原文，例如 G2、CS2、AWP、donk；但句子说明必须是中文。
 
-Return markdown only, with exactly this top structure:
-## Batch Archive: CH{start}-{end}
+只返回 markdown，并严格使用以下顶层结构：
+## 批次归档：第{start}-{end}章
 
-## Batch Overview
+## 批次概览
 - ...
 
-## Batch Index
-- CH{start}: ...
+## 章节索引
+- 第{start}章：...
 
-## Irreversible Facts
+## 不可逆事实
 - ...
 
-## Open Loops And Promises
+## 未闭合线索与承诺
 - ...
 
-## Relationship And State Changes
+## 关系与状态变化
 - ...
 
-## Downstream Constraints
+## 下游创作约束
 - ...
 
-Book: {book_name}
-Batch: {batch_index}/{total_batches}
-Chapter range: CH{start}-{end}
+书名：{book_name}
+批次：{batch_index}/{total_batches}
+章节范围：第{start}-{end}章
 
-Source chapters:
+原文章节：
 {chapter_block}
 """
 
@@ -165,10 +166,17 @@ def _normalize_batch_answer(answer: str, batch: list[ChapterInput]) -> str:
     text = _strip_code_fence(answer)
     text = text.replace(ARCHIVE_MARKER, "").strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
-    heading_re = re.compile(r"^##\s+Batch Archive:\s*CH\d+\s*[-\u2013\u2014]\s*\d+\s*$", re.MULTILINE)
+    legacy_heading_re = re.compile(
+        r"^##\s+Batch Archive:\s*(?:CH)?\d+\s*[-\u2013\u2014]\s*(?:CH)?\d+\s*$",
+        re.MULTILINE,
+    )
+    zh_heading_re = re.compile(r"^##\s+批次归档[：:]\s*第?\d+\s*[-\u2013\u2014]\s*\d+\s*章?\s*$", re.MULTILINE)
+    text = legacy_heading_re.sub(f"## 批次归档：第{start}-{end}章", text, count=1)
+    text = zh_heading_re.sub(f"## 批次归档：第{start}-{end}章", text, count=1)
+    heading_re = re.compile(r"^##\s+批次归档[：:]\s*第?\d+\s*[-\u2013\u2014]\s*\d+\s*章?\s*$", re.MULTILINE)
     if heading_re.search(text):
         return text.strip() + "\n"
-    return f"## Batch Archive: CH{start}-{end}\n\n{text.strip()}\n"
+    return f"## 批次归档：第{start}-{end}章\n\n{text.strip()}\n"
 
 
 def _extract_section(text: str, heading: str, *, limit: int = 8) -> list[str]:
@@ -197,28 +205,28 @@ def compose_summary(batch_answers: list[str]) -> str:
     lines = [
         ARCHIVE_MARKER,
         "",
-        "# Full Book Archive Index",
+        "# 全书阅读档案索引",
         "",
-        f"- Batch count: {len(batch_answers)}",
-        "- Generation owner: backend summary archive pipeline",
-        "- Purpose: source-backed archive for world, style, outline, continuation, and review agents.",
+        f"- 批次数量：{len(batch_answers)}",
+        "- 生成归属：后端摘要归档管线",
+        "- 用途：基于原文章节生成阅读档案，供世界模型、文风、大纲、续写、审查模块读取。",
         "",
     ]
     for idx, answer in enumerate(batch_answers, start=1):
-        title_match = re.search(r"^##\s+Batch Archive:\s*(.+?)\s*$", answer, flags=re.MULTILINE)
-        title = title_match.group(1).strip() if title_match else f"Batch {idx}"
-        lines.extend([f"## Batch {idx}: {title}", ""])
-        overview = _extract_section(answer, "Batch Overview", limit=4)
-        index_lines = _extract_section(answer, "Batch Index", limit=6)
+        title_match = re.search(r"^##\s+批次归档[：:]\s*(.+?)\s*$", answer, flags=re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else f"第{idx}批"
+        lines.extend([f"## 第{idx}批：{title}", ""])
+        overview = _extract_section(answer, "批次概览", limit=4)
+        index_lines = _extract_section(answer, "章节索引", limit=6)
         if overview:
             lines.extend(overview)
             lines.append("")
         if index_lines:
-            lines.append("### Index Snippet")
+            lines.append("### 章节索引摘录")
             lines.extend(index_lines)
             lines.append("")
 
-    return "\n".join(lines).strip() + "\n\n---\n\n# Batch Archives\n\n" + body.strip() + "\n"
+    return "\n".join(lines).strip() + "\n\n---\n\n# 批次归档正文\n\n" + body.strip() + "\n"
 
 
 def _update_summary_metadata(book_dir: Path, chapter_count: int, total_batches: int) -> bool:
