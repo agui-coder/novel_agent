@@ -745,6 +745,62 @@ body {
         margin-bottom: 0;
     }
 
+    .markdown-table-scroll {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin: 0.75rem 0;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        background: rgba(8, 11, 16, 0.44);
+    }
+
+    .markdown-surface .markdown-table-scroll > table {
+        width: max-content;
+        min-width: min(36rem, 100%);
+        margin: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: auto;
+    }
+
+    .markdown-surface .markdown-table-scroll :where(th, td) {
+        min-width: 4.5rem;
+        padding: 0.5rem 0.65rem;
+        white-space: nowrap;
+        word-break: keep-all;
+        overflow-wrap: normal;
+        vertical-align: top;
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .markdown-surface .markdown-table-scroll :where(th) {
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--color-dark-text-main);
+        font-weight: 600;
+    }
+
+    .markdown-surface .markdown-table-scroll :where(td) {
+        color: var(--color-dark-text-main);
+    }
+
+    .reasoning-markdown .markdown-table-scroll {
+        margin: 0.45rem 0;
+        border-radius: 8px;
+    }
+
+    .reasoning-markdown .markdown-table-scroll > table {
+        min-width: 28rem;
+    }
+
+    .reasoning-markdown .markdown-table-scroll :where(th, td) {
+        min-width: 4rem;
+        padding: 0.35rem 0.5rem;
+        font-size: 11px;
+    }
+
     .assistant-timeline {
         display: flex;
         flex-direction: column;

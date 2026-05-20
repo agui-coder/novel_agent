@@ -16,12 +16,20 @@ const BASE_MARKDOWN_CLASS =
 
 const MARKDOWN_PLUGINS = [remarkGfm];
 
+const MARKDOWN_COMPONENTS = {
+    table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
+        <div className="markdown-table-scroll app-scrollbar">
+            <table {...props}>{children}</table>
+        </div>
+    ),
+};
+
 const MarkdownRenderImpl: React.FC<MarkdownRenderProps> = ({ content, className }) => {
     if (!content) return null;
 
     return (
-        <div className={`${BASE_MARKDOWN_CLASS} ${className || ''}`.trim()}>
-            <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>
+        <div className={`markdown-surface ${BASE_MARKDOWN_CLASS} ${className || ''}`.trim()}>
+            <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS} components={MARKDOWN_COMPONENTS}>
                 {content}
             </ReactMarkdown>
         </div>
