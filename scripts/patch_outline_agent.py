@@ -788,7 +788,7 @@ def validate_graph(graph: dict[str, Any], *, label: str) -> dict[str, Any]:
 
     classifier_text = json.dumps(classifier.get("data") or {}, ensure_ascii=False)
     if label.startswith("after:"):
-        for marker in ("初始化大纲", "重建大纲", "COMMIT_AGENT", "brainstorm.md", "chapter_outline.md"):
+        for marker in ("初始化大纲", "重建大纲", "大纲落档按钮请求", "COMMIT_AGENT", "brainstorm.md", "chapter_outline.md"):
             if marker not in classifier_text:
                 raise RuntimeError(f"{label} classifier missing marker: {marker}")
 
