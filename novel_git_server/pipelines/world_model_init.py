@@ -1,16 +1,18 @@
-"""Two-phase world_model.md initialization from summary.md.
+"""Schema-locked world_model.md/status_card.md initialization from summary.md.
 
-Phase 1 (extract): sends full summary.md to DeepSeek, extracting a structured
-7-section world_model.md.  Phase 2 (verify): sends the draft world_model back
-with the summary for cross-validation, catching contradictions and omissions.
-
-With DeepSeek's 1M context window, the entire summary (~60K chars) fits easily.
+The model returns structured world facts. The backend validates those facts,
+then deterministically renders book-facing Markdown artifacts.
 """
 
+from __future__ import annotations
+
+import json
 import os
 import re
 import logging
+from dataclasses import dataclass
 from queue import Queue
+from typing import Any
 
 import git as gitmod
 from langchain_core.messages import HumanMessage
@@ -71,56 +73,88 @@ CONSTRAINT_LIFECYCLE_LEDGER_TEMPLATE = """### 约束生命周期台账
 - 下游消费规则：只有「当前生效」或条件已满足的「有条件生效」约束，才能作为当前剧情现实使用。
 """
 
-EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模型蒸馏引擎。从以下完整阅读档案中提取创作约束，输出一份结构化的世界模型文档。
+EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是后端世界状态蒸馏管线。你的任务不是写 Markdown 文档，而是从阅读档案中提取可校验的结构化世界事实。
 
-## 规则：
-1. 不要搬运剧情，只提取能约束后续创作的规则和事实
-2. 每个条目格式：- **标题**：描述（描述必须说明该约束对后续创作的影响）
-3. 相同/重复条目合并为一条
-4. 如果多条信息对同一设定有矛盾：
-   - 数量型事实（碎片数、人数、血门数等）：以首次完整表述的版本为准
-   - 状态型事实（角色生死、物品归属）：以后出现的版本为准
-   - 无论哪种情况，每次矛盾消解都必须在「矛盾与风险」小节中留痕，格式为：- **[设定名]数量/状态矛盾**：前文称X，后文称Y，采用[策略]及理由
-   - 严禁静默覆盖
-5. 每个主小节下至少要有 5-15 条条目，不要过度精简，要充分提取每个小节的增量
-6. 对力量体系、修行路径、身份机制、世界规则等硬约束要特别详细，不能遗漏
+硬性规则：
+- 只返回一个合法 JSON 对象，不要 Markdown，不要代码块，不要寒暄，不要解释你做了什么。
+- 所有键名、说明和条目内容都必须使用简体中文。
+- 人名、队名、技能名、赛事名、型号名等专有名词可以保留原文写法，但说明句必须是中文。
+- 不要发明原文没有的事实，不要写未来剧情，不要写续写正文，不要写大纲卡。
+- 每条事实必须有证据锚点，证据锚点必须来自阅读档案中的批次、章节范围、章节号或原文摘要句。
+- 每条事实必须说明生命周期、适用范围、置信度和下游影响。
+- 轮回、重置、回归、阶段切换、能力禁用、阵营变化、承诺兑现等变化必须显式标注生命周期，不能把历史事实压平成当前仍生效。
+- 如果事实只是历史记忆、债务、伏笔、读者反讽或审查风险，生命周期不能写成「当前生效」。
 
-## 输出格式：
-以 "# 世界模型" 开头，严格按以下 7 个 ## 二级标题组织：
+可用分类：
+- 读者承诺与主轴
+- 冲突发动机
+- 硬约束
+- 软假设
+- 未回收承诺
+- 矛盾与风险
+- 下游工作流接口
 
-1. ## 读者承诺与主轴 — 核心看点、题材契约、长线情绪方向
-2. ## 冲突发动机 — 长期/中期/短期冲突、可复用矛盾模板
-3. ## 硬约束 — 不可撤销事实、力量/代价规则、禁区、世界规则、修行体系
-4. ## 软假设 — 可调整设定、待确认问题、疑似设定
-5. ## 未回收承诺 — 伏笔、情感债、必须回收的读者期待
-6. ## 矛盾与风险 — 设定矛盾、高风险写法警告、一致性风险
-7. ## 下游工作流接口 — 对续写/审核/大纲/文风智能体的创作指令
+可用生命周期：
+- 当前生效
+- 仅作历史
+- 已退场
+- 被覆盖
+- 已禁用
+- 当前范围禁用
+- 有条件生效
+- 历史残留
+- 待解决
 
-末尾添加覆盖表格，列出所有已处理的批次归档。
+可用适用范围类型：
+- 全局
+- 时间线
+- 篇章
+- 阶段
+- 轮回
+- 势力
+- 角色视角
+- 地点
+- 规则系统
+- 证据窗口
 
-直接输出文档内容，不要包裹在代码块中。
+JSON 形状：
+{
+  "事实列表": [
+    {
+      "分类": "硬约束",
+      "主体": "被约束的人物、势力、规则、承诺或剧情对象",
+      "内容": "可约束后续创作的一句话事实，必须是中文",
+      "生命周期": "当前生效",
+      "适用范围": {"类型": "全局", "说明": "适用范围说明"},
+      "证据": "批次或章节证据锚点",
+      "置信度": "高",
+      "下游影响": "续写、审核、大纲或文风模块需要如何使用这条事实"
+    }
+  ]
+}
 
-## 完整阅读档案：
+最低质量要求：
+- 至少输出 8 条事实；如果阅读档案很短，也要覆盖能确定的主轴、冲突、硬约束、承诺、风险和下游接口。
+- 「硬约束」「未回收承诺」「下游工作流接口」至少各 1 条。
+- 对同一事实的矛盾或状态变化不要静默覆盖，要写入「矛盾与风险」分类。
+
+完整阅读档案：
 {summary_text}"""
 
-VERIFY_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是事实校验引擎。以下是已提取的世界模型（初稿）和原始阅读档案。
+VERIFY_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是结构化世界事实校验器。下面是已经抽取的 JSON 世界事实和阅读档案尾部证据。
 
-请逐一检查世界模型中的硬约束条目：
-1. 在阅读档案中找到对应的原文依据
-2. 如果条目在档案中无依据 → 标记为「待确认」并移入软假设小节
-3. 如果条目与档案矛盾 → 在矛盾与风险小节中添加修正条目，并修正硬约束中的错误
-4. 如果档案中有重要事实未被提取 → 在对应小节补充，标注「校验补充」
+任务：
+- 只返回一个合法 JSON 对象，不要 Markdown，不要代码块，不要寒暄。
+- 保留能被证据支持的事实。
+- 修正生命周期、适用范围、证据和下游影响不合格的事实。
+- 删除没有证据的事实，或把它改成「软假设」且生命周期写「待解决」。
+- 如果尾部证据显示状态已改变，必须把旧状态标成「仅作历史」「被覆盖」「已禁用」或「当前范围禁用」，并新增当前状态事实。
+- 输出形状仍然是 {"事实列表": [...]}。
 
-同时检查：
-- 数量型事实是否与首次出现的表述一致（不盲目采用后文的矛盾数字）
-- 角色/物品的当前状态是否与最新剧情一致
+当前结构化事实：
+{facts_json}
 
-输出修正后的完整世界模型文档，不要省略任何已有条目。保留原有的 7 个 ## 小节结构。
-
-## 当前世界模型（初稿）：
-{world_model}
-
-## 原始阅读档案（节选 — 最后 3 个批次）：
+阅读档案尾部证据：
 {summary_tail}"""
 
 
@@ -149,9 +183,330 @@ STATUS_CARD_REQUIRED_FIELDS = [
 UNKNOWN_VALUE = "待确认"
 STATUS_CARD_REPAIR_COMMIT_MESSAGE = "batch init: initialize status card"
 
+WORLD_FACT_CATEGORIES = set(REQUIRED_SECTIONS)
+WORLD_FACT_LIFECYCLES = {
+    "当前生效",
+    "仅作历史",
+    "已退场",
+    "被覆盖",
+    "已禁用",
+    "当前范围禁用",
+    "有条件生效",
+    "历史残留",
+    "待解决",
+}
+WORLD_FACT_SCOPE_TYPES = {
+    "全局",
+    "时间线",
+    "篇章",
+    "阶段",
+    "轮回",
+    "势力",
+    "角色视角",
+    "地点",
+    "规则系统",
+    "证据窗口",
+}
+WORLD_FACT_CONFIDENCE_VALUES = {"高", "中", "低", "待确认"}
+MIN_WORLD_FACTS = 6
+
+
+class MalformedJsonError(ValueError):
+    """Raised when model output cannot be parsed as JSON."""
+
+
+@dataclass(frozen=True)
+class WorldFact:
+    category: str
+    subject: str
+    content: str
+    lifecycle: str
+    scope_type: str
+    scope: str
+    evidence: str
+    confidence: str
+    downstream_impact: str
+
 
 def _build_llm(max_tokens: int = 32768):
     return create_chat_model(max_tokens=max_tokens, purpose="world_model_init")
+
+
+def _invoke_llm_text(llm, prompt: str) -> str:
+    response = llm.invoke([HumanMessage(content=prompt)])
+    content = getattr(response, "content", "")
+    if isinstance(content, list):
+        return "\n".join(str(item) for item in content)
+    return str(content)
+
+
+def _strip_code_fence(text: str) -> str:
+    match = re.search(r"```(?:json|markdown|md)?\s*\n(.*?)```", text, flags=re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
+def _extract_json_payload(text: str) -> dict[str, Any]:
+    raw = _strip_code_fence(text)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as first_error:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start < 0 or end < start:
+            raise MalformedJsonError("模型未返回 JSON 对象") from first_error
+        try:
+            data = json.loads(raw[start : end + 1])
+        except json.JSONDecodeError as second_error:
+            raise MalformedJsonError(f"模型返回的 JSON 语法无效：{second_error}") from second_error
+    if not isinstance(data, dict):
+        raise ValueError("模型返回的 JSON 根节点不是对象")
+    return data
+
+
+def _build_world_json_repair_prompt(
+    *,
+    malformed_answer: str,
+    parse_error: Exception,
+) -> str:
+    return f"""你是后端 JSON 语法修复器。
+任务：
+- 下面是一段世界事实 JSON，但语法无效。
+- 只修复语法，让它变成合法 JSON 对象。
+- 不要新增事实，不要扩写内容，不要改写成 Markdown，不要输出代码块，不要寒暄。
+- 所有键名必须继续使用中文。
+
+必须保留的 JSON 形状：
+{{
+  "事实列表": [
+    {{
+      "分类": "硬约束",
+      "主体": "主体",
+      "内容": "事实内容",
+      "生命周期": "当前生效",
+      "适用范围": {{"类型": "全局", "说明": "范围说明"}},
+      "证据": "证据锚点",
+      "置信度": "高",
+      "下游影响": "影响说明"
+    }}
+  ]
+}}
+
+解析错误：{parse_error}
+
+待修复内容：
+{malformed_answer}
+"""
+
+
+def _build_world_validation_repair_prompt(
+    *,
+    original_prompt: str,
+    validation_error: Exception,
+) -> str:
+    return f"""{original_prompt}
+
+---
+
+上一轮输出没有通过后端结构化校验。
+校验错误：{validation_error}
+
+请重新输出完整、合法、可校验的 JSON 对象。
+硬性要求：
+- 只返回 JSON 对象，不要 Markdown，不要代码块，不要寒暄。
+- 每条事实必须包含：分类、主体、内容、生命周期、适用范围、证据、置信度、下游影响。
+- 生命周期和适用范围必须使用允许值。
+- 证据和下游影响不能为空。
+- 输出必须使用简体中文。
+"""
+
+
+def _clean_fact_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\x00", " ")
+    text = re.sub(r"^\s*(?:[-+]\s+|\*\s+|[0-9]+[.)]\s*)", "", text.strip())
+    text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if re.match(r"^(好的|以下是|下面是|我将|我会|已根据|作为.*?助手)", text):
+        return ""
+    return text
+
+
+def _coerce_scope(value: Any) -> tuple[str, str]:
+    if isinstance(value, dict):
+        scope_type = _clean_fact_text(value.get("类型") or value.get("type") or value.get("scope_type"))
+        scope = _clean_fact_text(value.get("说明") or value.get("范围") or value.get("scope") or value.get("description"))
+    else:
+        text = _clean_fact_text(value)
+        if "：" in text:
+            scope_type, scope = text.split("：", 1)
+        elif ":" in text:
+            scope_type, scope = text.split(":", 1)
+        else:
+            scope_type, scope = text, text
+        scope_type = _clean_fact_text(scope_type)
+        scope = _clean_fact_text(scope)
+    if scope_type not in WORLD_FACT_SCOPE_TYPES:
+        scope_type = "全局" if not scope_type else "证据窗口"
+    return scope_type, scope or scope_type
+
+
+def _parse_world_facts_answer(answer: str) -> list[WorldFact]:
+    data = _extract_json_payload(answer)
+    raw_facts = data.get("事实列表") or data.get("world_facts") or data.get("facts")
+    if isinstance(raw_facts, dict):
+        raw_facts = [raw_facts]
+    if not isinstance(raw_facts, list):
+        raise ValueError("世界事实 JSON 缺少「事实列表」数组")
+
+    facts: list[WorldFact] = []
+    for index, raw_fact in enumerate(raw_facts, start=1):
+        if not isinstance(raw_fact, dict):
+            raise ValueError(f"第 {index} 条世界事实不是对象")
+        category = _clean_fact_text(raw_fact.get("分类") or raw_fact.get("category"))
+        subject = _clean_fact_text(raw_fact.get("主体") or raw_fact.get("subject"))
+        content = _clean_fact_text(raw_fact.get("内容") or raw_fact.get("content") or raw_fact.get("事实"))
+        lifecycle = _clean_fact_text(raw_fact.get("生命周期") or raw_fact.get("lifecycle"))
+        scope_type, scope = _coerce_scope(raw_fact.get("适用范围") or raw_fact.get("scope"))
+        evidence = _clean_fact_text(raw_fact.get("证据") or raw_fact.get("evidence"))
+        confidence = _clean_fact_text(raw_fact.get("置信度") or raw_fact.get("confidence"))
+        downstream_impact = _clean_fact_text(raw_fact.get("下游影响") or raw_fact.get("downstream_impact") or raw_fact.get("影响"))
+
+        if category not in WORLD_FACT_CATEGORIES:
+            raise ValueError(f"第 {index} 条世界事实分类无效：{category or '空'}")
+        if lifecycle not in WORLD_FACT_LIFECYCLES:
+            raise ValueError(f"第 {index} 条世界事实生命周期无效：{lifecycle or '空'}")
+        if confidence not in WORLD_FACT_CONFIDENCE_VALUES:
+            raise ValueError(f"第 {index} 条世界事实置信度无效：{confidence or '空'}")
+        for field_name, field_value in {
+            "主体": subject,
+            "内容": content,
+            "适用范围说明": scope,
+            "证据": evidence,
+            "下游影响": downstream_impact,
+        }.items():
+            if not field_value:
+                raise ValueError(f"第 {index} 条世界事实缺少{field_name}")
+        if content in {UNKNOWN_VALUE, "无", "暂无"}:
+            raise ValueError(f"第 {index} 条世界事实内容过空")
+        if evidence in {UNKNOWN_VALUE, "无", "暂无"}:
+            raise ValueError(f"第 {index} 条世界事实缺少有效证据")
+
+        facts.append(
+            WorldFact(
+                category=category,
+                subject=subject,
+                content=content,
+                lifecycle=lifecycle,
+                scope_type=scope_type,
+                scope=scope,
+                evidence=evidence,
+                confidence=confidence,
+                downstream_impact=downstream_impact,
+            )
+        )
+
+    if len(facts) < MIN_WORLD_FACTS:
+        raise ValueError(f"世界事实数量不足：{len(facts)}")
+    required_categories = {"硬约束", "未回收承诺", "下游工作流接口"}
+    present = {fact.category for fact in facts}
+    missing = sorted(required_categories - present)
+    if missing:
+        raise ValueError("世界事实缺少必要分类：" + "、".join(missing))
+    return facts
+
+
+def _extract_world_facts_with_repair(llm, prompt: str, *, max_retries: int = 1) -> list[WorldFact]:
+    last_error: Exception | None = None
+    for attempt in range(max(0, max_retries) + 1):
+        try:
+            answer = _invoke_llm_text(llm, prompt)
+            if not answer.strip():
+                raise RuntimeError("世界事实抽取返回为空")
+            try:
+                return _parse_world_facts_answer(answer)
+            except MalformedJsonError as parse_error:
+                repaired_answer = _invoke_llm_text(
+                    llm,
+                    _build_world_json_repair_prompt(
+                        malformed_answer=answer,
+                        parse_error=parse_error,
+                    ),
+                )
+                return _parse_world_facts_answer(repaired_answer)
+            except ValueError as validation_error:
+                repaired_answer = _invoke_llm_text(
+                    llm,
+                    _build_world_validation_repair_prompt(
+                        original_prompt=prompt,
+                        validation_error=validation_error,
+                    ),
+                )
+                return _parse_world_facts_answer(repaired_answer)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max(0, max_retries):
+                break
+    raise RuntimeError(f"世界事实结构化抽取失败：{last_error}") from last_error
+
+
+def _facts_to_json_for_prompt(facts: list[WorldFact]) -> str:
+    payload = {
+        "事实列表": [
+            {
+                "分类": fact.category,
+                "主体": fact.subject,
+                "内容": fact.content,
+                "生命周期": fact.lifecycle,
+                "适用范围": {"类型": fact.scope_type, "说明": fact.scope},
+                "证据": fact.evidence,
+                "置信度": fact.confidence,
+                "下游影响": fact.downstream_impact,
+            }
+            for fact in facts
+        ]
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _merge_world_facts(primary: list[WorldFact], verified: list[WorldFact]) -> list[WorldFact]:
+    merged: dict[tuple[str, str, str], WorldFact] = {}
+    for fact in primary + verified:
+        key = (fact.category, fact.subject, fact.content)
+        merged[key] = fact
+    return list(merged.values())
+
+
+def _render_world_fact(fact: WorldFact) -> str:
+    return (
+        f"- **{fact.subject}**：{fact.content}"
+        f"（生命周期：{fact.lifecycle}；适用范围：{fact.scope_type}/{fact.scope}；"
+        f"证据：{fact.evidence}；置信度：{fact.confidence}；下游影响：{fact.downstream_impact}）"
+    )
+
+
+def _render_world_model_from_facts(facts: list[WorldFact], batches: list[dict]) -> str:
+    lines: list[str] = [
+        WORLD_MODEL_HEADING,
+        "",
+        "> 本文件由后端世界状态蒸馏管线根据结构化世界事实确定性渲染。模型只提供事实对象，最终章节、生命周期、证据和覆盖表由后端校验后写入。",
+        "",
+    ]
+    for section in REQUIRED_SECTIONS:
+        lines.extend([f"## {section}", ""])
+        section_facts = [fact for fact in facts if fact.category == section]
+        if section == "硬约束":
+            lines.extend(CONSTRAINT_LIFECYCLE_LEDGER_TEMPLATE.strip().splitlines())
+            lines.append("")
+        if section_facts:
+            lines.extend(_render_world_fact(fact) for fact in section_facts)
+        else:
+            lines.append(f"- **{section}待补充**：当前阅读档案中没有提取到可校验条目，后续重建或人工讨论时补充。（生命周期：待解决；适用范围：证据窗口/当前阅读档案；证据：后端校验未发现足够证据；置信度：待确认；下游影响：不得当作当前硬约束使用）")
+        lines.append("")
+    lines.extend(["---", "", _build_coverage_table(batches)])
+    return "\n".join(lines).strip() + "\n"
 
 
 def _extract_world_model_from_response(text: str) -> str:
@@ -812,16 +1167,11 @@ def run_pipeline(
         sse_queue.put({"event": "progress", "data": {"batch_index": 0, "total": 2, "title": "extract", "status": "processing"}})
 
     try:
-        prompt = EXTRACTION_PROMPT.format(summary_text=summary_text)
+        prompt = EXTRACTION_PROMPT.replace("{summary_text}", summary_text)
         log.info("Phase 1 extract: prompt %d chars, %d batches", len(prompt), len(batches))
 
-        response = llm.invoke([HumanMessage(content=prompt)])
-        content = _extract_world_model_from_response(response.content)
-
-        valid, missing = _validate_sections(content)
-        if not valid:
-            log.warning("Missing sections: %s, repairing", missing)
-            content = _repair_sections(content)
+        facts = _extract_world_facts_with_repair(llm, prompt, max_retries=1)
+        content = _render_world_model_from_facts(facts, batches)
 
         log.info("Phase 1 done: %d chars", len(content))
 
@@ -838,18 +1188,16 @@ def run_pipeline(
 
     try:
         summary_tail = _get_summary_tail(summary_path, batches, n=3)
-        verify_prompt = VERIFY_PROMPT.format(world_model=content, summary_tail=summary_tail)
+        verify_prompt = (
+            VERIFY_PROMPT
+            .replace("{facts_json}", _facts_to_json_for_prompt(facts))
+            .replace("{summary_tail}", summary_tail)
+        )
         log.info("Phase 2 verify: prompt %d chars", len(verify_prompt))
 
-        verify_response = llm.invoke([HumanMessage(content=verify_prompt)])
-        verified = _extract_world_model_from_response(verify_response.content)
-
-        valid2, missing2 = _validate_sections(verified)
-        if not valid2:
-            log.warning("Verify phase missing sections: %s, repairing", missing2)
-            verified = _repair_sections(verified)
-
-        content = verified
+        verified_facts = _extract_world_facts_with_repair(llm, verify_prompt, max_retries=1)
+        facts = _merge_world_facts(facts, verified_facts)
+        content = _render_world_model_from_facts(facts, batches)
         log.info("Phase 2 done: %d chars", len(content))
 
     except Exception as e:

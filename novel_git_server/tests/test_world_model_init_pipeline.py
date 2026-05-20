@@ -41,6 +41,98 @@ WORLD_MODEL_MARKDOWN = """# 世界模型
 """
 
 
+WORLD_FACTS_JSON = json.dumps(
+    {
+        "事实列表": [
+            {
+                "分类": "读者承诺与主轴",
+                "主体": "主线承诺",
+                "内容": "精神病院与外部神秘事件双线推进是当前阅读期待。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "全局", "说明": "当前阅读档案"},
+                "证据": "Batch Archive: CH4-6",
+                "置信度": "高",
+                "下游影响": "续写需要同时推进精神病院真相和外部追查。",
+            },
+            {
+                "分类": "冲突发动机",
+                "主体": "阿撒托斯污染源",
+                "内容": "追查阿撒托斯污染源是当前核心驱动。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "阶段", "说明": "CH4-6 后的追查阶段"},
+                "证据": "CH4-6 核心驱动进度",
+                "置信度": "高",
+                "下游影响": "大纲和续写不能绕开污染源追查。",
+            },
+            {
+                "分类": "硬约束",
+                "主体": "双线推进",
+                "内容": "后续必须保持精神病院与外部神秘事件双线推进。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "全局", "说明": "当前主线阶段"},
+                "证据": "CH4-6 本段约束增量",
+                "置信度": "高",
+                "下游影响": "续写、审核和大纲都要检查双线是否断裂。",
+            },
+            {
+                "分类": "软假设",
+                "主体": "精神病院病人身份",
+                "内容": "精神病院病人身份与神明残响仍有空白，需要后文解释。",
+                "生命周期": "待解决",
+                "适用范围": {"类型": "证据窗口", "说明": "CH4-6 线索状态"},
+                "证据": "CH4-6 线索状态",
+                "置信度": "中",
+                "下游影响": "暂不可写成确定结论，只能作为待揭示线索。",
+            },
+            {
+                "分类": "未回收承诺",
+                "主体": "阿撒托斯污染源答案",
+                "内容": "阿撒托斯污染源必须给出正面答案。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "阶段", "说明": "污染源追查阶段"},
+                "证据": "CH4-6 未兑现承诺",
+                "置信度": "高",
+                "下游影响": "续写需要安排答案推进或明确延宕理由。",
+            },
+            {
+                "分类": "矛盾与风险",
+                "主体": "倪克斯恢复程度",
+                "内容": "倪克斯恢复程度仍需验证，不能提前写成完全恢复。",
+                "生命周期": "待解决",
+                "适用范围": {"类型": "角色视角", "说明": "倪克斯相关线索"},
+                "证据": "CH4-6 伏笔台账",
+                "置信度": "中",
+                "下游影响": "审核需要拦截过早兑现或状态跳跃。",
+            },
+            {
+                "分类": "下游工作流接口",
+                "主体": "续写接口",
+                "内容": "下一轮续写需要承接污染源追查、门之钥线索和倪克斯关系债。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "阶段", "说明": "CH4-6 后续写入口"},
+                "证据": "CH4-6 未兑现承诺与伏笔台账",
+                "置信度": "高",
+                "下游影响": "续写提示词应优先读取这些承诺并显性推进。",
+            },
+            {
+                "分类": "未回收承诺",
+                "主体": "门之钥线索",
+                "内容": "门之钥线索需要进入主线解释。",
+                "生命周期": "当前生效",
+                "适用范围": {"类型": "阶段", "说明": "当前主线追查阶段"},
+                "证据": "CH4-6 未兑现承诺",
+                "置信度": "高",
+                "下游影响": "大纲需要保留门之钥解释位置。",
+            },
+        ]
+    },
+    ensure_ascii=False,
+)
+
+
+MALFORMED_WORLD_FACTS_JSON = WORLD_FACTS_JSON[:-1]
+
+
 SUMMARY_MARKDOWN = """# Summary
 
 ## Batch Archive: CH1-3
@@ -145,7 +237,20 @@ class _FakeLLM:
 
     def invoke(self, _messages):
         self.calls += 1
-        return _FakeResponse(WORLD_MODEL_MARKDOWN)
+        return _FakeResponse(WORLD_FACTS_JSON)
+
+
+class _RepairingFakeLLM:
+    def __init__(self, first_answer: str, repaired_answer: str = WORLD_FACTS_JSON):
+        self.calls = 0
+        self.first_answer = first_answer
+        self.repaired_answer = repaired_answer
+
+    def invoke(self, _messages):
+        self.calls += 1
+        if self.calls == 1:
+            return _FakeResponse(self.first_answer)
+        return _FakeResponse(self.repaired_answer)
 
 
 class WorldModelInitPipelineTests(unittest.TestCase):
@@ -288,9 +393,11 @@ class WorldModelInitPipelineTests(unittest.TestCase):
             self.assertIn("当前生效", prompt)
             self.assertIn("仅作历史", prompt)
             self.assertIn("当前范围禁用", prompt)
-            self.assertIn("约束生命周期台账", prompt)
+            self.assertIn("生命周期", prompt)
             self.assertNotIn("CONSTRAINT_LIFECYCLE_PROTOCOL", prompt)
             self.assertNotIn("Constraint Lifecycle Ledger", prompt)
+        self.assertIn("事实列表", pipeline.EXTRACTION_PROMPT)
+        self.assertIn("事实列表", pipeline.VERIFY_PROMPT)
 
     def test_insert_constraint_lifecycle_ledger_marks_legacy_constraints(self):
         content = pipeline._insert_constraint_lifecycle_ledger(WORLD_MODEL_MARKDOWN)
@@ -341,10 +448,54 @@ class WorldModelInitPipelineTests(unittest.TestCase):
         self.assertEqual(result["failed_batches"], [])
         world_model = (repo_dir / "world_model.md").read_text(encoding="utf-8")
         self.assertIn("### 约束生命周期台账", world_model)
-        self.assertIn("旧格式待归类", world_model)
+        self.assertIn("双线推进", world_model)
+        self.assertIn("生命周期：当前生效", world_model)
+        self.assertIn("证据：CH4-6 本段约束增量", world_model)
+        self.assertIn("下游影响：续写、审核和大纲都要检查双线是否断裂", world_model)
         self.assertIn("当前范围禁用", world_model)
         self.assertNotIn("### Constraint Lifecycle Ledger", world_model)
         self.assertNotIn("legacy-unclassified", world_model)
+
+    def test_malformed_world_fact_json_is_repaired_before_render(self):
+        repo_dir = self._init_book_repo()
+        fake_llm = _RepairingFakeLLM(MALFORMED_WORLD_FACTS_JSON)
+
+        with patch.object(pipeline, "_build_llm", return_value=fake_llm):
+            result = pipeline.run_pipeline("book", str(repo_dir), str(repo_dir / "summary.md"))
+
+        self.assertEqual(result["failed_batches"], [])
+        self.assertGreaterEqual(fake_llm.calls, 3)
+        world_model = (repo_dir / "world_model.md").read_text(encoding="utf-8")
+        self.assertIn("双线推进", world_model)
+        self.assertIn("证据：CH4-6 本段约束增量", world_model)
+
+    def test_world_fact_missing_lifecycle_or_evidence_fails_closed(self):
+        repo_dir = self._init_book_repo()
+        bad_payload = json.dumps(
+            {
+                "事实列表": [
+                    {
+                        "分类": "硬约束",
+                        "主体": "坏事实",
+                        "内容": "这条事实缺少生命周期和有效证据。",
+                        "生命周期": "",
+                        "适用范围": {"类型": "全局", "说明": "测试"},
+                        "证据": "",
+                        "置信度": "高",
+                        "下游影响": "不能写入。",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+        fake_llm = _RepairingFakeLLM(bad_payload, repaired_answer=bad_payload)
+
+        with patch.object(pipeline, "_build_llm", return_value=fake_llm):
+            result = pipeline.run_pipeline("book", str(repo_dir), str(repo_dir / "summary.md"))
+
+        self.assertNotEqual(result["failed_batches"], [])
+        self.assertFalse((repo_dir / "world_model.md").exists())
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
     def test_legacy_world_model_response_is_localized_before_write(self):
         response = pipeline._extract_world_model_from_response(
