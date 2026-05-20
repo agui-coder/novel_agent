@@ -329,6 +329,7 @@ def _build_post_confirm_world_payload(
     *,
     book_id: str,
     materialized_chapters: list[dict[str, Any]],
+    archive_bridge: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     chapter_refs = [
         {
@@ -349,22 +350,27 @@ def _build_post_confirm_world_payload(
     ]
     numbers_label = "、".join(numbers) if numbers else "刚确认的章节"
     refs_json = json.dumps(chapter_refs, ensure_ascii=False, indent=2)
+    bridge_success = bool(isinstance(archive_bridge, dict) and archive_bridge.get("status") == "success")
+    if not bridge_success:
+        return None
     intent = (
         "【确认后状态/世界观接棒任务】\n"
-        "本任务由前台在作者确认续写草稿入库后自动触发，不是闲聊，也不是审核 agent 任务。\n"
-        "你是项目 world_model 路由，必须只维护创作状态与长期设定，不得改写、润色、扩写或重新生成章节正文。\n\n"
+        "本任务由前台在作者确认续写草稿入库、且后端完成 summary.md 与 status_card.md 刷新后触发。\n"
+        "你是项目 world_model 路由，只负责判断是否存在需要沉淀的长期设定或可复用领域规则；不得改写、润色、扩写或重新生成章节正文。\n\n"
         f"已确认入库章节：{numbers_label}\n"
-        "正式章节文件如下，请你自己读取这些 chapters/*.md，以及 status_card.md、world_model.md、summary.md、"
-        "domain_rules.md、chapter_outline.md 和 error_archive.md 后再判断：\n"
+        "后端已经依据正式章节重建 summary.md，并从最新 summary.md 投影刷新 status_card.md。\n"
+        "正式章节文件如下，请你自己读取这些 chapters/*.md，以及已经刷新的 status_card.md、world_model.md、summary.md、"
+        "domain_rules.md、chapter_outline.md 和 error_archive.md 后再判断是否需要长期档案更新：\n"
         f"{refs_json}\n\n"
         "必须执行：\n"
-        "1. 更新 status_card.md：把最新章节后的时间线、角色状态、当前冲突、开放承诺、下一章约束刷新到可供续写读取的状态。\n"
+        "1. 不要重写 status_card.md；它已由后端投影刷新。\n"
         "2. 判断是否需要更新 world_model.md：只有出现长期规则、身份关系、世界机制、时间线/轮回状态、硬约束、重大矛盾修复时才写入；普通临时状态不要塞进 world_model.md。\n"
-        "3. 判断是否需要更新 domain_rules.md：只有出现可复用、可审查的领域规则时才写入。\n\n"
+        "3. 判断是否需要更新 domain_rules.md：只有出现可复用、可审查的领域规则时才写入。\n"
+        "4. 如果没有长期设定或领域规则变化，只用一句话说明无需更新，不要写文件。\n\n"
         "写入边界：\n"
-        "- 允许写 status_card.md、world_model.md、domain_rules.md。\n"
-        "- 不允许写 chapter_draft.md、chapters/*.md、chapter_outline.md、summary.md、style_*.md、error_archive.md。\n"
-        "- status_card.md 是必刷目标；world_model.md 和 domain_rules.md 是按需目标。\n"
+        "- 允许按需写 world_model.md、domain_rules.md。\n"
+        "- 不允许写 status_card.md、chapter_draft.md、chapters/*.md、chapter_outline.md、summary.md、style_*.md、error_archive.md。\n"
+        "- world_model.md 和 domain_rules.md 是按需目标，不是每批必写。\n"
         "- 最终回复只用一句话概括你更新了哪些档案；不要把章节正文粘贴到回复里。"
     )
     return {
@@ -378,9 +384,11 @@ def _build_post_confirm_world_payload(
         "dify_user": "loregit-ui-post-confirm",
         "intent": intent,
         "materialized_chapters": chapter_refs,
-        "required_writes": ["status_card.md"],
+        "archive_bridge": archive_bridge,
+        "required_writes": [],
         "optional_writes": ["world_model.md", "domain_rules.md"],
         "forbidden_writes": [
+            "status_card.md",
             "chapter_draft.md",
             "chapters/*.md",
             "chapter_outline.md",
@@ -392,8 +400,77 @@ def _build_post_confirm_world_payload(
             "payload_contains_chapter_prose": False,
             "world_model_route_must_not_rewrite_prose": True,
             "review_agent_is_not_responsible": True,
+            "status_card_already_refreshed_by_backend": True,
         },
     }
+
+
+def _run_post_confirm_archive_bridge(
+    *,
+    book_id: str,
+    book_dir: str,
+    summary_path: str,
+    book_name: str,
+) -> dict[str, Any]:
+    steps: list[dict[str, Any]] = []
+    try:
+        from pipelines.summary_archive import run_pipeline as run_summary_archive
+        from pipelines.world_model_init import refresh_status_projection
+
+        summary_result = run_summary_archive(
+            book_id=book_id,
+            book_dir=book_dir,
+            book_name=book_name,
+        )
+        summary_step = {
+            "name": "summary_archive",
+            "status": summary_result.get("status"),
+            "commit_id": summary_result.get("commit_id"),
+            "updated_files": summary_result.get("updated_files", []),
+            "chapter_count": summary_result.get("chapter_count"),
+            "total_batches": summary_result.get("total_batches"),
+        }
+        steps.append(summary_step)
+        if summary_result.get("status") != "success":
+            return {
+                "status": "failed",
+                "stage": "summary_archive",
+                "error": summary_result.get("error") or summary_result.get("status") or "summary archive failed",
+                "steps": steps,
+                "summary_result": summary_result,
+            }
+
+        status_projection = refresh_status_projection(
+            book_dir,
+            summary_path,
+            force=True,
+        )
+        public_status_projection = {
+            "status": status_projection.get("status"),
+            "commit_id": status_projection.get("commit_id"),
+            "updated_files": status_projection.get("updated_files", []),
+            "latest_batch_label": status_projection.get("latest_batch_label", ""),
+        }
+        steps.append(
+            {
+                "name": "status_projection",
+                **public_status_projection,
+            }
+        )
+        return {
+            "status": "success",
+            "steps": steps,
+            "summary_result": summary_result,
+            "status_projection": public_status_projection,
+        }
+    except Exception as exc:
+        LOGGER.exception("Post-confirm archive bridge failed for %s", book_id)
+        return {
+            "status": "failed",
+            "stage": "exception",
+            "error": str(exc),
+            "steps": steps,
+        }
 
 
 def _resolve_local_thread_id(payload: dict[str, Any]) -> str:
@@ -2169,34 +2246,61 @@ def create_blueprint(
                     "materialized_chapters": materialized_chapters,
                     "chapter_canon_commit_id": canon_commit_id,
                     "chapter_draft_reset_commit_id": draft_reset_commit_id,
-                    "post_confirm_payload": _build_post_confirm_world_payload(
-                        book_id=book_id,
-                        materialized_chapters=materialized_chapters,
-                    ),
-                    "post_confirm_actions": (
-                        [
-                            {
-                                "action": "distill_status_card",
-                                "agent_key": "world_model",
-                                "target_file": "status_card.md",
-                                "required": True,
-                            },
-                            {
-                                "action": "consider_world_model_update",
-                                "agent_key": "world_model",
-                                "target_file": "world_model.md",
-                                "required": False,
-                            },
-                        ]
-                        if materialized_chapters
-                        else []
-                    ),
+                    "post_confirm_archive_bridge": None,
+                    "post_confirm_payload": None,
+                    "post_confirm_actions": [],
                 }
                 if migrated_from_legacy:
                     response_body["warning"] = (
                         "legacy draft branch draft/world_model has been migrated to draft/sandbox"
                     )
-                return jsonify(response_body), 200
+
+            if materialized_chapters:
+                metadata = get_book_metadata(book_id, storage_root)
+                book_name = metadata.get("book_name") or book_id
+                post_confirm_archive_bridge = _run_post_confirm_archive_bridge(
+                    book_id=book_id,
+                    book_dir=repo_dir,
+                    summary_path=paths["summary_path"],
+                    book_name=book_name,
+                )
+                response_body["post_confirm_archive_bridge"] = post_confirm_archive_bridge
+                if post_confirm_archive_bridge.get("status") == "success":
+                    response_body["post_confirm_payload"] = _build_post_confirm_world_payload(
+                        book_id=book_id,
+                        materialized_chapters=materialized_chapters,
+                        archive_bridge=post_confirm_archive_bridge,
+                    )
+                    response_body["post_confirm_actions"] = [
+                        {
+                            "action": "consider_world_model_update",
+                            "agent_key": "world_model",
+                            "target_file": "world_model.md",
+                            "required": False,
+                        },
+                        {
+                            "action": "consider_domain_rules_update",
+                            "agent_key": "world_model",
+                            "target_file": "domain_rules.md",
+                            "required": False,
+                        },
+                    ]
+                else:
+                    response_body["post_confirm_actions"] = [
+                        {
+                            "action": "retry_summary_archive",
+                            "agent_key": "backend",
+                            "target_file": "summary.md",
+                            "required": True,
+                        },
+                        {
+                            "action": "retry_status_projection",
+                            "agent_key": "backend",
+                            "target_file": "status_card.md",
+                            "required": True,
+                        },
+                    ]
+            return jsonify(response_body), 200
         except GitCommandError as exc:
             message = str(exc)
             if "CONFLICT" in message.upper():

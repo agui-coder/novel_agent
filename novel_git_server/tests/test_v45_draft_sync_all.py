@@ -10,6 +10,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import app as gs  # noqa: E402
+from utils.model_provider import build_batch_model_config  # noqa: E402
 
 
 class V45DraftSyncAllTests(unittest.TestCase):
@@ -56,6 +57,13 @@ class V45DraftSyncAllTests(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 200)
         return resp.get_json()
+
+    def _skip_without_real_summary_model(self) -> None:
+        config = build_batch_model_config(purpose="summary_archive")
+        if not config.api_key:
+            self.skipTest("real summary archive model API key is not configured")
+        if not config.model:
+            self.skipTest("real summary archive model name is not configured")
 
     def test_sync_all_multifile_single_commit_on_draft_branch(self):
         book_name = "v45_multi_success"
@@ -396,18 +404,25 @@ class V45DraftSyncAllTests(unittest.TestCase):
         self.assertNotIn("# round2", mainline_world)
 
     def test_confirm_materializes_accepted_chapter_draft_into_chapter_files(self):
+        self._skip_without_real_summary_model()
         book_name = "v45_confirm_chapter_canon"
         init_resp = self.client.post("/books/init", json={"book_name": book_name})
         self.assertEqual(init_resp.status_code, 200)
         book_id = init_resp.get_json()["book_id"]
         draft_markdown = (
             "# 续写草稿\n\n"
-            "## 第153章 伊甸园的枪\n"
-            "正文153\n\n"
+            "## 第153章 月港北站的失火名单\n"
+            "顾沉在月港北站查到失火名单，确认三年前救援队并非意外迟到，而是被洛氏旧档案提前调走。\n"
+            "林若把母亲留下的银色票夹交给顾沉，票夹夹层里藏着一枚带有北站编号的钥匙。\n"
+            "这一章最后，顾沉在废弃候车室听见广播重复自己的名字，确认北站系统仍在自动运行。\n\n"
             "## 第154章 影子\n"
-            "正文154\n\n"
-            "## 第155章 Veto桌上的神\n"
-            "正文155\n"
+            "影子债主第一次公开露面，他没有索要金钱，只要求顾沉在七天内交出北站钥匙。\n"
+            "林若发现债主左手的烧伤痕迹与旧救援照片中的副队长一致，因此怀疑债主曾经参与北站事故。\n"
+            "顾沉决定暂时不交钥匙，而是把债主的威胁录音归档，作为后续追查洛氏档案的证据。\n\n"
+            "## 第155章 雨夜里的白名单\n"
+            "暴雨切断城区电力后，北站旧系统自动打印出一份白名单，名单上只有顾沉、林若和失踪副队长三个名字。\n"
+            "顾沉意识到白名单不是救援名单，而是能进入地下档案库的人选，钥匙真正对应的是档案库门禁。\n"
+            "章节结尾，林若收到匿名短信：如果他们进入档案库，三年前所有幸存者都会被重新清算。\n"
         )
 
         sync = self.client.post(
@@ -437,40 +452,64 @@ class V45DraftSyncAllTests(unittest.TestCase):
         self.assertTrue(body.get("chapter_draft_reset_commit_id"))
         self.assertEqual([item["number"] for item in body["materialized_chapters"]], [153, 154, 155])
         self.assertEqual({item["status"] for item in body["materialized_chapters"]}, {"created"})
+        archive_bridge = body["post_confirm_archive_bridge"]
+        self.assertEqual(archive_bridge["status"], "success")
+        self.assertEqual(archive_bridge["summary_result"]["status"], "success")
+        self.assertIn("summary.md", archive_bridge["summary_result"]["updated_files"])
+        self.assertEqual(archive_bridge["summary_result"]["chapter_count"], 3)
+        self.assertEqual(archive_bridge["status_projection"]["status"], "updated")
+        self.assertEqual(archive_bridge["status_projection"]["updated_files"], ["status_card.md"])
+        self.assertEqual(archive_bridge["status_projection"]["latest_batch_label"], "第153-155章")
         self.assertEqual(
             [(item["action"], item["agent_key"]) for item in body["post_confirm_actions"]],
-            [("distill_status_card", "world_model"), ("consider_world_model_update", "world_model")],
+            [("consider_world_model_update", "world_model"), ("consider_domain_rules_update", "world_model")],
         )
         post_confirm_payload = body["post_confirm_payload"]
         self.assertEqual(post_confirm_payload["route_agent_key"], "world_model")
         self.assertEqual(post_confirm_payload["active_file"], "status_card.md")
         self.assertEqual(post_confirm_payload["write_scope"], "world_core")
-        self.assertEqual(post_confirm_payload["required_writes"], ["status_card.md"])
+        self.assertEqual(post_confirm_payload["archive_bridge"]["status"], "success")
+        self.assertEqual(post_confirm_payload["required_writes"], [])
         self.assertEqual(post_confirm_payload["optional_writes"], ["world_model.md", "domain_rules.md"])
+        self.assertIn("status_card.md", post_confirm_payload["forbidden_writes"])
         self.assertIn("chapter_draft.md", post_confirm_payload["forbidden_writes"])
         self.assertTrue(post_confirm_payload["no_prose_boundary"]["world_model_route_must_not_rewrite_prose"])
         self.assertTrue(post_confirm_payload["no_prose_boundary"]["review_agent_is_not_responsible"])
+        self.assertTrue(post_confirm_payload["no_prose_boundary"]["status_card_already_refreshed_by_backend"])
         self.assertFalse(post_confirm_payload["no_prose_boundary"]["payload_contains_chapter_prose"])
         payload_text = repr(post_confirm_payload)
-        self.assertIn("chapters/0153_第153章_伊甸园的枪.md", payload_text)
-        self.assertNotIn("正文153", payload_text)
-        self.assertNotIn("正文154", payload_text)
-        self.assertNotIn("正文155", payload_text)
+        self.assertIn("chapters/0153_", payload_text)
+        self.assertNotIn("顾沉在月港北站查到失火名单", payload_text)
+        self.assertNotIn("影子债主第一次公开露面", payload_text)
+        self.assertNotIn("暴雨切断城区电力后", payload_text)
 
         repo_dir = self.temp_dir / book_id
         mainline = body["mainline_branch"]
-        archived_153 = self._git(repo_dir, "show", f"{mainline}:chapters/0153_第153章_伊甸园的枪.md")
-        archived_154 = self._git(repo_dir, "show", f"{mainline}:chapters/0154_第154章_影子.md")
-        archived_155 = self._git(repo_dir, "show", f"{mainline}:chapters/0155_第155章_Veto桌上的神.md")
-        self.assertIn("## 第153章 伊甸园的枪\n正文153", archived_153)
-        self.assertIn("## 第154章 影子\n正文154", archived_154)
-        self.assertIn("## 第155章 Veto桌上的神\n正文155", archived_155)
+        chapters_by_number = {item["number"]: item for item in body["materialized_chapters"]}
+        archived_153 = self._git(repo_dir, "show", f"{mainline}:{chapters_by_number[153]['file_name']}")
+        archived_154 = self._git(repo_dir, "show", f"{mainline}:{chapters_by_number[154]['file_name']}")
+        archived_155 = self._git(repo_dir, "show", f"{mainline}:{chapters_by_number[155]['file_name']}")
+        self.assertIn("第153章 月港北站的失火名单", archived_153)
+        self.assertIn("顾沉在月港北站查到失火名单", archived_153)
+        self.assertIn("第154章 影子", archived_154)
+        self.assertIn("影子债主第一次公开露面", archived_154)
+        self.assertIn("第155章 雨夜里的白名单", archived_155)
+        self.assertIn("暴雨切断城区电力后", archived_155)
+
+        summary = self._git(repo_dir, "show", f"{mainline}:summary.md")
+        self.assertIn("LONGFORM_LAYERED_ARCHIVE_V1", summary)
+        self.assertIn("第153-155章", summary)
+        status_card = self._git(repo_dir, "show", f"{mainline}:status_card.md")
+        self.assertIn("第153-155章", status_card)
+        self.assertIn("最新批次", status_card)
+        latest_commit_subject = self._git(repo_dir, "log", "-1", "--pretty=%s")
+        self.assertEqual(latest_commit_subject, "archive bridge: refresh status card")
 
         reset_draft = self._git(repo_dir, "show", f"{mainline}:chapter_draft.md")
         self.assertIn("# 续写草稿", reset_draft)
-        self.assertNotIn("正文153", reset_draft)
-        self.assertNotIn("正文154", reset_draft)
-        self.assertNotIn("正文155", reset_draft)
+        self.assertNotIn("顾沉在月港北站查到失火名单", reset_draft)
+        self.assertNotIn("影子债主第一次公开露面", reset_draft)
+        self.assertNotIn("暴雨切断城区电力后", reset_draft)
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
     def test_confirm_refuses_conflicting_existing_chapter_archive(self):

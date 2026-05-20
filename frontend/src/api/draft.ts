@@ -14,6 +14,37 @@ export interface MaterializedChapter {
     end_line?: number;
 }
 
+export interface PostConfirmArchiveBridge {
+    status: 'success' | 'failed' | string;
+    stage?: string;
+    error?: string;
+    steps?: Array<{
+        name: string;
+        status?: string;
+        commit_id?: string | null;
+        updated_files?: string[];
+        chapter_count?: number;
+        total_batches?: number;
+        latest_batch_label?: string;
+    }>;
+    summary_result?: {
+        status?: string;
+        commit_id?: string | null;
+        updated_files?: string[];
+        chapter_count?: number;
+        total_batches?: number;
+        [key: string]: unknown;
+    };
+    status_projection?: {
+        status?: string;
+        commit_id?: string | null;
+        updated_files?: string[];
+        latest_batch_label?: string;
+        latest_batch?: Record<string, unknown>;
+        [key: string]: unknown;
+    };
+}
+
 export interface PostConfirmWorldPayload {
     status: 'pending';
     action: 'post_confirm_world_distill';
@@ -29,6 +60,7 @@ export interface PostConfirmWorldPayload {
         file_name: string;
         status: string;
     }>;
+    archive_bridge?: PostConfirmArchiveBridge;
     required_writes: string[];
     optional_writes: string[];
     forbidden_writes: string[];
@@ -36,6 +68,7 @@ export interface PostConfirmWorldPayload {
         payload_contains_chapter_prose: boolean;
         world_model_route_must_not_rewrite_prose: boolean;
         review_agent_is_not_responsible: boolean;
+        status_card_already_refreshed_by_backend?: boolean;
     };
 }
 
@@ -48,6 +81,8 @@ export interface DraftConfirmResponse extends DraftResponse {
     draft_branch_deleted?: boolean;
     materialized_chapters?: MaterializedChapter[];
     chapter_canon_commit_id?: string;
+    chapter_draft_reset_commit_id?: string;
+    post_confirm_archive_bridge?: PostConfirmArchiveBridge | null;
     post_confirm_actions?: Array<{
         action: string;
         agent_key: string;
