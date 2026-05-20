@@ -185,6 +185,104 @@ class V72SummaryArchivePipelineTests(unittest.TestCase):
         self.assertEqual(self._git("rev-parse", "HEAD"), before_head)
         self.assertEqual(self._git("status", "--short"), "")
 
+    def test_pipeline_repairs_malformed_json_once_before_accepting_batch(self):
+        prompts: list[str] = []
+
+        def fake_model(prompt: str) -> str:
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return '{"批次概览": ["第1-2章推进了本批主线。"], "章节索引": ['
+            self.assertIn("JSON 语法修复器", prompt)
+            self.assertIn("只修复语法", prompt)
+            return _batch_payload(start=1, end=2, chapters=[1, 2])
+
+        result = pipeline.run_pipeline(
+            book_id="book",
+            book_dir=self.repo_dir,
+            book_name="summary book",
+            invoke_model=fake_model,
+            max_retries=0,
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(prompts), 2)
+        summary = (self.repo_dir / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("## 章节索引", summary)
+        self.assertNotIn("JSON 语法修复器", summary)
+        self.assertEqual(self._git("status", "--short"), "")
+
+    def test_pipeline_rejects_json_repair_that_still_misses_coverage(self):
+        before_head = self._git("rev-parse", "HEAD")
+        prompts: list[str] = []
+
+        def fake_model(prompt: str) -> str:
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return '{"批次概览": ["第1-2章推进了本批主线。"], "章节索引": ['
+            return _batch_payload(start=1, end=2, chapters=[1])
+
+        with self.assertRaisesRegex(RuntimeError, "未覆盖"):
+            pipeline.run_pipeline(
+                book_id="book",
+                book_dir=self.repo_dir,
+                book_name="summary book",
+                invoke_model=fake_model,
+                max_retries=0,
+            )
+
+        self.assertEqual(len(prompts), 2)
+        self.assertFalse((self.repo_dir / "summary.md").exists())
+        self.assertEqual(self._git("rev-parse", "HEAD"), before_head)
+        self.assertEqual(self._git("status", "--short"), "")
+
+    def test_pipeline_repairs_validation_failure_before_accepting_batch(self):
+        prompts: list[str] = []
+
+        def fake_model(prompt: str) -> str:
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return _batch_payload(start=1, end=2, chapters=[1])
+            self.assertIn("上一次输出没有通过后端校验", prompt)
+            self.assertIn("必须覆盖本批全部章节：第1章、第2章", prompt)
+            return _batch_payload(start=1, end=2, chapters=[1, 2])
+
+        result = pipeline.run_pipeline(
+            book_id="book",
+            book_dir=self.repo_dir,
+            book_name="summary book",
+            invoke_model=fake_model,
+            max_retries=0,
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(prompts), 2)
+        summary = (self.repo_dir / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("- 第2章《第二章》：第2章的关键剧情被归档。", summary)
+        self.assertNotIn("上一次输出没有通过后端校验", summary)
+        self.assertEqual(self._git("status", "--short"), "")
+
+    def test_pipeline_rejects_validation_repair_that_still_misses_coverage(self):
+        before_head = self._git("rev-parse", "HEAD")
+        prompts: list[str] = []
+
+        def fake_model(prompt: str) -> str:
+            prompts.append(prompt)
+            return _batch_payload(start=1, end=2, chapters=[1])
+
+        with self.assertRaisesRegex(RuntimeError, "未覆盖"):
+            pipeline.run_pipeline(
+                book_id="book",
+                book_dir=self.repo_dir,
+                book_name="summary book",
+                invoke_model=fake_model,
+                max_retries=0,
+            )
+
+        self.assertEqual(len(prompts), 2)
+        self.assertFalse((self.repo_dir / "summary.md").exists())
+        self.assertEqual(self._git("rev-parse", "HEAD"), before_head)
+        self.assertEqual(self._git("status", "--short"), "")
+
     def test_pipeline_batches_by_byte_limit_and_reports_progress(self):
         events: list[dict] = []
 

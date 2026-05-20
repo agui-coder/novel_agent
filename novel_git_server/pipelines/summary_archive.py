@@ -28,7 +28,7 @@ from utils.git_utils import (
 
 ARCHIVE_MARKER = "LONGFORM_LAYERED_ARCHIVE_V1"
 DEFAULT_MAX_BATCH_BYTES = 240_000
-DEFAULT_MAX_BATCH_CHAPTERS = 25
+DEFAULT_MAX_BATCH_CHAPTERS = 15
 DEFAULT_MAX_WORKERS = 4
 DEFAULT_MAX_RETRIES = 1
 SUMMARY_COMMIT_MESSAGE_PREFIX = "[AI_Summary]"
@@ -43,6 +43,10 @@ REQUIRED_ARCHIVE_FIELDS = (
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 ModelInvoker = Callable[[str], str]
+
+
+class MalformedJsonError(ValueError):
+    """Raised when the model output cannot be parsed as JSON syntax."""
 
 
 @dataclass(frozen=True)
@@ -205,18 +209,95 @@ def _extract_json_payload(text: str) -> dict[str, Any]:
     raw = _strip_code_fence(text)
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as first_error:
         start = raw.find("{")
         end = raw.rfind("}")
         if start < 0 or end < start:
-            raise ValueError("模型未返回 JSON 对象") from None
-        data = json.loads(raw[start : end + 1])
+            raise MalformedJsonError("模型未返回 JSON 对象") from first_error
+        try:
+            data = json.loads(raw[start : end + 1])
+        except json.JSONDecodeError as second_error:
+            raise MalformedJsonError(f"模型返回的 JSON 语法无效：{second_error}") from second_error
     if not isinstance(data, dict):
         raise ValueError("模型返回的 JSON 根节点不是对象")
     nested = data.get("批次归档")
     if isinstance(nested, dict):
         return nested
     return data
+
+
+def _build_json_repair_prompt(
+    *,
+    malformed_answer: str,
+    parse_error: Exception,
+    batch: list[ChapterInput],
+    batch_index: int,
+    total_batches: int,
+) -> str:
+    start = batch[0].index
+    end = batch[-1].index
+    expected_chapters = "、".join(f"第{chapter.index}章" for chapter in batch)
+    return f"""你是后端 JSON 语法修复器。
+
+任务：
+- 下面是一段模型返回的摘要归档 JSON，但它的 JSON 语法无效。
+- 只修复语法，让它变成合法 JSON 对象。
+- 不要新增事实，不要扩写内容，不要改写为 Markdown，不要输出代码块，不要寒暄。
+- 所有键名必须继续使用中文。
+- “章节索引”必须覆盖：{expected_chapters}。如果原文里已经有这些章节条目，请只修复语法；不要凭空补剧情。
+
+必须保留的 JSON 形状：
+{{
+  "批次概览": ["中文条目"],
+  "章节索引": [
+    {{"章号": {start}, "标题": "章节标题", "简述": "中文简述"}}
+  ],
+  "不可逆事实": ["中文条目"],
+  "未闭合线索与承诺": ["中文条目"],
+  "关系与状态变化": ["中文条目"],
+  "下游创作约束": ["中文条目"]
+}}
+
+批次：{batch_index}/{total_batches}
+章节范围：第{start}-{end}章
+解析错误：{parse_error}
+
+待修复内容：
+{malformed_answer}
+"""
+
+
+def _build_validation_repair_prompt(
+    *,
+    original_prompt: str,
+    validation_error: Exception,
+    batch: list[ChapterInput],
+    batch_index: int,
+    total_batches: int,
+) -> str:
+    start = batch[0].index
+    end = batch[-1].index
+    expected_chapters = "、".join(f"第{chapter.index}章" for chapter in batch)
+    return f"""{original_prompt}
+
+---
+
+上一次输出没有通过后端校验。
+
+校验错误：{validation_error}
+
+请重新输出完整、合法、可校验的 JSON 对象。
+
+硬性要求：
+- 只返回 JSON 对象，不要 Markdown，不要代码块，不要寒暄。
+- 必须覆盖本批全部章节：{expected_chapters}。
+- “章节索引”必须一章一条，不得合并章节范围，不得遗漏第{start}-{end}章中的任何一章。
+- 所有解释、总结、项目内容必须使用简体中文。
+- 不要新增原文不存在的剧情事实；只能根据上方原文重新归档。
+
+批次：{batch_index}/{total_batches}
+章节范围：第{start}-{end}章
+"""
 
 
 _CONVERSATIONAL_PREFIX_RE = re.compile(
@@ -394,12 +475,55 @@ def _run_batch_with_retries(
             answer = invoker(prompt)
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError(f"summary archive batch {batch_index}/{total_batches} returned empty output")
-            return _parse_batch_answer(
-                answer,
-                batch,
-                batch_index=batch_index,
-                total_batches=total_batches,
-            )
+            try:
+                return _parse_batch_answer(
+                    answer,
+                    batch,
+                    batch_index=batch_index,
+                    total_batches=total_batches,
+                )
+            except MalformedJsonError as parse_error:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RuntimeError("summary pipeline cancelled") from parse_error
+                repair_prompt = _build_json_repair_prompt(
+                    malformed_answer=answer,
+                    parse_error=parse_error,
+                    batch=batch,
+                    batch_index=batch_index,
+                    total_batches=total_batches,
+                )
+                repaired_answer = invoker(repair_prompt)
+                if not isinstance(repaired_answer, str) or not repaired_answer.strip():
+                    raise RuntimeError(
+                        f"summary archive batch {batch_index}/{total_batches} JSON repair returned empty output"
+                    ) from parse_error
+                return _parse_batch_answer(
+                    repaired_answer,
+                    batch,
+                    batch_index=batch_index,
+                    total_batches=total_batches,
+                )
+            except ValueError as validation_error:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RuntimeError("summary pipeline cancelled") from validation_error
+                repair_prompt = _build_validation_repair_prompt(
+                    original_prompt=prompt,
+                    validation_error=validation_error,
+                    batch=batch,
+                    batch_index=batch_index,
+                    total_batches=total_batches,
+                )
+                repaired_answer = invoker(repair_prompt)
+                if not isinstance(repaired_answer, str) or not repaired_answer.strip():
+                    raise RuntimeError(
+                        f"summary archive batch {batch_index}/{total_batches} validation repair returned empty output"
+                    ) from validation_error
+                return _parse_batch_answer(
+                    repaired_answer,
+                    batch,
+                    batch_index=batch_index,
+                    total_batches=total_batches,
+                )
         except Exception as exc:  # retry only inside the bounded batch worker
             last_error = exc
             if attempt >= max(0, max_retries):
