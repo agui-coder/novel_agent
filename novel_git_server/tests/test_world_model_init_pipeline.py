@@ -423,6 +423,35 @@ class WorldModelInitPipelineTests(unittest.TestCase):
         self.assertIn("双线推进", content)
         self.assertIn("证据：CH4-6 本段约束增量", content)
 
+    def test_refresh_status_projection_commits_latest_summary_tail_only(self):
+        repo_dir = self._init_book_repo()
+        (repo_dir / "world_model.md").write_text(WORLD_MODEL_MARKDOWN, encoding="utf-8")
+        (repo_dir / "status_card.md").write_text("# 状态卡片\n\n- 当前节奏阶段：旧阶段\n", encoding="utf-8")
+        self._git(repo_dir, "add", "world_model.md", "status_card.md")
+        self._git(repo_dir, "commit", "-m", "seed world status")
+
+        with patch.object(pipeline, "_build_llm", side_effect=AssertionError("LLM should not run")):
+            result = pipeline.refresh_status_projection(
+                str(repo_dir),
+                str(repo_dir / "summary.md"),
+                commit_message="archive bridge: refresh status card",
+            )
+
+        self.assertEqual(result["status"], "updated")
+        self.assertEqual(result["updated_files"], ["status_card.md"])
+        self.assertTrue(result["commit_id"])
+        self.assertEqual(result["latest_batch_label"], "第4-6章")
+        self.assertEqual(self._git(repo_dir, "log", "-1", "--pretty=%s"), "archive bridge: refresh status card")
+        changed = set(self._git(repo_dir, "show", "--name-only", "--format=", "HEAD").splitlines())
+        self.assertEqual(changed, {"status_card.md"})
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+        status_card = (repo_dir / "status_card.md").read_text(encoding="utf-8")
+        self._assert_required_status_fields(status_card)
+        self.assertIn("最新批次：第4-6章", status_card)
+        self.assertIn("当前核心驱动是追查阿撒托斯污染源", status_card)
+        self.assertNotIn("旧阶段", status_card)
+
     def test_extraction_and_verify_prompts_require_constraint_lifecycle(self):
         for prompt in (pipeline.EXTRACTION_PROMPT, pipeline.VERIFY_PROMPT):
             self.assertIn("约束生命周期协议", prompt)

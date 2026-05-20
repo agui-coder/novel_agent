@@ -182,6 +182,7 @@ STATUS_CARD_REQUIRED_FIELDS = [
 
 UNKNOWN_VALUE = "待确认"
 STATUS_CARD_REPAIR_COMMIT_MESSAGE = "batch init: initialize status card"
+STATUS_CARD_REFRESH_COMMIT_MESSAGE = "archive bridge: refresh status card"
 
 WORLD_FACT_CATEGORIES = set(REQUIRED_SECTIONS)
 WORLD_FACT_LIFECYCLES = {
@@ -1156,6 +1157,39 @@ def _populate_status_card(
     return "status_card.md"
 
 
+def refresh_status_projection(
+    book_dir: str,
+    summary_path: str,
+    *,
+    force: bool = True,
+    commit_message: str = STATUS_CARD_REFRESH_COMMIT_MESSAGE,
+    world_facts: list[WorldFact] | None = None,
+) -> dict[str, Any]:
+    """Refresh status_card.md from the latest summary batch and commit it.
+
+    This helper is intentionally status-only. It is used by post-confirm archive
+    bridges after summary.md has already been refreshed, and it must not extract
+    world facts, call Dify, or mutate world_model.md/domain_rules.md.
+    """
+    changed_file = _populate_status_card(
+        book_dir,
+        summary_path,
+        force=force,
+        world_facts=world_facts,
+    )
+    commit_id = _commit_files(book_dir, ["status_card.md"], commit_message) if changed_file else None
+    batches = parse_summary_batches(summary_path)
+    latest_batch = batches[-1] if batches else {}
+    latest_batch_label = _batch_range_label(latest_batch) if latest_batch else ""
+    return {
+        "status": "updated" if changed_file else "unchanged",
+        "updated_files": [changed_file] if changed_file else [],
+        "commit_id": commit_id,
+        "latest_batch_label": latest_batch_label,
+        "latest_batch": latest_batch,
+    }
+
+
 def run_pipeline(
     book_id: str,
     book_dir: str,
@@ -1181,12 +1215,13 @@ def run_pipeline(
     if _is_extraction_done(book_dir) and not force_rebuild:
         log.info("Verified extraction already done.")
         try:
-            _populate_status_card(book_dir, summary_path, force=False)
-            status_commit = _commit_files(
+            status_projection = refresh_status_projection(
                 book_dir,
-                ["status_card.md"],
-                STATUS_CARD_REPAIR_COMMIT_MESSAGE,
+                summary_path,
+                force=False,
+                commit_message=STATUS_CARD_REPAIR_COMMIT_MESSAGE,
             )
+            status_commit = status_projection.get("commit_id")
         except Exception as e:
             log.error("Status card repair failed after verified extraction skip: %s", e, exc_info=True)
             if sse_queue:
@@ -1221,6 +1256,7 @@ def run_pipeline(
             "failed_batches": [],
             "skipped": True,
             "status_card_commit": status_commit,
+            "status_projection": status_projection,
             "force_rebuild": force_rebuild,
         }
 
