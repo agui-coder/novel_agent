@@ -74,10 +74,10 @@ DEFAULT_WORLD_MODEL = """# 世界模型
 
 """
 DEFAULT_SUMMARY = "# 阅读档案\n\n"
-DEFAULT_STYLE_GUIDE = "# 文风指南\n\n"
-DEFAULT_STYLE_FINGERPRINT = "# 叙事结构指纹\n\n"
-DEFAULT_STYLE_REVIEW = "# 作者可读审查\n\n"
-DEFAULT_STYLE_CONSTRAINTS_FOR_CONTINUATION = "# 续写硬约束\n\n"
+DEFAULT_STYLE_GUIDE = "# 作者文风偏好\n\n"
+DEFAULT_STYLE_FINGERPRINT = "# 原文近段手感证据\n\n"
+DEFAULT_STYLE_REVIEW = "# 草稿文风偏差提示\n\n"
+DEFAULT_STYLE_CONSTRAINTS_FOR_CONTINUATION = "# 续写文风参考卡\n\n"
 DEFAULT_STATUS_CARD = """# 状态卡片
 
 > 本文件记录当前创作运行态，服务下一章续写和即时一致性检查；不要把长期世界设定堆在这里。

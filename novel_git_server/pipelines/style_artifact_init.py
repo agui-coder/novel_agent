@@ -37,9 +37,9 @@ def _is_placeholder_artifact(content: str, file_name: str) -> bool:
     if len(lines) <= 1 and lines[0].startswith("#"):
         return True
     marker_by_file = {
-        "style_fingerprint.md": "# 叙事结构指纹",
-        "style_review.md": "# 作者可读审查",
-        "style_constraints_for_continuation.md": "# 续写硬约束",
+        "style_fingerprint.md": "# 原文近段手感证据",
+        "style_review.md": "# 草稿文风偏差提示",
+        "style_constraints_for_continuation.md": "# 续写文风参考卡",
     }
     return stripped == marker_by_file.get(file_name, "").strip()
 

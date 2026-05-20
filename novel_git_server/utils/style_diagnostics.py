@@ -881,7 +881,7 @@ def build_style_gate(
     return {
         "status": "pass" if overall_pass else "fail",
         "overall_pass": overall_pass,
-        "reason": "全部草稿处于硬门禁内。" if overall_pass else "至少一个草稿章节触发文风漂移门禁。",
+        "reason": "全部草稿的文风诊断处于参考范围内。" if overall_pass else "至少一个草稿章节出现文风偏差提示。",
         "baseline": asdict(baseline),
         "drafts": draft_results,
         "tolerances": STYLE_TOLERANCES,
@@ -932,6 +932,20 @@ def _baseline_snapshot_json_block(baseline: StyleMetrics) -> str:
     )
 
 
+def _style_status_label(status: Any) -> str:
+    labels = {
+        "pass": "接近原文参考",
+        "fail": "有明显偏差提示",
+        "warn": "有轻微偏差提示",
+        "baseline_only": "只有原文基准",
+        "not_applicable": "暂无可诊断样本",
+        "not_needed": "暂无需调整",
+        "required": "建议作者判断",
+        "unknown": "未知",
+    }
+    return labels.get(str(status or "unknown"), str(status or "未知"))
+
+
 def _review_explanation(name: str, state: str) -> str:
     high = {
         "对白推进度": "人物更依赖说话推进，容易削弱场景、动作和沉默的叙事重量。",
@@ -964,7 +978,9 @@ def build_style_fingerprint(book_dir: Path, source_count: int, metrics: list[Sty
     source_label = ", ".join(path.name for path in source_files) if source_files else "无可用原文章节"
     return "\n".join(
         [
-            "# 叙事结构指纹",
+            "# 原文近段手感证据",
+            "",
+            "> 这是从最近原文章节蒸馏出的证据页，只回答“原文最近怎么写”。它不是文风命令，也不决定草稿能否继续推进。",
             "",
             "## 输入样本",
             "",
@@ -990,11 +1006,11 @@ def build_style_fingerprint(book_dir: Path, source_count: int, metrics: list[Sty
 
 def _style_gate_markdown(gate: dict[str, Any]) -> str:
     lines = [
-        "## 机器门禁摘要",
+        "## 诊断摘要",
         "",
-        f"- 总体状态：{gate.get('status', 'unknown')}",
+        f"- 总体状态：{_style_status_label(gate.get('status', 'unknown'))}",
         f"- 判定说明：{gate.get('reason', '')}",
-        f"- 软偏差上限：每章最多 {gate.get('max_warnings_per_draft', STYLE_MAX_WARNINGS_PER_DRAFT)} 项；硬偏差倍率：{gate.get('hard_multiplier', STYLE_HARD_MULTIPLIER)}。",
+        f"- 参考方式：每章最多记录 {gate.get('max_warnings_per_draft', STYLE_MAX_WARNINGS_PER_DRAFT)} 项轻微提示；明显偏差倍率为 {gate.get('hard_multiplier', STYLE_HARD_MULTIPLIER)}，只用于提示作者和续写 Agent 做局部语言判断。",
         "",
     ]
     for draft in gate.get("drafts", []):
@@ -1002,27 +1018,29 @@ def _style_gate_markdown(gate: dict[str, Any]) -> str:
             [
                 f"### {draft.get('label', '草稿')}",
                 "",
-                f"- 门禁 profile：{(draft.get('gate_profile') or {}).get('name', 'unknown')}",
-                f"- 状态：{draft.get('status')}；硬失败 {draft.get('fail_count', 0)} 项，软警告 {draft.get('warn_count', 0)} 项。",
+                f"- 诊断配置：{(draft.get('gate_profile') or {}).get('name', 'unknown')}",
+                f"- 状态：{_style_status_label(draft.get('status'))}；明显偏差 {draft.get('fail_count', 0)} 项，轻微提示 {draft.get('warn_count', 0)} 项。",
             ]
         )
         red_flags = draft.get("red_flags") or []
         if red_flags:
             for item in red_flags:
-                lines.append(f"- {item['metric_label']}：{item['status']}。{item['recommendation']}")
+                lines.append(f"- {item['metric_label']}：{_style_status_label(item['status'])}。{item['recommendation']}")
         else:
-            lines.append("- 未触发文风漂移红旗。")
+            lines.append("- 暂无需要特别关注的文风偏差。")
         lines.append("")
     return "\n".join(lines)
 
 
 def build_style_review(metrics: list[StyleMetrics], source_count: int, gate: dict[str, Any] | None = None) -> str:
     if not metrics:
-        return "# 作者可读审查\n\n暂无可审查样本。\n"
+        return "# 草稿文风偏差提示\n\n暂无可审查样本。\n"
     baseline = metrics[0]
     drafts = metrics[1:]
     lines = [
-        "# 作者可读审查",
+        "# 草稿文风偏差提示",
+        "",
+        "> 这是给作者看的草稿偏差提示，用来决定是否需要人工打磨或让续写 Agent 做局部语言修订；它不推翻剧情、不替代审核，也不单独卡死演示流程。",
         "",
         "## 原文近段基准",
         "",
@@ -1072,11 +1090,13 @@ def build_style_review(metrics: list[StyleMetrics], source_count: int, gate: dic
 
 def build_continuation_constraints(metrics: list[StyleMetrics]) -> str:
     if not metrics:
-        return "# 续写硬约束\n\n暂无原文基准，续写前必须先生成叙事结构指纹。\n"
+        return "# 续写文风参考卡\n\n暂无原文基准。续写时请先参考最近原文、作者偏好和章节任务，不要把本页当成硬性命令。\n"
     baseline = metrics[0]
     return "\n".join(
         [
-            "# 续写硬约束",
+            "# 续写文风参考卡",
+            "",
+            "> 本页是给 continuation Agent 的软参考卡，只调整叙述节奏、句式、对白比例和信息释放方式。剧情事件、人物动机、世界状态、章节任务和审核结论优先级更高。",
             "",
             "## 当前基准快照",
             "",
@@ -1084,7 +1104,7 @@ def build_continuation_constraints(metrics: list[StyleMetrics]) -> str:
             "",
             _baseline_snapshot_json_block(baseline),
             "",
-            "## 数值边界",
+            "## 参考范围",
             "",
             f"- 句式呼吸：目标区间 {_band(baseline.avg_sentence, 0.15)}。",
             f"- 段落节拍：目标区间 {_band(baseline.avg_para, 0.20)}。",
@@ -1095,15 +1115,15 @@ def build_continuation_constraints(metrics: list[StyleMetrics]) -> str:
             f"- 设定解释度：目标区间 {_band(baseline.exposition_density, 0.35)} / 千字。",
             f"- 悬念留白度：目标区间 {_band(baseline.suspense_density, 0.35)} / 千字。",
             "",
-            "## 写作硬约束",
+            "## 写作参考",
             "",
-            "- 每章写完后先自检篇幅，再对照以上指标做一次局部扩写或删改，复验后才能进入下一章。",
+            "- 每章写完后先自检篇幅，再对照以上参考范围判断是否需要局部扩写或删改；文风提示本身不决定是否进入下一章。",
             "- 对白只能承担关键冲突和信息转折，不能用连续问答替代场景推进。",
             "- 设定、流程、计划必须落到人物动作、空间压力、判断失误或代价后果上。",
             "- 环境描写必须服务人物选择，不允许每段都堆感官气氛。",
             "- 段落过重时增加自然换气点；段落过碎时合并同一动作链。",
             "- 文风复写只能改变语言质感和叙事节奏，不得改剧情事件、胜负结果、人物动机和章节事实。",
-            "- 若机器门禁返回 fail，必须只由续写 Agent 基于原文约束重写或局部替换当前章节；外部助手不得直接改正文。",
+            "- 若诊断提示明显偏差，续写 Agent 只能在不改变剧情事件、胜负结果、人物动机、世界状态和章节事实的前提下，参考原文近段与作者偏好做局部语言修正；外部助手不得直接改正文。",
             "",
         ]
     )

@@ -39,7 +39,7 @@ class V31AddressingTests(unittest.TestCase):
         self.assertTrue((book_dir / "style_guide.md").exists())
         self.assertTrue((book_dir / "status_card.md").exists())
         self.assertTrue((book_dir / "error_archive.md").exists())
-        self.assertEqual((book_dir / "style_guide.md").read_text(encoding="utf-8"), "# 文风指南\n\n")
+        self.assertEqual((book_dir / "style_guide.md").read_text(encoding="utf-8"), "# 作者文风偏好\n\n")
         self.assertIn("下一章约束", (book_dir / "status_card.md").read_text(encoding="utf-8"))
         self.assertEqual((book_dir / "error_archive.md").read_text(encoding="utf-8"), "# 错误档案\n\n")
 
@@ -72,7 +72,7 @@ class V31AddressingTests(unittest.TestCase):
 
         self.assertTrue(book_dir.exists())
         self.assertTrue((book_dir / "style_guide.md").exists())
-        self.assertEqual((book_dir / "style_guide.md").read_text(encoding="utf-8"), "# 文风指南\n\n")
+        self.assertEqual((book_dir / "style_guide.md").read_text(encoding="utf-8"), "# 作者文风偏好\n\n")
         self.assertTrue((book_dir / "status_card.md").exists())
         self.assertTrue((book_dir / "error_archive.md").exists())
         self.assertIn("当前创作运行态", (book_dir / "status_card.md").read_text(encoding="utf-8"))
