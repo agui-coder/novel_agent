@@ -193,18 +193,19 @@ class V67TomatoImportApiTests(unittest.TestCase):
         repo_dir = self.storage_root / "summary_clean_case"
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
-        archive_answer = "\n".join(
-            [
-                "LONGFORM_LAYERED_ARCHIVE_V1",
-                "## Batch Archive: CH1-CH2",
-                "",
-                "## Batch Overview",
-                "- two chapter archive summary",
-                "",
-                "## Batch Index",
-                "- CH1 opening state",
-                "- CH2 forward state",
-            ]
+        archive_answer = json.dumps(
+            {
+                "批次概览": ["两章源文本已经归档，说明必须保持中文。"],
+                "章节索引": [
+                    {"章号": 1, "标题": "第一章", "简述": "第一章记录开局状态。"},
+                    {"章号": 2, "标题": "第二章", "简述": "第二章记录推进状态。"},
+                ],
+                "不可逆事实": ["第一章和第二章已经导入为源章节。"],
+                "未闭合线索与承诺": ["后续仍需根据源章节继续归档。"],
+                "关系与状态变化": ["本批没有明确新增，但保留前文状态。"],
+                "下游创作约束": ["后续模块必须以源章节事实为准。"],
+            },
+            ensure_ascii=False,
         )
 
         with (
