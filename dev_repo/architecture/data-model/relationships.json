@@ -239,8 +239,18 @@
       "to": "KnowledgeFile",
       "cardinality": "many:1",
       "kind": "backend-derived-summary-archive",
-      "deletion_semantics": "summary.md is invalidated when source chapters are deleted or fully replaced. Future first-create/rebuild is owned by the backend summary archive pipeline; historical Dify-generated summary.md files remain valid book history. New backend output is rendered only after structured batch validation proves chapter coverage and required sections.",
-      "source_artifacts": ["chapters/*.md", "summary.md", "novel_git_server/pipelines/summary_archive.py", "novel_git_server/agents/tomato_import.py"],
+      "deletion_semantics": "summary.md is invalidated when source chapters are deleted, fully replaced, or extended by accepted continuation canonization. Future first-create/rebuild and post-confirm archive refresh are owned by the backend summary archive pipeline; historical Dify-generated summary.md files remain valid book history. New backend output is rendered only after structured batch validation proves chapter coverage and required sections.",
+      "source_artifacts": ["chapters/*.md", "summary.md", "novel_git_server/pipelines/summary_archive.py", "novel_git_server/agents/tomato_import.py", "/api/draft/confirm"],
+      "confidence": "confirmed"
+    },
+    {
+      "id": "post-confirm-archive-bridge-projects-status",
+      "from": "KnowledgeFile",
+      "to": "KnowledgeFile",
+      "cardinality": "1:1",
+      "kind": "post-confirm-derived-status-projection",
+      "deletion_semantics": "status_card.md projection is invalidated when post-confirm summary.md refresh succeeds for a newer accepted chapter range. The projection must read the fresh summary tail and fail or report a retryable derived-step error instead of silently projecting from stale summary evidence.",
+      "source_artifacts": ["summary.md", "status_card.md", "chapters/*.md", "novel_git_server/pipelines/summary_archive.py", "novel_git_server/pipelines/world_model_init.py", "/api/draft/confirm"],
       "confidence": "confirmed"
     },
     {

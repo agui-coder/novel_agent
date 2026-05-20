@@ -40,7 +40,7 @@
 - Rolling review packets, review recommendations, and human unlock artifacts are derived evidence inside `RollingProductionRun`. They may explain or release a hard scheduler block, but they must not become hidden source prose or hidden outline source.
 - Review Agent recommendations are not human approval. A hard failed quality gate may release a blocked structural action only when an explicit human unlock artifact is bound to the same `book_id`, chapter number, gate source, and blocked action. Style advisory failures do not require unlock.
 - The review route may write only `error_archive.md`; it must not materialize or update `chapter_draft.md`. Its hard scope is plot continuity, world/status consistency, causal chain, chapter-card fulfillment, and unresolved `WORLD_MODEL_REQUIRED` risk.
-- The review route may not materialize `chapters/*.md`, update `status_card.md`, or update `world_model.md`. Post-confirm state maintenance belongs to the world route, with `status_card.md` as the routine accepted-batch target and `world_model.md` reserved for durable constraint changes.
+- The review route may not materialize `chapters/*.md`, update `summary.md`, update `status_card.md`, or update `world_model.md`. Post-confirm derived maintenance is staged from accepted `ChapterFile` artifacts to backend `summary.md` refresh, backend `status_card.md` projection, then optional world-route durable updates. `world_model.md` remains reserved for durable constraint changes.
 
 ## Draft And Git
 

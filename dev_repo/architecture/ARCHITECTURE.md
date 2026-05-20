@@ -93,6 +93,14 @@ This mirrors the world/style promptless initialization boundary: import and summ
 
 New backend summary generation is schema-locked. Model calls may run in parallel for small extraction batches, but each call returns structured batch data; the backend then validates coverage and required sections, rejects conversational assistant preambles, sorts by chapter range, builds the top index, and renders the final Chinese Markdown deterministically. Parallel extraction is an implementation detail and never changes Dify ownership or final archive ordering.
 
+### Post-Confirm Archive Bridge
+
+Accepted continuation batches have a derived-state bridge after canonization. Once `/api/draft/confirm` successfully materializes accepted `chapter_draft.md` sections into formal `chapters/*.md`, the backend may run a fixed archive bridge that first refreshes `summary.md` through the backend summary archive pipeline and then refreshes `status_card.md` through the backend status projection helper. This keeps the next continuation batch anchored to the latest formal chapter range rather than an old summary tail.
+
+The bridge is deterministic orchestration, not authorship. It must not generate, rewrite, summarize, polish, or expand chapter prose. It must not call Dify `reading_archive_agent`, route derived state maintenance through the review Agent, or hide progress in chat messages. If summary or status projection fails after chapter canonization, accepted chapters remain canon and the bridge reports a retryable derived-step failure instead of rolling back accepted prose.
+
+`world_model.md` and `domain_rules.md` remain optional world-route targets after the backend bridge. They should be updated only when accepted chapters introduce durable story rules, identities, timeline/loop state, cosmology, contradiction repairs, or reusable domain rules. Routine current-state movement belongs in `status_card.md`.
+
 ### Agent Deduction And Draft Review
 
 The workbench selects an active file. The frontend resolves an agent key, sends a stream request to Flask, and Flask routes to the matching Dify app. Dify calls LoreGit tools exposed by Flask. Material writes land on `draft/sandbox`; frontend review state is based on changed files, draft commit id, and diff preview.
@@ -123,7 +131,7 @@ Accepted continuation prose becomes canon only after the human confirms the draf
 
 `chapter_draft.md` remains the continuation Agent's review surface. The backend canonization step must not generate, rewrite, expand, polish, or summarize chapter prose. It must not clear `chapter_outline.md`, physically delete consumed cards, or treat unconfirmed draft headings as accepted canon. After successful canonization, the backend resets `chapter_draft.md` to its lightweight draft placeholder so the next rolling batch starts from a clean review surface; this reset happens only after accepted prose has been preserved in `chapters/*.md`. Rolling state should prefer formal `chapters/*.md` for accepted chapter progress while still exposing `chapter_draft.md` as pending review evidence when applicable.
 
-Post-confirm story-state maintenance belongs to the world-model route, not the review route. `status_card.md` should be refreshed after each accepted continuation batch so the next batch sees current timeline, POV, character state, open loops, and immediate obligations. `world_model.md` should update only when the accepted chapters introduce durable story rules, identities, timeline/loop state, cosmology, contradiction repairs, or other long-lived constraints. The review Agent may flag conflicts and write `error_archive.md`, but it must not approve, materialize, or update chapter canon, `status_card.md`, or `world_model.md`.
+Post-confirm story-state maintenance is staged. The backend archive bridge should refresh `summary.md` and then deterministically project `status_card.md` from the refreshed archive so the next batch sees current timeline, POV, character state, open loops, and immediate obligations. The world-model route may then update `world_model.md` or `domain_rules.md` only when the accepted chapters introduce durable story rules, identities, timeline/loop state, cosmology, contradiction repairs, or other long-lived constraints. The review Agent may flag conflicts and write `error_archive.md`, but it must not approve, materialize, or update chapter canon, `summary.md`, `status_card.md`, or `world_model.md`.
 
 ### World Model Constraint Engine
 

@@ -73,7 +73,7 @@
     {
       "pattern": "novel_git_server/pipelines/world_model_init.py",
       "node": "batch-pipeline",
-      "role": "canonical backend owner for schema-locked world facts, world_model.md rendering, and status_card.md projection initialization"
+      "role": "canonical backend owner for schema-locked world facts, world_model.md rendering, and status_card.md projection initialization/post-confirm refresh"
     },
     {
       "pattern": "novel_git_server/pipelines/*.py",
@@ -238,7 +238,7 @@
     {
       "pattern": "novel_git_server/pipelines/summary_archive.py",
       "node": "batch-pipeline",
-      "role": "schema-locked backend summary archive pipeline with concurrent extraction and deterministic Markdown rendering"
+      "role": "schema-locked backend summary archive pipeline with concurrent extraction, deterministic Markdown rendering, and post-confirm archive refresh"
     },
     {
       "pattern": "novel_git_server/pipelines/rolling_chapter.py",
@@ -405,6 +405,7 @@
       "batch pipeline execution model or section schema changes",
       "style initialization ownership between backend pipeline and Dify workflow",
       "summary archive ownership between backend pipeline and Dify reading archive workflow",
+      "post-confirm archive bridge ordering, ownership, or stale-summary retry semantics",
       "promptless workbench action launch/progress semantics",
       "continuation workbench state projection, launch, progress, or review handoff semantics",
       "structured world-facts schema or status-card projection quality-gate semantics"
@@ -425,7 +426,7 @@
       "Dify cost accounting source changes",
       "import report schema changes",
       "batch pipeline section schema or world_model.md output format changes",
-      "summary.md source/derived ownership, output format, metadata boundary, or rebuild semantics",
+      "summary.md source/derived ownership, output format, metadata boundary, rebuild semantics, or post-confirm refresh ordering",
       "world/status intermediate fact semantics, evidence anchors, or status projection acceptance semantics"
     ]
   }

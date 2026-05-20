@@ -147,7 +147,8 @@
         "Style diagnostics are rolling-loop advisory evidence by default and must not lock the scheduler without a separate hard gate.",
         "Tomato summary generation is a backend batch-pipeline job, not a Dify chat turn or reading_archive_agent workflow.",
         "Rolling workbench APIs are control-plane endpoints and must not write prose directly.",
-        "Draft confirm may deterministically canonize accepted chapter_draft.md sections into chapters/*.md, but must preserve accepted prose and fail on ambiguous or conflicting chapter files."
+        "Draft confirm may deterministically canonize accepted chapter_draft.md sections into chapters/*.md, but must preserve accepted prose and fail on ambiguous or conflicting chapter files.",
+        "After successful chapter canonization, backend post-confirm archive bridge must refresh summary.md before status_card.md projection when the bridge runs."
       ],
       "allowed_change_types": [
         "Blueprint endpoint additions",
@@ -257,7 +258,7 @@
         "Outline artifacts must distinguish SOURCE_FACT, AUTHOR_PROPOSAL, and WORLD_MODEL_REQUIRED before downstream agents treat them as constraints.",
         "Outline DISCUSS is the read-only ideation duty; outline COMMIT is the explicit landing/write duty.",
         "Continuation routes execute chapter_outline.md cards into chapter_draft.md and may write only chapter_draft.md.",
-        "Post-confirm status/world maintenance belongs to the world route; review may not update status_card.md or world_model.md.",
+        "Post-confirm durable world maintenance belongs to the world route after backend summary/status derived refresh; review may not update summary.md, status_card.md, or world_model.md.",
         "Continuation style repair may consume metric-delta evidence from deterministic gates, but the Dify route remains the only prose writer.",
         "The legacy reading_archive_agent route is retired from active summary.md ownership and must not be the default import summary path."
       ],
@@ -726,8 +727,10 @@
         "Parallelism is allowed only for intermediate summary extraction batches; final archive ordering and writeback remain serial backend responsibilities.",
         "Successful summary generation must update summary metadata and leave the per-book Git repository clean after commit.",
         "Summary archive generation must not call Dify reading_archive_agent as the active path.",
+        "Post-confirm archive bridge must refresh summary.md from accepted chapters before status_card.md projection.",
         "World/status initialization should extract validated structured world facts before deterministic Markdown rendering.",
         "world_model.md is the durable constraint rendering; status_card.md is the current-state projection from accepted world facts plus latest summary evidence.",
+        "Post-confirm status projection must use the refreshed summary tail and must not project from stale summary.md.",
         "Status-card projections with required labels but weak evidence, excessive ???, or generic values must fail closed instead of committing empty state."
       ],
       "allowed_change_types": [

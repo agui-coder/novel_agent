@@ -37,6 +37,8 @@
 - Dify reading archive workflow rows and historical runs may remain as compatibility or audit evidence, but they must not outrank backend summary archive pipeline output for future `summary.md` generation.
 - New backend `summary.md` generation must be schema-locked: model calls may run concurrently for small extraction batches, but they return structured batch data; final chapter ordering, coverage validation, top-index construction, and Markdown rendering are deterministic backend work.
 - The summary archive pipeline must fail or retry incomplete batches rather than silently writing a `summary.md` that omits source chapters, missing required sections, or conversational assistant preambles.
+- After accepted continuation prose is canonized into `chapters/*.md`, any automatic archive bridge must refresh `summary.md` through the backend summary archive pipeline before refreshing `status_card.md`; status projection must not read a stale summary tail.
+- Post-confirm status projection is a backend derived-state refresh from the refreshed `summary.md`, not a review Agent duty and not a Dify reading archive workflow.
 - Style diagnostic profile selection must be deterministic and source-evidence based. Bridge/exposition and arc-tail choice profiles may be selected from `chapter_outline.md` card evidence, but generated draft prose alone must not select a more permissive profile.
 - Style diagnostics are rolling-loop advisory evidence by default. They may inform continuation prompts and author revision, but style fail/warn metrics must not lock the scheduler unless a separate non-style hard gate is explicitly introduced by contract.
 - Outline initialization/rebuild must not stop at advice or a single outline file: explicit outline init must produce reviewable drafts for `brainstorm.md`, `master_outline.md`, `arc_outline.md`, and `chapter_outline.md`, with each layer serving its webnovel production role.
@@ -59,7 +61,7 @@
 - Chapter context packs are derived evidence. They may compact outline, world/status/domain, summary, style, error, and gate evidence into a current-chapter execution brief for the continuation Agent, but they must not contain generated prose, become hidden canon, replace outline files, or unlock the scheduler.
 - A hard blocked rolling structural action may be released only by a passing hard gate or an explicit human unlock artifact bound to the same book, chapter, gate source, and blocked action. Review Agent recommendations are advisory evidence and must not silently unlock the scheduler.
 - The review Agent may interpret rolling gate evidence and may write reusable findings only to `error_archive.md`; its hard review scope is plot continuity, world/status consistency, causal chain, chapter-card fulfillment, and unresolved `WORLD_MODEL_REQUIRED` risk. It must not write `chapter_draft.md` or turn style advice into a scheduler lock.
-- The review Agent must not materialize accepted chapters, update `status_card.md`, or update `world_model.md`. Post-confirm status/world maintenance belongs to the world-model route; `status_card.md` is the regular per-batch target, while `world_model.md` is reserved for durable story-rule or lifecycle changes.
+- The review Agent must not materialize accepted chapters, update `summary.md`, update `status_card.md`, or update `world_model.md`. Post-confirm derived maintenance is staged: backend summary archive refresh, backend status projection refresh, then optional world-route durable updates for `world_model.md` or `domain_rules.md`.
 - Deployment scripts may orchestrate, restore, start, and verify the demo runtime, but they must not generate outline cards, write novel prose, or bypass Dify Agent/LoreGit ownership.
 - Deployment scripts, examples, and compose files must not commit API keys, model credentials, private `.dify_backups`, real book workspaces, or machine-specific absolute paths as required defaults.
 
@@ -99,6 +101,7 @@ Open an architecture amendment before changing:
 - world initialization ownership between backend pipeline and Dify workflow;
 - style initialization ownership between backend pipeline and Dify workflow;
 - summary archive ownership between backend pipeline and Dify reading archive workflow;
+- post-confirm archive bridge ordering, ownership, or stale-summary retry semantics;
 - file write ownership or draft/review flow;
 - outline production-control evidence modes or world-model gating semantics;
 - continuation chapter-card execution, length-gate semantics, or `chapter_draft.md` production ownership;
