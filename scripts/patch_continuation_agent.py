@@ -66,7 +66,7 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "draft_append_markdown_section": "在 draft/sandbox 分支向指定 Markdown 文件追加完整子章节；参数必须扁平，file_name 只能是裸文件名。",
     "draft_replace_markdown_section": "在 draft/sandbox 分支替换指定 Markdown section；content 必须包含目标标题行，base_etag 必须来自最近读取结果。",
     "validate_chapter_lengths": "只读统计 chapter_draft.md 中各章节篇幅，返回非空白字符数、目标线、缺口和状态；不写文件。",
-    "generate_style_diagnostics": "只读生成文风诊断与打磨提示，把结果作为作者参考的 style_advisory；不写文件，不充当调度硬门。",
+    "generate_style_diagnostics": "只读生成文风诊断与打磨提示，把结果作为作者参考的 style_advisory；不写文件，不充当调度闸门。",
 }
 
 PROMPT_MARKERS = [
@@ -148,10 +148,17 @@ CONTINUATION_QUERY = f"""当前 book_id：{{{{#{START_NODE_ID}.book_id#}}}}
 - `chapter_outline.md`：本轮唯一章卡执行来源。
 - `arc_outline.md`、`master_outline.md`、`brainstorm.md`：只作为留存单元、读者承诺和创意边界参考。
 - `summary.md`：原文事实、最近剧情和可追溯的原文样本线索。
-- `world_model.md`、`status_card.md`、`domain_rules.md`：世界硬约束、当前状态和领域规则。
-- `style_constraints_for_continuation.md`、`style_guide.md`：style_files_imitation_reference，作为节奏、句式、禁忌和可复用文风提示，不是硬门禁。
+- `world_model.md`、`status_card.md`、`domain_rules.md`：世界不可越过边界、当前状态和领域规则。
+- `style_guide.md`：作者文风偏好，用来理解作者长期想保留的口味。
+- `style_constraints_for_continuation.md`：续写文风参考卡，用来参考节奏、句式、对白比例、信息释放和可复用提醒；它不是判罚闸门。
 - `get_archive_range` / `get_core_archive` 可读到的 latest_source_text：source_text_imitation_reference，只模仿叙述节奏、场景进入方式和信息释放方式，不照搬原文句子。
 - `error_archive.md`：必须规避的已知错误。
+
+文风使用优先级：
+- `chapter_outline.md`、`summary.md`、`world_model.md`、`status_card.md`、`domain_rules.md`、`error_archive.md` 高于全部文风参考。
+- `style_guide.md` 高于 `style_constraints_for_continuation.md`，二者都高于 latest_source_text 的表层模仿。
+- 文风参考只能调整语言质感、段落节奏、对白/动作/环境/解释比例、场景进入收束和信息释放；不得改章卡目标、剧情事实、人物动机、世界状态、胜负结果或因果链。
+- 若文风参考与章卡或真相源冲突，服从章卡与真相源，并在最终回复里简短说明哪条文风建议没有采用。
 
 CONTINUATION_PRODUCTION_LAYER_PROTOCOL:
 - 这段协议只用于内部执行，不要在最终回复中引用、复述或暴露协议名。
@@ -225,13 +232,14 @@ CHAPTER_CONTEXT_PACK_PROTOCOL:
 STYLE_ADVISORY_PROTOCOL:
 - 每章通过长度门后，立刻调用 `generate_style_diagnostics`，参数使用 book_id、source_count=12、draft_file=`chapter_draft.md`、draft_chapters=当前章号。
 - 工具返回的 `style_gate.status`、`style_gate.drafts[].red_flags`、`style_gate.drafts[].repair_plan` 是 style_advisory_diagnostics：author_revision_owner=human_author，locks_scheduler=false。
-- style_advisory fail/warn 只说明“作者可怎样改得更像原文或更合口味”，并满足 style_gate_not_scheduler_lock；只要长度、章卡、世界、状态和因果链硬边界通过，就可以继续下一章。
-- 生成新章节时，同时看 style_files_imitation_reference 和 latest_source_text：模仿原文的场景开合、信息释放、对白占比和段落呼吸；不要机械追指标，不要照搬原文句子。
+- style_advisory fail/warn 只说明“作者可怎样改得更像原文或更合口味”，并满足 style_gate_not_scheduler_lock；只要长度、章卡、世界、状态和因果链不可越过边界通过，就可以继续下一章。
+- 生成新章节时，按“作者文风偏好 > 续写文风参考卡 > 最新原文样本”的顺序使用 style_files_imitation_reference 和 latest_source_text：模仿原文的场景开合、信息释放、对白占比和段落呼吸；不要机械追指标，不要照搬原文句子。
+- style_files_imitation_reference 只负责语言手感，不负责改变事件设计；如果文风建议会冲淡章卡兑现、世界状态或人物动机，必须放弃该文风建议。
 - 最终回复要把文风结果称为 style_advisory，报告 red_flags 和可选打磨提示，不要把 style_advisory 说成硬阻塞。
 
 AUTHOR_STYLE_REVISION_PROTOCOL:
 - 只有当作者明确要求“润色/打磨/修一下这一章文风”时，才用 `style_gate.drafts[0].repair_plan` 或 `style_metric_delta` 原地替换当前章。
-- 可选文风修改只能改语言质感、段落节拍、对白/动作/环境/解释比例和叙事呼吸；不得改剧情事件、胜负结果、人物动机、状态变化、章节事实、世界状态或因果链。
+- 可选文风修改只能改语言质感、段落节拍、对白/动作/环境/解释比例和叙事呼吸；不得改剧情事件、胜负结果、人物动机、状态变化、章节事实、世界状态或因果链，也不得把文风建议凌驾于章卡和真相源之上。
 - 修订后必须重新调用 `validate_chapter_lengths`；如果低于 2200 字符，长度门仍是硬门，必须先补足当前章。
 - 外部助手不得直接写/改正文；所有正文变化只能由本 continuation 工作流通过写入工具产生。
 
@@ -251,8 +259,16 @@ CONTINUATION_PRODUCTION_LAYER_PROTOCOL:
 上下文读取顺序：
 - 先读 `chapter_outline.md`，确定本轮章卡和 section_path。
 - 再读 `arc_outline.md`、`master_outline.md`、`brainstorm.md`，校准留存单元、读者承诺和创意边界。
-- 再读 `summary.md`、`world_model.md`、`status_card.md`、`domain_rules.md`，校准原文事实、世界硬约束、当前状态、领域规则。
-- 最后读 `style_constraints_for_continuation.md` 和 `style_guide.md`，它们是 style_files_imitation_reference，只校准节奏、句式、禁忌和可复用文风提示；必要时用 `get_archive_range` / `get_core_archive` 读取 latest_source_text 作为 source_text_imitation_reference；读 `error_archive.md` 规避历史错误。
+- 再读 `summary.md`、`world_model.md`、`status_card.md`、`domain_rules.md`，校准原文事实、世界不可越过边界、当前状态、领域规则。
+- 再读 `error_archive.md`，规避历史错误。
+- 最后读 `style_guide.md` 和 `style_constraints_for_continuation.md`：前者是作者文风偏好，后者是续写文风参考卡；必要时用 `get_archive_range` / `get_core_archive` 读取 latest_source_text 作为 source_text_imitation_reference。
+
+文风使用优先级：
+1. 逐章大纲、摘要事实、世界模型、状态卡、领域规则和错误档案优先级最高。
+2. `style_guide.md` 记录作者长期偏好；`style_constraints_for_continuation.md` 记录续写参考卡；latest_source_text 只提供最近原文手感样本。
+3. 文风参考只允许调整语言质感、段落节拍、对白/动作/环境/解释比例、场景进入收束和信息释放。
+4. 文风参考不得改变 chapter_goal、entry_scene、conflict_or_obstacle、payoff、state_change、ending_hook、人物动机、世界状态、胜负结果或因果链。
+5. 如果文风参考和章卡、世界、状态、摘要事实冲突，服从真相源，并在最终回复里说明未采用的文风建议。
 
 CHAPTER_CARD_EXECUTION_PROTOCOL:
 1. 作者指定章节时执行指定章卡；未指定时执行 `chapter_outline.md` 中最靠前且尚未出现在 `chapter_draft.md` 的 1-3 张章卡。
@@ -316,13 +332,14 @@ CHAPTER_CONTEXT_PACK_PROTOCOL:
 STYLE_ADVISORY_PROTOCOL:
 1. 当前章通过长度门后，必须调用 `generate_style_diagnostics`，固定参数：source_count=12、draft_file=`chapter_draft.md`、draft_chapters=当前章号。
 2. 工具返回的 `style_gate.status`、`style_gate.drafts[].red_flags`、`style_gate.drafts[].repair_plan` 是 style_advisory_diagnostics：author_revision_owner=human_author，locks_scheduler=false。
-3. style_advisory fail/warn 只说明“作者可怎样改得更像原文或更合口味”，并满足 style_gate_not_scheduler_lock；只要长度、章卡、世界、状态和因果链硬边界通过，就可以继续下一章。
-4. 生成新章节时，同时看 style_files_imitation_reference 和 latest_source_text：模仿原文的场景开合、信息释放、对白占比和段落呼吸；不要机械追指标，不要照搬原文句子。
-5. 最终回复要把文风结果称为 style_advisory，报告 red_flags 和可选打磨提示，不要把 style_advisory 说成硬阻塞。
+3. style_advisory fail/warn 只说明“作者可怎样改得更像原文或更合口味”，并满足 style_gate_not_scheduler_lock；只要长度、章卡、世界、状态和因果链不可越过边界通过，就可以继续下一章。
+4. 生成新章节时，按“作者文风偏好 > 续写文风参考卡 > 最新原文样本”的顺序使用 style_files_imitation_reference 和 latest_source_text；模仿原文的场景开合、信息释放、对白占比和段落呼吸，不机械追指标，不照搬原文句子。
+5. 如果 style_advisory 建议会改变剧情事实、章卡兑现、人物动机、世界状态或因果链，放弃该建议，只报告为未采用的文风提示。
+6. 最终回复要把文风结果称为 style_advisory，报告 red_flags 和可选打磨提示，不要把 style_advisory 说成硬阻塞。
 
 AUTHOR_STYLE_REVISION_PROTOCOL:
 1. 只有当作者明确要求“润色/打磨/修一下这一章文风”时，才用 `style_gate.drafts[0].repair_plan` 或 `style_metric_delta` 原地替换当前章。
-2. 可选文风修改只能改语言质感、段落节拍、对白/动作/环境/解释比例和叙事呼吸；不得改剧情事件、胜负结果、人物动机、状态变化、章节事实、世界状态或因果链。
+2. 可选文风修改只能改语言质感、段落节拍、对白/动作/环境/解释比例和叙事呼吸；不得改剧情事件、胜负结果、人物动机、状态变化、章节事实、世界状态或因果链，也不得把文风建议凌驾于章卡和真相源之上。
 3. 如果 `repair_plan.metric_couplings` 非空，开篇章节可把 `avg_para` 与 `avg_sentence` 作为一组 advisory 指标：先按 shared_goal 稳定段落节拍，再按 split_trigger / merge_trigger 处理局部拆分合并，最后复验。
 4. 修订后必须重新调用 `validate_chapter_lengths`；如果低于 2200 字符，长度门仍是硬门，必须先补足当前章。
 5. 外部助手不得直接写/改正文；所有正文变化必须由本 continuation 工作流调用写入工具产生。
