@@ -11,7 +11,8 @@
     "novel_git_server/utils/dify_registry.py",
     "read-only Dify Postgres route/workflow/plugin evidence",
     "dify_workflows/*.yml as exported evidence only",
-    "docs/DEPLOYMENT.md"
+    "docs/DEPLOYMENT.md",
+    "ADR-0025-schema-locked-world-state-projection.md"
   ],
   "file_index": [
     {
@@ -72,7 +73,7 @@
     {
       "pattern": "novel_git_server/pipelines/world_model_init.py",
       "node": "batch-pipeline",
-      "role": "canonical backend owner for world_model.md and status_card.md initialization"
+      "role": "canonical backend owner for schema-locked world facts, world_model.md rendering, and status_card.md projection initialization"
     },
     {
       "pattern": "novel_git_server/pipelines/*.py",
@@ -217,7 +218,7 @@
     {
       "pattern": "novel_git_server/pipelines/world_model_init.py",
       "node": "batch-pipeline",
-      "role": "single-shot world model batch initialization pipeline"
+      "role": "canonical backend owner for schema-locked world facts, world_model.md rendering, and status_card.md projection initialization"
     },
     {
       "pattern": "novel_git_server/pipelines/extract_schema.py",
@@ -405,7 +406,8 @@
       "style initialization ownership between backend pipeline and Dify workflow",
       "summary archive ownership between backend pipeline and Dify reading archive workflow",
       "promptless workbench action launch/progress semantics",
-      "continuation workbench state projection, launch, progress, or review handoff semantics"
+      "continuation workbench state projection, launch, progress, or review handoff semantics",
+      "structured world-facts schema or status-card projection quality-gate semantics"
     ],
     "data_model": [
       "Book workspace identity or deletion semantics changes",
@@ -423,7 +425,8 @@
       "Dify cost accounting source changes",
       "import report schema changes",
       "batch pipeline section schema or world_model.md output format changes",
-      "summary.md source/derived ownership, output format, metadata boundary, or rebuild semantics"
+      "summary.md source/derived ownership, output format, metadata boundary, or rebuild semantics",
+      "world/status intermediate fact semantics, evidence anchors, or status projection acceptance semantics"
     ]
   }
 }

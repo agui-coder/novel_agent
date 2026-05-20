@@ -312,6 +312,16 @@
       "deletion_semantics": "Architecture truth is versioned; runtime contract references should remain readable.",
       "source_artifacts": ["dev_repo/architecture/**"],
       "confidence": "confirmed"
+    },
+    {
+      "id": "backend-world-pipeline-derives-knowledge-files",
+      "from": "KnowledgeFile",
+      "to": "KnowledgeFile",
+      "cardinality": "many:many",
+      "kind": "schema-locked-derived-world-state",
+      "deletion_semantics": "Structured world facts are intermediate derived validation data. Deleting or rebuilding source summary/world/status files invalidates future projections but does not create a new persisted source entity.",
+      "source_artifacts": ["summary.md", "world_model.md", "status_card.md", "novel_git_server/pipelines/world_model_init.py"],
+      "confidence": "confirmed"
     }
   ]
 }

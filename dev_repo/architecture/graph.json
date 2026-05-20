@@ -725,7 +725,10 @@
         "New summary archive generation uses schema-locked structured batch extraction followed by deterministic backend validation, ordering, index construction, and Markdown rendering.",
         "Parallelism is allowed only for intermediate summary extraction batches; final archive ordering and writeback remain serial backend responsibilities.",
         "Successful summary generation must update summary metadata and leave the per-book Git repository clean after commit.",
-        "Summary archive generation must not call Dify reading_archive_agent as the active path."
+        "Summary archive generation must not call Dify reading_archive_agent as the active path.",
+        "World/status initialization should extract validated structured world facts before deterministic Markdown rendering.",
+        "world_model.md is the durable constraint rendering; status_card.md is the current-state projection from accepted world facts plus latest summary evidence.",
+        "Status-card projections with required labels but weak evidence, excessive ???, or generic values must fail closed instead of committing empty state."
       ],
       "allowed_change_types": [
         "Pipeline step additions",
@@ -741,7 +744,8 @@
         "Moving style initialization ownership back to Dify or another subsystem",
         "Changing style initialization artifact set or commit semantics",
         "Moving summary archive ownership back to Dify or another subsystem",
-        "Changing summary archive output format, metadata boundary, or commit semantics"
+        "Changing summary archive output format, metadata boundary, or commit semantics",
+        "Changing structured world-facts schema or status projection quality gate semantics"
       ],
       "verification": [
         "world_model.md generated with required sections",
@@ -752,7 +756,9 @@
         "per-book Git commit contains changed style artifact files",
         "summary.md generated from chapters/*.md through backend pipeline",
         "summary.md rendered from validated structured batch data with complete chapter coverage",
-        "per-book Git commit contains summary.md and metadata changes when applicable"
+        "per-book Git commit contains summary.md and metadata changes when applicable",
+        "structured world facts pass lifecycle, scope, evidence, confidence, and downstream-impact validation before render",
+        "status_card.md projection has evidence anchors and bounded ??? ratio"
       ],
       "known_debt": [
         "extract_schema.py and merge_template.py are unused legacy artifacts from the two-phase delta approach."
