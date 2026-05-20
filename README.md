@@ -190,7 +190,7 @@ Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
 | `COMPOSE_DIFY_BASE_URL` | Docker Compose 内部访问 Dify 的地址，常用 `http://host.docker.internal/v1`。 |
 | `DIFY_*_API_KEY` | 各个 Dify App 的 API Key。推荐每个 Agent 单独填，便于排查。 |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` / `DEEPSEEK_API_KEY` | 后端自有 LangChain 链路使用的 OpenAI-compatible 模型配置。 |
-| `BACKEND_PORT` / `FRONTEND_PORT` | Flask 后端和 Vite 前端端口，默认 `8000` 和 `5173`。 |
+| `BACKEND_HOST_PORT` / `FRONTEND_HOST_PORT` | Docker Compose 暴露到宿主机的端口，默认 `8000` 和 `5173`。容器内部端口固定为后端 `8000`、前端 `5173`，通常不要改。 |
 
 启动：
 
@@ -274,7 +274,7 @@ docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm s
 | 前端能打开，但 Dify 调用失败 | 检查 `DIFY_BASE_URL`、对应 `DIFY_*_API_KEY` 和 Dify App 是否发布。 |
 | Dify 能生成回答，但不能读写书库 | 检查 LoreGit ToolProvider 是否指向后端，容器里通常用 `http://host.docker.internal:8000`。 |
 | Compose smoke 失败 | 检查 `COMPOSE_DIFY_BASE_URL` 是否是容器内可访问的 Dify 地址。 |
-| 端口被占用 | 修改 `BACKEND_PORT` 或 `FRONTEND_PORT`，然后重启脚本或 Compose。 |
+| 端口被占用 | Docker Compose 修改 `BACKEND_HOST_PORT` 或 `FRONTEND_HOST_PORT`；PowerShell 启动脚本使用 `-BackendPort` 或 `-FrontendPort` 参数。 |
 | GHCR 拉取失败 | 检查包是否公开，必要时执行 `docker login ghcr.io`。 |
 | Dify YAML 导入后没有模型 | 这是正常现象，需要在你的 Dify 环境中重新选择模型供应商和模型。 |
 

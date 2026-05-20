@@ -83,6 +83,14 @@ FRONTEND_BASE_IMAGE=node:22-bookworm-slim
 The backend image mounts an isolated `demo-storage` volume and a `demo-runtime` volume. The pack must not mount or reuse `novel_git_server/storage/` from the host.
 Use `COMPOSE_DIFY_BASE_URL` when the compose stack should talk to an external Dify runtime; keep `DIFY_BASE_URL` for the Windows bootstrap path.
 The compose frontend sets `VITE_ALLOWED_HOSTS=frontend` so the smoke container can reach Vite through the Docker service name without weakening the normal local dev default.
+If the host already uses ports `8000` or `5173`, change only the host-side compose ports:
+
+```text
+BACKEND_HOST_PORT=18000
+FRONTEND_HOST_PORT=15173
+```
+
+The backend and frontend container ports stay fixed at `8000` and `5173`. Keeping the internal ports fixed preserves health checks, frontend proxying, and smoke checks.
 
 ### Mode C: GHCR Package Demo
 

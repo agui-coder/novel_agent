@@ -3,7 +3,7 @@ services:
     image: ghcr.io/blackzhanzhan/novel_agent-backend:${NOVEL_AGENT_IMAGE_TAG:-latest}
     environment:
       HOST: 0.0.0.0
-      PORT: ${BACKEND_PORT:-8000}
+      PORT: 8000
       CHRONOS_DEV_REPO_ROOT: /app/novel_agent/dev_repo
       STORAGE_ROOT: /app/novel_agent/novel_git_server/storage
       DIFY_BASE_URL: ${COMPOSE_DIFY_BASE_URL:-http://host.docker.internal/v1}
@@ -20,7 +20,7 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       TOMATO_LIBRARY_ROOT: /app/novel_agent/novel_git_server/storage
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_HOST_PORT:-${BACKEND_PORT:-8000}}:8000"
     volumes:
       - demo-storage:/app/novel_agent/novel_git_server/storage
       - demo-runtime:/app/novel_agent/.runtime
@@ -30,7 +30,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health')); raise SystemExit(0 if data.get('status')=='ok' else 1)",
+          "import json,os,urllib.request; port=os.environ.get('PORT','8000'); data=json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/health')); raise SystemExit(0 if data.get('status')=='ok' else 1)",
         ]
       interval: 10s
       timeout: 3s
@@ -50,7 +50,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      - "${FRONTEND_HOST_PORT:-${FRONTEND_PORT:-5173}}:5173"
     healthcheck:
       test:
         [
