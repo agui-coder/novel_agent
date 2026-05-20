@@ -150,6 +150,8 @@ export interface SummaryStatus {
     batch?: number;
     total_batches?: number;
     chapter_count?: number;
+    max_workers?: number;
+    max_batch_chapters?: number;
     chars?: number;
     book_name?: string;
     error?: string;

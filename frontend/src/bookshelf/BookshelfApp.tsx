@@ -227,6 +227,14 @@ export function BookshelfApp() {
         }
     };
 
+    const summaryTuningLabel = (s: SummaryStatus | null): string => {
+        if (!s || s.status !== 'generating') return '';
+        const parts: string[] = [];
+        if (s.max_workers) parts.push(`并发 ${s.max_workers} 路`);
+        if (s.max_batch_chapters) parts.push(`每批最多 ${s.max_batch_chapters} 章`);
+        return parts.join(' · ');
+    };
+
     const handleOnlineImport = async () => {
         if (!selectedBook || summaryBusy) return;
         setDownloading(true);
@@ -626,6 +634,11 @@ export function BookshelfApp() {
                                 </div>
                             )}
                         </div>
+                        {summaryTuningLabel(summaryStatus) && (
+                            <div className="mt-2 text-[11px] text-[var(--color-dark-text-faint)]">
+                                {summaryTuningLabel(summaryStatus)}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -644,6 +657,9 @@ export function BookshelfApp() {
                                 style={{ width: `${((summaryStatus.batch ?? 0) / summaryStatus.total_batches) * 100}%` }}
                             />
                         </div>
+                    )}
+                    {summaryTuningLabel(summaryStatus) && (
+                        <span className="text-xs text-[var(--color-dark-text-faint)]">{summaryTuningLabel(summaryStatus)}</span>
                     )}
                     {summaryStatus.status === 'failed' && (
                         <button
