@@ -541,6 +541,8 @@ def _trigger_summary_generation(
                 "book_name": book_name,
                 "chars": result.get("chars", 0),
                 "total_batches": result.get("total_batches"),
+                "max_workers": result.get("max_workers"),
+                "max_batch_chapters": result.get("max_batch_chapters"),
                 "chapter_count": result.get("chapter_count", chapter_count),
                 "commit_id": result.get("commit_id"),
             }

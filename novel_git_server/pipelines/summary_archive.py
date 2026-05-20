@@ -28,8 +28,8 @@ from utils.git_utils import (
 
 ARCHIVE_MARKER = "LONGFORM_LAYERED_ARCHIVE_V1"
 DEFAULT_MAX_BATCH_BYTES = 240_000
-DEFAULT_MAX_BATCH_CHAPTERS = 15
-DEFAULT_MAX_WORKERS = 4
+DEFAULT_MAX_BATCH_CHAPTERS = 50
+DEFAULT_MAX_WORKERS = 6
 DEFAULT_MAX_RETRIES = 1
 SUMMARY_COMMIT_MESSAGE_PREFIX = "[AI_Summary]"
 
@@ -145,6 +145,34 @@ def _invoke_langchain(prompt: str) -> str:
     if isinstance(content, list):
         return "\n".join(str(item) for item in content)
     return str(content)
+
+
+def _coerce_positive_int(value: Any, *, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _resolve_summary_tuning_from_env(
+    *,
+    max_batch_chapters: int | None,
+    max_workers: int | None,
+) -> tuple[int, int]:
+    import os
+
+    resolved_batch_chapters = (
+        _coerce_positive_int(max_batch_chapters, default=DEFAULT_MAX_BATCH_CHAPTERS)
+        if max_batch_chapters is not None
+        else _coerce_positive_int(os.environ.get("SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS"), default=DEFAULT_MAX_BATCH_CHAPTERS)
+    )
+    resolved_workers = (
+        _coerce_positive_int(max_workers, default=DEFAULT_MAX_WORKERS)
+        if max_workers is not None
+        else _coerce_positive_int(os.environ.get("SUMMARY_ARCHIVE_MAX_WORKERS"), default=DEFAULT_MAX_WORKERS)
+    )
+    return resolved_batch_chapters, resolved_workers
 
 
 def _build_batch_prompt(
@@ -651,8 +679,8 @@ def run_pipeline(
     cancel_event: Event | None = None,
     progress_callback: ProgressCallback | None = None,
     max_batch_bytes: int = DEFAULT_MAX_BATCH_BYTES,
-    max_batch_chapters: int = DEFAULT_MAX_BATCH_CHAPTERS,
-    max_workers: int = DEFAULT_MAX_WORKERS,
+    max_batch_chapters: int | None = None,
+    max_workers: int | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
     invoke_model: ModelInvoker | None = None,
 ) -> dict[str, Any]:
@@ -669,15 +697,19 @@ def run_pipeline(
     if not chapters:
         return {"status": "no_chapters", "book_id": book_id, "book_name": resolved_book_name}
 
+    resolved_max_batch_chapters, resolved_max_workers = _resolve_summary_tuning_from_env(
+        max_batch_chapters=max_batch_chapters,
+        max_workers=max_workers,
+    )
     batches = split_chapter_batches(
         chapters,
         max_batch_bytes=max_batch_bytes,
-        max_batch_chapters=max_batch_chapters,
+        max_batch_chapters=resolved_max_batch_chapters,
     )
     total_batches = len(batches)
     invoker = invoke_model or _invoke_langchain
     batch_archives: dict[int, BatchArchive] = {}
-    worker_count = max(1, min(int(max_workers or 1), total_batches))
+    worker_count = max(1, min(resolved_max_workers, total_batches))
 
     emit(
         {
@@ -688,6 +720,7 @@ def run_pipeline(
             "chapter_count": len(chapters),
             "book_name": resolved_book_name,
             "max_workers": worker_count,
+            "max_batch_chapters": resolved_max_batch_chapters,
         }
     )
 
@@ -734,6 +767,7 @@ def run_pipeline(
                     "chapter_count": len(chapters),
                     "book_name": resolved_book_name,
                     "max_workers": worker_count,
+                    "max_batch_chapters": resolved_max_batch_chapters,
                 }
             )
 
@@ -756,6 +790,8 @@ def run_pipeline(
         "book_name": resolved_book_name,
         "chapter_count": len(chapters),
         "total_batches": total_batches,
+        "max_workers": worker_count,
+        "max_batch_chapters": resolved_max_batch_chapters,
         "chars": len(summary_content),
         "commit_id": commit_id,
         "updated_files": commit_paths,

@@ -118,6 +118,18 @@ RUNTIME_CONFIG_ITEMS: tuple[RuntimeConfigItem, ...] = (
         "Summary archive model override",
     ),
     RuntimeConfigItem(
+        "SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS",
+        "model_provider",
+        "Summary archive chapters per batch",
+        default="50",
+    ),
+    RuntimeConfigItem(
+        "SUMMARY_ARCHIVE_MAX_WORKERS",
+        "model_provider",
+        "Summary archive parallel workers",
+        default="6",
+    ),
+    RuntimeConfigItem(
         "DEEPSEEK_API_KEY",
         "model_provider",
         "DeepSeek-compatible API key",
@@ -220,6 +232,9 @@ def normalize_runtime_config_updates(raw_values: Any) -> tuple[dict[str, str], l
                 continue
         if key == "DIFY_TIMEOUT_SECONDS" and value and coerce_timeout_seconds(value, default=0) <= 0:
             errors.append({"key": key, "message": "timeout must be a positive integer"})
+            continue
+        if key in {"SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS", "SUMMARY_ARCHIVE_MAX_WORKERS"} and value and coerce_timeout_seconds(value, default=0) <= 0:
+            errors.append({"key": key, "message": "value must be a positive integer"})
             continue
         if key.endswith("_BASE_URL") and value and not _looks_like_url(value):
             errors.append({"key": key, "message": "base URL must start with http:// or https://"})

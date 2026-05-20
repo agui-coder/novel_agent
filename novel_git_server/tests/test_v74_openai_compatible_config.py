@@ -40,6 +40,8 @@ class V74OpenAICompatibleConfigTests(unittest.TestCase):
                 "DEEPSEEK_API_KEY",
                 "DEEPSEEK_MODEL",
                 "SUMMARY_ARCHIVE_MODEL",
+                "SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS",
+                "SUMMARY_ARCHIVE_MAX_WORKERS",
             ]
         }
         for key in self._saved_env:
@@ -185,6 +187,34 @@ class V74OpenAICompatibleConfigTests(unittest.TestCase):
 
         self.assertEqual(config.provider, "openai_compatible")
         self.assertEqual(config.model, "summary-special")
+
+    def test_runtime_config_saves_summary_archive_tuning(self):
+        resp = self.client.post(
+            "/api/runtime/config",
+            json={
+                "values": {
+                    "SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS": "50",
+                    "SUMMARY_ARCHIVE_MAX_WORKERS": "6",
+                }
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+
+        self.assertEqual(body["config"]["SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS"]["value"], "50")
+        self.assertEqual(body["config"]["SUMMARY_ARCHIVE_MAX_WORKERS"]["value"], "6")
+        parsed = parse_env_file(self.config_dir)
+        self.assertEqual(parsed["SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS"], "50")
+        self.assertEqual(parsed["SUMMARY_ARCHIVE_MAX_WORKERS"], "6")
+
+    def test_runtime_config_rejects_invalid_summary_archive_tuning(self):
+        resp = self.client.post(
+            "/api/runtime/config",
+            json={"values": {"SUMMARY_ARCHIVE_MAX_WORKERS": "0"}},
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse((self.config_dir / ".env.local").exists())
 
     def test_invalid_model_provider_is_rejected_without_partial_file(self):
         resp = self.client.post(

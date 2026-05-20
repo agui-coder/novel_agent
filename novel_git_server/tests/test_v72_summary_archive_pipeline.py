@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -114,6 +115,77 @@ class V72SummaryArchivePipelineTests(unittest.TestCase):
         self.assertEqual(self._git("status", "--short"), "")
         changed = set(self._git("show", "--name-only", "--format=", "HEAD").splitlines())
         self.assertEqual(changed, {"summary.md", "metadata.json"})
+
+    def test_pipeline_defaults_to_larger_batches_and_six_workers(self):
+        for number in range(3, 101):
+            self._write_chapter(f"{number:04d}_chapter.md", f"# Chapter {number}\n\nbody {number} " * 5)
+        self._git("add", "--", "chapters")
+        self._git("commit", "-m", "add default tuning chapters")
+        events: list[dict] = []
+        batch_payloads = [
+            _batch_payload(start=1, end=50, chapters=list(range(1, 51))),
+            _batch_payload(start=51, end=100, chapters=list(range(51, 101))),
+        ]
+
+        def fake_model(_prompt: str) -> str:
+            return batch_payloads.pop(0)
+
+        result = pipeline.run_pipeline(
+            book_id="book",
+            book_dir=self.repo_dir,
+            book_name="summary book",
+            invoke_model=fake_model,
+            progress_callback=events.append,
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["total_batches"], 2)
+        self.assertEqual(result["max_batch_chapters"], 50)
+        self.assertEqual(result["max_workers"], 2)
+        generating_events = [event for event in events if event["status"] == "generating"]
+        self.assertTrue(generating_events)
+        self.assertEqual(generating_events[0]["max_batch_chapters"], 50)
+        self.assertEqual(generating_events[0]["max_workers"], 2)
+
+    def test_pipeline_allows_summary_tuning_from_environment(self):
+        for number in range(3, 8):
+            self._write_chapter(f"{number:04d}_chapter.md", f"# Chapter {number}\n\nbody {number} " * 5)
+        self._git("add", "--", "chapters")
+        self._git("commit", "-m", "add env tuning chapters")
+        previous_batch = os.environ.get("SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS")
+        previous_workers = os.environ.get("SUMMARY_ARCHIVE_MAX_WORKERS")
+        os.environ["SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS"] = "3"
+        os.environ["SUMMARY_ARCHIVE_MAX_WORKERS"] = "2"
+        try:
+            batch_payloads = [
+                _batch_payload(start=1, end=3, chapters=[1, 2, 3]),
+                _batch_payload(start=4, end=6, chapters=[4, 5, 6]),
+                _batch_payload(start=7, end=7, chapters=[7]),
+            ]
+
+            def fake_model(_prompt: str) -> str:
+                return batch_payloads.pop(0)
+
+            result = pipeline.run_pipeline(
+                book_id="book",
+                book_dir=self.repo_dir,
+                book_name="summary book",
+                invoke_model=fake_model,
+            )
+        finally:
+            if previous_batch is None:
+                os.environ.pop("SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS", None)
+            else:
+                os.environ["SUMMARY_ARCHIVE_MAX_BATCH_CHAPTERS"] = previous_batch
+            if previous_workers is None:
+                os.environ.pop("SUMMARY_ARCHIVE_MAX_WORKERS", None)
+            else:
+                os.environ["SUMMARY_ARCHIVE_MAX_WORKERS"] = previous_workers
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["total_batches"], 3)
+        self.assertEqual(result["max_batch_chapters"], 3)
+        self.assertEqual(result["max_workers"], 2)
 
     def test_pipeline_batches_in_parallel_but_renders_in_chapter_order(self):
         for number in range(3, 7):
