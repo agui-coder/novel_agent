@@ -1,18 +1,23 @@
-"""Parse summary.md Batch Archive sections into structured batch dicts."""
+"""Parse summary.md batch archive sections into structured batch dicts."""
 
 import re
 from pathlib import Path
-from typing import Optional
 
-_BATCH_HEADING_RE = re.compile(r"^## Batch Archive:\s*(.+?)\s*$")
-_RANGE_RE = re.compile(r"CH(\d+)\s*[-–—]\s*(\d+)")
+_BATCH_HEADING_RE = re.compile(r"^##\s*(?:批次归档|Batch Archive)\s*[：:]\s*(.+?)\s*$")
+_RANGE_RE = re.compile(r"(?:第|CH)?\s*(\d+)\s*(?:章)?\s*[-–—]\s*(?:第|CH)?\s*(\d+)\s*(?:章)?", re.IGNORECASE)
+
+
+def _canonical_batch_title(raw_title: str, ch_start: int, ch_end: int) -> str:
+    if ch_start and ch_end:
+        return f"批次归档：第{ch_start}-{ch_end}章"
+    return f"批次归档：{raw_title.strip()}"
 
 
 def parse_summary_batches(summary_path: str | Path) -> list[dict]:
     """Parse summary.md into a list of batch dicts.
 
     Each batch dict contains:
-        title:        "Batch Archive: CH1-50"
+        title:        "批次归档：第1-50章"
         chapter_start: 1 (0 for non-standard headings without CH range)
         chapter_end:   50 (0 for non-standard headings without CH range)
         start_line:    16  (1-based, inclusive)
@@ -37,10 +42,10 @@ def parse_summary_batches(summary_path: str | Path) -> list[dict]:
             rm = _RANGE_RE.search(title)
             ch_start = int(rm.group(1)) if rm else 0
             ch_end = int(rm.group(2)) if rm else 0
-            headings.append((i, f"Batch Archive: {title}", ch_start, ch_end))
+            headings.append((i, _canonical_batch_title(title, ch_start, ch_end), ch_start, ch_end))
 
     if not headings:
-        raise ValueError("No '## Batch Archive: CH...' headings found in summary.md")
+        raise ValueError("summary.md 中没有找到批次归档标题")
 
     batches: list[dict] = []
     for idx, (line_no, title, ch_start, ch_end) in enumerate(headings):
