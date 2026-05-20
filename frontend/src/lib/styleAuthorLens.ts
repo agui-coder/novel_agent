@@ -1,4 +1,5 @@
 export const STYLE_AUTHOR_FILES = new Set([
+    'style_guide.md',
     'style_fingerprint.md',
     'style_review.md',
     'style_constraints_for_continuation.md',
@@ -43,6 +44,13 @@ export interface StyleAuthorLens {
     metricBadges: StyleMetricBadge[];
     rawReportLabel: string;
 }
+
+const FILE_LABELS: Record<string, string> = {
+    'style_guide.md': '作者文风偏好',
+    'style_fingerprint.md': '原文近段手感证据',
+    'style_review.md': '草稿文风偏差提示',
+    'style_constraints_for_continuation.md': '续写文风参考卡',
+};
 
 function normalizeFileName(fileName: string): string {
     return String(fileName || '').replace(/\\/g, '/').split('/').pop()?.toLowerCase() || '';
@@ -178,30 +186,34 @@ function uniqueItems(items: string[]): string[] {
     return result;
 }
 
-function extractBulletsUnderHeading(content: string, heading: string): string[] {
+function extractBulletsUnderHeadings(content: string, headings: string[]): string[] {
     const lines = content.split(/\r?\n/);
-    const startIndex = lines.findIndex((line) => line.trim() === `## ${heading}`);
-    if (startIndex < 0) return [];
     const result: string[] = [];
-    for (const line of lines.slice(startIndex + 1)) {
-        if (/^#{1,3}\s+/.test(line)) break;
-        if (/^\s*[-*]\s+/.test(line)) {
-            result.push(stripMarkdown(line));
+    for (const heading of headings) {
+        const startIndex = lines.findIndex((line) => line.trim() === `## ${heading}`);
+        if (startIndex < 0) continue;
+        for (const line of lines.slice(startIndex + 1)) {
+            if (/^#{1,3}\s+/.test(line)) break;
+            if (/^\s*[-*]\s+/.test(line)) {
+                result.push(stripMarkdown(line));
+            }
         }
     }
     return uniqueItems(result);
 }
 
-function extractParagraphsUnderHeading(content: string, heading: string): string[] {
+function extractParagraphsUnderHeadings(content: string, headings: string[]): string[] {
     const lines = content.split(/\r?\n/);
-    const startIndex = lines.findIndex((line) => line.trim() === `## ${heading}`);
-    if (startIndex < 0) return [];
     const result: string[] = [];
-    for (const line of lines.slice(startIndex + 1)) {
-        if (/^#{1,3}\s+/.test(line)) break;
-        const trimmed = stripMarkdown(line);
-        if (!trimmed || trimmed === '```json' || trimmed === '```' || /^[{}"]/.test(trimmed)) continue;
-        result.push(trimmed);
+    for (const heading of headings) {
+        const startIndex = lines.findIndex((line) => line.trim() === `## ${heading}`);
+        if (startIndex < 0) continue;
+        for (const line of lines.slice(startIndex + 1)) {
+            if (/^#{1,3}\s+/.test(line)) break;
+            const trimmed = stripMarkdown(line);
+            if (!trimmed || trimmed === '```json' || trimmed === '```' || /^[{}"]/.test(trimmed)) continue;
+            result.push(trimmed);
+        }
     }
     return uniqueItems(result);
 }
@@ -215,9 +227,10 @@ function extractFirstMatch(content: string, patterns: RegExp[]): string | null {
 }
 
 function buildMetricBadges(metrics: StyleMetricSnapshot): StyleMetricBadge[] {
+    if (!hasMetricBaseline(metrics)) return [];
     return [
-        { label: '句式', value: formatNumber(metrics.avgSentence, ' 字/句'), note: sentenceNote(metrics.avgSentence) },
-        { label: '段落', value: formatNumber(metrics.avgPara, ' 字/段'), note: paragraphNote(metrics.avgPara) },
+        { label: '句式', value: formatNumber(metrics.avgSentence, '字/句'), note: sentenceNote(metrics.avgSentence) },
+        { label: '段落', value: formatNumber(metrics.avgPara, '字/段'), note: paragraphNote(metrics.avgPara) },
         { label: '对白', value: formatPercent(metrics.dialogueRatio), note: dialogueNote(metrics.dialogueRatio) },
         {
             label: '动作',
@@ -244,7 +257,7 @@ function buildMetricBadges(metrics: StyleMetricSnapshot): StyleMetricBadge[] {
 
 function metricSentence(metrics: StyleMetricSnapshot): string {
     if (!hasMetricBaseline(metrics)) {
-        return '当前文件还没有可读数值基准，先阅读原始 Markdown 内容。';
+        return '当前文件还没有可读数值基准，先以作者偏好和原文内容为准。';
     }
     const action = metrics.actionDensity ?? 0;
     const environment = metrics.environmentDensity ?? 0;
@@ -254,17 +267,18 @@ function metricSentence(metrics: StyleMetricSnapshot): string {
         : environment >= exposition
             ? '空间压力和现场气氛'
             : '设定解释和逻辑补足';
-    return `${sentenceNote(metrics.avgSentence)}，${paragraphNote(metrics.avgPara)}；${dialogueNote(metrics.dialogueRatio)}，推进重心更靠${driver}。`;
+    return `${sentenceNote(metrics.avgSentence)}，${paragraphNote(metrics.avgPara)}，${dialogueNote(metrics.dialogueRatio)}，推进重心更偏向${driver}。`;
 }
 
 function buildEvidence(content: string, fileName: string, metrics: StyleMetricSnapshot): string[] {
+    const normalized = normalizeFileName(fileName);
     const sample = extractFirstMatch(content, [
         /原文采样[：:]\s*([^\n]+)/,
         /对照样本[：:]\s*([^\n]+)/,
         /样本标签[：:]\s*([^\n]+)/,
     ]);
     const chapters = extractFirstMatch(content, [/原文章节[：:]\s*([^\n]+)/]);
-    const evidence = [`当前文件：${normalizeFileName(fileName) || 'style artifact'}`];
+    const evidence = [`当前文件：${FILE_LABELS[normalized] || normalized || '文风文件'}`];
     if (sample) evidence.push(sample);
     if (metrics.chars && metrics.paragraphs) {
         evidence.push(`样本规模：${metrics.chars} 字 / ${metrics.paragraphs} 段`);
@@ -273,26 +287,65 @@ function buildEvidence(content: string, fileName: string, metrics: StyleMetricSn
     return evidence.slice(0, 4);
 }
 
+function buildGuideLens(content: string, fileName: string): StyleAuthorLens {
+    const longTermPrefs = extractBulletsUnderHeadings(content, ['长期偏好', '作者偏好', '文风偏好']);
+    const avoidPrefs = extractBulletsUnderHeadings(content, ['不想要的写法', '避雷写法', '禁忌']);
+    return {
+        eyebrow: '作者偏好',
+        title: '作者文风偏好',
+        sourceLabel: FILE_LABELS[normalizeFileName(fileName)] || normalizeFileName(fileName),
+        voiceSummary: '这页由作者和文风助手共同维护，记录你长期想保留的口味。它是作者偏好，不是机器判罚，也不是原文统计证据。',
+        sections: [
+            {
+                title: '当前偏好',
+                items: longTermPrefs.length > 0 ? longTermPrefs.slice(0, 6) : [
+                    '记录作者明确喜欢的叙述口味，例如节奏、镜头、对白密度、信息释放方式。',
+                    '记录作者想长期保留的题材气质，例如克制、爽感、悬疑感、压迫感或幽默感。',
+                    '只沉淀长期偏好；单章临时修订意见放在草稿审查或错误档案里。',
+                ],
+                tone: 'accent',
+            },
+            {
+                title: '不要混入',
+                items: avoidPrefs.length > 0 ? avoidPrefs.slice(0, 6) : [
+                    '不要把剧情事实、世界规则、人物状态写进这里；它们属于世界模型和状态卡。',
+                    '不要把原文统计指标当成作者命令；统计证据属于原文近段手感证据。',
+                    '不要把草稿是否合格写成硬判罚；文风修改权最终属于作者。',
+                ],
+                tone: 'neutral',
+            },
+        ],
+        evidenceTitle: '使用说明',
+        evidenceItems: [
+            '文风助手：根据作者讨论补充或修订本页。',
+            '续写智能体：读取本页作为作者偏好，再结合原文近段自主模仿。',
+            '作者：新卷、新轮回、新题材阶段切换时，可以直接更新这里。',
+        ],
+        metricBadges: [],
+        rawReportLabel: '偏好原文',
+    };
+}
+
 function buildFingerprintLens(content: string, fileName: string, metrics: StyleMetricSnapshot): StyleAuthorLens {
     const structure = [
-        `句式：${formatNumber(metrics.avgSentence, ' 字/句')}，${sentenceNote(metrics.avgSentence)}。`,
-        `段落：${formatNumber(metrics.avgPara, ' 字/段')}，${paragraphNote(metrics.avgPara)}。`,
+        `句式：${formatNumber(metrics.avgSentence, '字/句')}，${sentenceNote(metrics.avgSentence)}。`,
+        `段落：${formatNumber(metrics.avgPara, '字/段')}，${paragraphNote(metrics.avgPara)}。`,
         `对白：${formatPercent(metrics.dialogueRatio)}，${dialogueNote(metrics.dialogueRatio)}。`,
         `动作 / 环境 / 解释：${formatNumber(metrics.actionDensity, '/千字')}、${formatNumber(metrics.environmentDensity, '/千字')}、${formatNumber(metrics.expositionDensity, '/千字')}。`,
     ];
     return {
-        eyebrow: '文风指纹',
-        title: '原文近段结构',
-        sourceLabel: metrics.label || normalizeFileName(fileName),
-        voiceSummary: `这页只回答“原文最近怎么写”。${metricSentence(metrics)}`,
+        eyebrow: '原文证据',
+        title: '原文近段手感证据',
+        sourceLabel: metrics.label || FILE_LABELS[normalizeFileName(fileName)] || normalizeFileName(fileName),
+        voiceSummary: `这页只回答“原文最近怎么写”。它给续写提供模仿依据，不代表作者必须永远锁死在这个风格里。${metricSentence(metrics)}`,
         sections: [
-            { title: '读到的结构', items: structure, tone: 'accent' },
+            { title: '读到的手感', items: structure, tone: 'accent' },
             {
                 title: '适合怎么用',
                 items: [
-                    '给续写 Agent 做模仿参考，不直接判定草稿通过或失败。',
-                    '当新轮回、新地图、新阶段切换时，重新生成它来刷新近段手感。',
-                    '作者想改风格时，可以把这里当作“AI 当前读到的原文样本”。',
+                    '给续写智能体做近段模仿参考，不直接判定草稿通过或失败。',
+                    '新轮回、新地图、新阶段切换时，重新生成它来刷新最近手感。',
+                    '作者想主动改风格时，把这里当作“智能体当前读到的原文样本”，而不是命令。',
                 ],
                 tone: 'neutral',
             },
@@ -300,78 +353,81 @@ function buildFingerprintLens(content: string, fileName: string, metrics: StyleM
         evidenceTitle: '采样依据',
         evidenceItems: buildEvidence(content, fileName, metrics),
         metricBadges: buildMetricBadges(metrics),
-        rawReportLabel: '指纹原文',
+        rawReportLabel: '证据原文',
     };
 }
 
 function buildReviewLens(content: string, fileName: string, metrics: StyleMetricSnapshot): StyleAuthorLens {
-    const conclusions = extractParagraphsUnderHeading(content, '审查结论');
+    const conclusions = extractParagraphsUnderHeadings(content, ['审查结论', '诊断摘要']);
     return {
-        eyebrow: '文风审查',
-        title: '最近文风偏差',
-        sourceLabel: metrics.label || normalizeFileName(fileName),
-        voiceSummary: '这页看“草稿相对原文有没有偏”。它是作者修改提示，不是卡死 demo 的硬闸门。',
+        eyebrow: '草稿提示',
+        title: '草稿文风偏差提示',
+        sourceLabel: metrics.label || FILE_LABELS[normalizeFileName(fileName)] || normalizeFileName(fileName),
+        voiceSummary: '这页看“草稿相对原文有没有偏”。它是给作者和续写智能体的打磨提示，不是剧情审核，也不是卡死演示流程的硬闸门。',
         sections: [
             {
-                title: '审查结论',
-                items: conclusions.length > 0 ? conclusions : ['当前没有明确偏差结论，先以原始报告为准。'],
+                title: '当前提示',
+                items: conclusions.length > 0 ? conclusions.slice(0, 6) : ['当前没有明确偏差结论，先以原始报告和作者判断为准。'],
                 tone: 'warning',
             },
             {
-                title: '修改抓手',
+                title: '修改边界',
                 items: [
-                    '只修影响阅读手感的偏差，剧情事实、胜负结果和人物动机不在这里改。',
-                    '如果只是轻微风格差异，交给作者判断，不自动推倒重写。',
-                    '需要重跑时先生成新基准，再让续写 Agent 自己参考原文和提示词模仿。',
+                    '只修影响阅读手感的偏差，剧情事件、胜负结果、人物动机和世界状态不在这里改。',
+                    '轻微风格差异交给作者判断，不自动推倒重写。',
+                    '需要重跑时先刷新近段证据，再让续写智能体参考原文和作者偏好自主模仿。',
                 ],
                 tone: 'neutral',
             },
         ],
-        evidenceTitle: '审查依据',
-        evidenceItems: buildEvidence(content, fileName, metrics),
-        metricBadges: buildMetricBadges(metrics),
-        rawReportLabel: '审查原文',
-    };
-}
-
-function buildContinuationLens(content: string, fileName: string, metrics: StyleMetricSnapshot): StyleAuthorLens {
-    const hardRules = extractBulletsUnderHeading(content, '写作硬约束');
-    const boundaries = extractBulletsUnderHeading(content, '数值边界');
-    return {
-        eyebrow: '续写提示',
-        title: '下一章文风抓手',
-        sourceLabel: metrics.label || normalizeFileName(fileName),
-        voiceSummary: `这页给 continuation Agent 当提示，不替作者决定文风优劣。${metricSentence(metrics)}`,
-        sections: [
-            {
-                title: '续写抓手',
-                items: hardRules.length > 0 ? hardRules.slice(0, 5) : [
-                    '先写人物选择、动作反应和代价，再补必要解释。',
-                    '对白只承担关键冲突或信息转折，避免连续问答顶替场景推进。',
-                    '段落换气服务推进，不为了贴指标机械拆分。',
-                ],
-                tone: 'accent',
-            },
-            {
-                title: '容易跑偏',
-                items: boundaries.length > 0 ? boundaries.slice(0, 4) : [
-                    '解释脱离人物动作时，会变成设定说明书。',
-                    '对白连续问答时，会削弱现场推进感。',
-                    '段落过碎时，行动链会失去连续压迫。',
-                ],
-                tone: 'warning',
-            },
-        ],
-        evidenceTitle: '提示依据',
+        evidenceTitle: '诊断依据',
         evidenceItems: buildEvidence(content, fileName, metrics),
         metricBadges: buildMetricBadges(metrics),
         rawReportLabel: '提示原文',
     };
 }
 
+function buildContinuationLens(content: string, fileName: string, metrics: StyleMetricSnapshot): StyleAuthorLens {
+    const references = extractBulletsUnderHeadings(content, ['写作参考', '写作硬约束']);
+    const ranges = extractBulletsUnderHeadings(content, ['参考范围', '数值边界']);
+    return {
+        eyebrow: '续写参考',
+        title: '续写文风参考卡',
+        sourceLabel: metrics.label || FILE_LABELS[normalizeFileName(fileName)] || normalizeFileName(fileName),
+        voiceSummary: `这页给续写智能体当软参考，只影响节奏、句式和信息释放。逐章大纲、世界模型、状态卡、剧情因果优先级更高。${metricSentence(metrics)}`,
+        sections: [
+            {
+                title: '续写可参考',
+                items: references.length > 0 ? references.slice(0, 5) : [
+                    '先写人物选择、动作反应和代价，再补必要解释。',
+                    '对白承担关键冲突或信息转折，避免连续问答顶替场景推进。',
+                    '段落换气服务阅读节奏，不为了贴指标机械拆分。',
+                ],
+                tone: 'accent',
+            },
+            {
+                title: '只作提示',
+                items: ranges.length > 0 ? ranges.slice(0, 4) : [
+                    '参考范围用于提醒，不单独决定章节能否继续推进。',
+                    '诊断明显偏差时，只做局部语言修正，不改剧情事实。',
+                    '作者可以接受、忽略或人工改写这些文风建议。',
+                ],
+                tone: 'warning',
+            },
+        ],
+        evidenceTitle: '参考依据',
+        evidenceItems: buildEvidence(content, fileName, metrics),
+        metricBadges: buildMetricBadges(metrics),
+        rawReportLabel: '参考卡原文',
+    };
+}
+
 export function buildStyleAuthorLens(fileName: string, content: string): StyleAuthorLens {
     const metrics = readMetrics(content);
     const normalized = normalizeFileName(fileName);
+    if (normalized === 'style_guide.md') {
+        return buildGuideLens(content, fileName);
+    }
     if (normalized === 'style_review.md') {
         return buildReviewLens(content, fileName, metrics);
     }

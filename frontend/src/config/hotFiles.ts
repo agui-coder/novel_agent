@@ -9,6 +9,6 @@ export const DEFAULT_HOT_FILES: HotFileItem[] = [
     { fileName: 'arc_outline.md', fileType: 'outline', label: '篇章大纲' },
     { fileName: 'chapter_outline.md', fileType: 'outline', label: '逐章大纲' },
     { fileName: 'chapter_draft.md', fileType: 'chapter', label: '续写草稿' },
-    { fileName: 'style_guide.md', fileType: 'style', label: '文风指南' },
+    { fileName: 'style_guide.md', fileType: 'style', label: '作者文风偏好' },
     { fileName: 'error_archive.md', fileType: 'error_archive', label: '错误档案' },
 ];
