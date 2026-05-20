@@ -1,11 +1,11 @@
 """Phase 2: merge all batch deltas into final world_model.md."""
 
-CONSTRAINT_LIFECYCLE_PROTOCOL = """CONSTRAINT_LIFECYCLE_PROTOCOL:
-- Preserve constraint lifecycle and applicability scope while merging.
-- Lifecycle labels: current-active, historical-only, retired, overridden, disabled, disabled-in-current-scope, conditional, inherited-residue, unresolved, legacy-unclassified.
-- Applicability scopes: global, timeline, arc, stage, loop, faction, character-POV, location, rule-system, source-evidence-window.
-- Do not flatten older source-backed constraints into current-active reality. If later batches supersede or disable earlier states, keep earlier states as historical-only, retired, overridden, disabled, or inherited-residue.
-- Include or preserve `### Constraint Lifecycle Ledger` in the hard constraints section when any merged batch contains changing states, abilities, identities, relationships, timelines, loops, or rule systems.
+CONSTRAINT_LIFECYCLE_PROTOCOL = """约束生命周期协议：
+- 合并时必须保留约束生命周期与适用范围。
+- 生命周期状态可用值：当前生效、仅作历史、已退场、被覆盖、已禁用、当前范围禁用、有条件生效、历史残留、待解决、旧格式待归类。
+- 适用范围可用值：全局、时间线、篇章、阶段、轮回、势力、角色视角、地点、规则系统、证据窗口。
+- 不要把较早批次中有原文依据的旧状态压平成当前仍生效的现实。若后续批次覆盖或禁用早期状态，早期状态应保留为仅作历史、已退场、被覆盖、已禁用或历史残留。
+- 当合并批次包含状态、能力、身份、关系、时间线、轮回、规则系统变化时，在硬约束小节加入或保留「### 约束生命周期台账」。
 """
 
 REQUIRED_SECTIONS = [
@@ -18,13 +18,13 @@ REQUIRED_SECTIONS = [
     "下游工作流接口",
 ]
 
-MERGE_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模型合成引擎。将以下 {batch_count} 个批次的约束增量合并为一个完整的 world_model.md。
+MERGE_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模型合成引擎。将以下 {batch_count} 个批次的约束增量合并为一份完整的世界模型文档。
 
 ## 增量数据：
 {all_deltas_text}
 
 ## 输出要求：
-1. 以 "# World Model" 开头
+1. 以 "# 世界模型" 开头
 2. 必须包含以下 7 个 ## 二级标题，严格按此顺序：
    - ## 读者承诺与主轴
    - ## 冲突发动机
@@ -33,11 +33,12 @@ MERGE_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模
    - ## 未回收承诺
    - ## 矛盾与风险
    - ## 下游工作流接口
-3. 每个 section 下的条目用 - **标题**：描述 格式排列
+3. 每个小节下的条目用 - **标题**：描述 格式排列
 4. 去重：相同或高度相似的条目合并为一条，保留信息最丰富的版本
 5. 矛盾处理：如果多个批次对同一设定有矛盾，以章节范围更大的（更新的）批次为准
 6. 在末尾添加覆盖表格，列出全部已处理批次
-7. 直接输出 markdown 内容，不要包裹在代码块中"""
+7. 所有标题、解释、项目符号必须使用简体中文；专有名词可以保留原文
+8. 直接输出文档内容，不要包裹在代码块中"""
 
 
 def validate_sections(content: str) -> tuple[bool, list[str]]:

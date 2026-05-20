@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - runtime fallback when dependency is mi
     lazy_pinyin = None
 
 
-DEFAULT_WORLD_MODEL = """# World Model
+DEFAULT_WORLD_MODEL = """# 世界模型
 
 > 本文件不是散设定档案，而是后续续写、审核、大纲与风格工作流共同读取的创作约束引擎。
 > 每条重要设定都应说明它对剧情推进、冲突制造、读者承诺或一致性审查的作用。
@@ -67,13 +67,13 @@ DEFAULT_WORLD_MODEL = """# World Model
 
 ## 下游工作流接口
 
-- 给续写 agent：
-- 给审核 agent：
-- 给大纲 agent：
-- 给文风 agent：
+- 给续写智能体：
+- 给审核智能体：
+- 给大纲智能体：
+- 给文风智能体：
 
 """
-DEFAULT_SUMMARY = "# Summary\n\n"
+DEFAULT_SUMMARY = "# 阅读档案\n\n"
 DEFAULT_STYLE_GUIDE = "# 文风指南\n\n"
 DEFAULT_STYLE_FINGERPRINT = "# 叙事结构指纹\n\n"
 DEFAULT_STYLE_REVIEW = "# 作者可读审查\n\n"
@@ -117,11 +117,11 @@ DEFAULT_ERROR_ARCHIVE = "# 错误档案\n\n"
 DEFAULT_DOMAIN_RULES = (
     "# 领域规则\n\n"
     "> 本文件存放可复用、可审核、可由工具消费的领域规则；不要在代码中硬编码题材规则。\n"
-    "> 只有稳定约束才沉淀为 `domain-rule` JSON 代码块；临时状态写入 status_card.md，长期设定写入 world_model.md。\n\n"
+    "> 只有稳定约束才沉淀为机器可读规则块；临时状态写入状态卡，长期设定写入世界模型。\n\n"
     "## 规则沉淀原则\n\n"
     "- 每条规则必须说明适用范围、触发条件和违反后果。\n"
     "- 规则应服务续写和审核，而不是复制背景资料。\n\n"
-    "## domain-rule 示例\n\n"
+    "## 机器可读规则示例\n\n"
     "```domain-rule\n"
     "{\n"
     "  \"id\": \"example_rule_id\",\n"

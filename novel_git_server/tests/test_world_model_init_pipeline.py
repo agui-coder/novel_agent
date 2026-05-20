@@ -16,7 +16,7 @@ import app as gs  # noqa: E402
 from pipelines import world_model_init as pipeline  # noqa: E402
 
 
-WORLD_MODEL_MARKDOWN = """# World Model
+WORLD_MODEL_MARKDOWN = """# 世界模型
 
 ## 读者承诺与主轴
 - **承诺**：测试用世界模型。
@@ -284,22 +284,26 @@ class WorldModelInitPipelineTests(unittest.TestCase):
 
     def test_extraction_and_verify_prompts_require_constraint_lifecycle(self):
         for prompt in (pipeline.EXTRACTION_PROMPT, pipeline.VERIFY_PROMPT):
-            self.assertIn("CONSTRAINT_LIFECYCLE_PROTOCOL", prompt)
-            self.assertIn("current-active", prompt)
-            self.assertIn("historical-only", prompt)
-            self.assertIn("disabled-in-current-scope", prompt)
-            self.assertIn("Constraint Lifecycle Ledger", prompt)
+            self.assertIn("约束生命周期协议", prompt)
+            self.assertIn("当前生效", prompt)
+            self.assertIn("仅作历史", prompt)
+            self.assertIn("当前范围禁用", prompt)
+            self.assertIn("约束生命周期台账", prompt)
+            self.assertNotIn("CONSTRAINT_LIFECYCLE_PROTOCOL", prompt)
+            self.assertNotIn("Constraint Lifecycle Ledger", prompt)
 
     def test_insert_constraint_lifecycle_ledger_marks_legacy_constraints(self):
         content = pipeline._insert_constraint_lifecycle_ledger(WORLD_MODEL_MARKDOWN)
 
-        self.assertIn("### Constraint Lifecycle Ledger", content)
-        self.assertIn("legacy-unclassified", content)
-        self.assertIn("current-active", content)
-        self.assertIn("historical-only", content)
-        self.assertIn("disabled-in-current-scope", content)
+        self.assertIn("### 约束生命周期台账", content)
+        self.assertIn("旧格式待归类", content)
+        self.assertIn("当前生效", content)
+        self.assertIn("仅作历史", content)
+        self.assertIn("当前范围禁用", content)
+        self.assertNotIn("legacy-unclassified", content)
+        self.assertNotIn("current-active", content)
         self.assertLess(
-            content.index("### Constraint Lifecycle Ledger"),
+            content.index("### 约束生命周期台账"),
             content.index(f"## {pipeline.REQUIRED_SECTIONS[3]}"),
         )
 
@@ -308,7 +312,7 @@ class WorldModelInitPipelineTests(unittest.TestCase):
         twice = pipeline._insert_constraint_lifecycle_ledger(once)
 
         self.assertEqual(once, twice)
-        self.assertEqual(twice.count("### Constraint Lifecycle Ledger"), 1)
+        self.assertEqual(twice.count("### 约束生命周期台账"), 1)
 
     def test_fresh_pipeline_commits_world_model_and_status_card_together(self):
         repo_dir = self._init_book_repo()
@@ -336,9 +340,35 @@ class WorldModelInitPipelineTests(unittest.TestCase):
 
         self.assertEqual(result["failed_batches"], [])
         world_model = (repo_dir / "world_model.md").read_text(encoding="utf-8")
-        self.assertIn("### Constraint Lifecycle Ledger", world_model)
-        self.assertIn("legacy-unclassified", world_model)
-        self.assertIn("disabled-in-current-scope", world_model)
+        self.assertIn("### 约束生命周期台账", world_model)
+        self.assertIn("旧格式待归类", world_model)
+        self.assertIn("当前范围禁用", world_model)
+        self.assertNotIn("### Constraint Lifecycle Ledger", world_model)
+        self.assertNotIn("legacy-unclassified", world_model)
+
+    def test_legacy_world_model_response_is_localized_before_write(self):
+        response = pipeline._extract_world_model_from_response(
+            """```markdown
+# World Model
+
+## 硬约束
+
+### Constraint Lifecycle Ledger
+
+- legacy-unclassified: old item should not become current-active.
+- disabled-in-current-scope: loop state is unavailable.
+- archive: this ordinary word must not be corrupted by arc replacement.
+```"""
+        )
+
+        self.assertTrue(response.startswith("# 世界模型"))
+        self.assertIn("### 约束生命周期台账", response)
+        self.assertIn("旧格式待归类", response)
+        self.assertIn("当前范围禁用", response)
+        self.assertIn("archive", response)
+        self.assertNotIn("篇章hive", response)
+        self.assertNotIn("# World Model", response)
+        self.assertNotIn("Constraint Lifecycle Ledger", response)
 
     def test_verified_extraction_skip_repairs_shallow_status_card_without_llm(self):
         repo_dir = self._init_book_repo()

@@ -20,26 +20,58 @@ from .batch_parser import parse_summary_batches
 
 log = logging.getLogger(__name__)
 
-CONSTRAINT_LIFECYCLE_PROTOCOL = """CONSTRAINT_LIFECYCLE_PROTOCOL (highest priority):
-- A creative constraint is not only hard or soft. Preserve lifecycle and applicability scope.
-- Lifecycle labels: current-active, historical-only, retired, overridden, disabled, disabled-in-current-scope, conditional, inherited-residue, unresolved, legacy-unclassified.
-- Applicability scopes: global, timeline, arc, stage, loop, faction, character-POV, location, rule-system, source-evidence-window.
-- In the hard constraints section, include or preserve a `### Constraint Lifecycle Ledger` subsection whenever the source shows changing states, abilities, identities, relationships, timelines, loops, or rule systems.
-- Do not flatten source-backed history into current-active reality. A historical fact can remain true while no longer being active.
-- Reincarnation, loop, time-reset, regression, infinite-flow, and branch-timeline novels are the strongest same-case: an ability gained in Loop 5 but locked or unavailable in Loop 6 must be historical-only plus disabled-in-current-scope, not current-active.
-- Non-loop novels also need this: a sealed ability, dissolved alliance, exposed identity, dead enemy, changed faction, completed promise, or upgraded realm should not remain an active constraint unless the current scope still says so.
-- Downstream rule: continuation may write only current-active or explicitly conditional constraints as present-tense story reality; historical-only, retired, disabled, inherited-residue, or unresolved constraints may be used only as memory, debt, trauma, foreshadowing, reader irony, or review risk unless the world/status layer marks them current-active.
+WORLD_MODEL_HEADING = "# 世界模型"
+LEGACY_WORLD_MODEL_HEADING = "# World Model"
+LIFECYCLE_LEDGER_HEADING = "### 约束生命周期台账"
+
+LIFECYCLE_MARKER_TRANSLATIONS = {
+    "disabled-in-current-scope": "当前范围禁用",
+    "inherited-residue": "历史残留",
+    "legacy-unclassified": "旧格式待归类",
+    "source-evidence-window": "证据窗口",
+    "character-POV": "角色视角",
+    "current-active": "当前生效",
+    "historical-only": "仅作历史",
+    "rule-system": "规则系统",
+    "overridden": "被覆盖",
+    "conditional": "有条件生效",
+    "unresolved": "待解决",
+    "disabled": "已禁用",
+    "retired": "已退场",
+    "timeline": "时间线",
+    "faction": "势力",
+    "location": "地点",
+    "global": "全局",
+    "stage": "阶段",
+    "loop": "轮回",
+    "arc": "篇章",
+    "CONSTRAINT_LIFECYCLE_PROTOCOL": "约束生命周期协议",
+    "Constraint Lifecycle Ledger": "约束生命周期台账",
+    "required_lifecycle_values": "可用生命周期状态",
+    "required_scope_values": "可用适用范围",
+    "downstream_rule": "下游消费规则",
+}
+
+CONSTRAINT_LIFECYCLE_PROTOCOL = """约束生命周期协议（最高优先级）：
+- 创作约束不只分硬约束与软假设，必须保留生命周期与适用范围。
+- 生命周期状态可用值：当前生效、仅作历史、已退场、被覆盖、已禁用、当前范围禁用、有条件生效、历史残留、待解决、旧格式待归类。
+- 适用范围可用值：全局、时间线、篇章、阶段、轮回、势力、角色视角、地点、规则系统、证据窗口。
+- 当原文出现状态、能力、身份、关系、时间线、轮回、规则系统变化时，必须在「硬约束」小节内加入或保留「### 约束生命周期台账」。
+- 不要把有原文依据的历史事实压平成当前仍生效的现实。历史事实可以真实存在，但未必仍在当前阶段生效。
+- 轮回、时间重置、回归、无限流、分支时间线小说是最强同类场景：某能力在第五轮获得但第六轮被锁定或不可用时，必须标为「仅作历史」与「当前范围禁用」，不能标为「当前生效」。
+- 非轮回小说同样适用：被封印的能力、解散的联盟、暴露的身份、死亡的敌人、改变的阵营、已完成的承诺、升级后的境界，除非当前范围仍明确生效，否则不能继续当作当前硬约束。
+- 下游规则：续写只能把「当前生效」或条件已满足的「有条件生效」约束写成当前剧情现实；「仅作历史」「已退场」「已禁用」「历史残留」「待解决」只能作为记忆、债务、创伤、伏笔、读者反讽或审查风险，除非世界模型或状态卡重新标记为当前生效。
 """
 
-CONSTRAINT_LIFECYCLE_LEDGER_TEMPLATE = """### Constraint Lifecycle Ledger
+CONSTRAINT_LIFECYCLE_LEDGER_TEMPLATE = """### 约束生命周期台账
 
-- legacy-unclassified: Existing constraints in this file need lifecycle classification before downstream agents treat them as current-active.
-- required_lifecycle_values: current-active; historical-only; retired; overridden; disabled; disabled-in-current-scope; conditional; inherited-residue; unresolved.
-- required_scope_values: global; timeline; arc; stage; loop; faction; character-POV; location; rule-system; source-evidence-window.
-- downstream_rule: only current-active or explicitly conditional constraints may be used as present-tense story reality.
+- 旧格式待归类：本文件已有约束在被下游当作当前现实前，必须先补充生命周期分类。
+- 可用生命周期状态：当前生效；仅作历史；已退场；被覆盖；已禁用；当前范围禁用；有条件生效；历史残留；待解决。
+- 可用适用范围：全局；时间线；篇章；阶段；轮回；势力；角色视角；地点；规则系统；证据窗口。
+- 下游消费规则：只有「当前生效」或条件已满足的「有条件生效」约束，才能作为当前剧情现实使用。
 """
 
-EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模型蒸馏引擎。从以下完整阅读档案中提取创作约束，输出一个结构化的 world_model.md。
+EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世界模型蒸馏引擎。从以下完整阅读档案中提取创作约束，输出一份结构化的世界模型文档。
 
 ## 规则：
 1. 不要搬运剧情，只提取能约束后续创作的规则和事实
@@ -48,13 +80,13 @@ EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世�
 4. 如果多条信息对同一设定有矛盾：
    - 数量型事实（碎片数、人数、血门数等）：以首次完整表述的版本为准
    - 状态型事实（角色生死、物品归属）：以后出现的版本为准
-   - 无论哪种情况，每次矛盾消解都必须在「矛盾与风险」section 中留痕，格式为：- **[设定名]数量/状态矛盾**：前文称X，后文称Y，采用[策略]及理由
+   - 无论哪种情况，每次矛盾消解都必须在「矛盾与风险」小节中留痕，格式为：- **[设定名]数量/状态矛盾**：前文称X，后文称Y，采用[策略]及理由
    - 严禁静默覆盖
-5. 每个主 section 下至少要有 5-15 条条目，不要过度精简，要充分提取每个 section 的增量
+5. 每个主小节下至少要有 5-15 条条目，不要过度精简，要充分提取每个小节的增量
 6. 对力量体系、修行路径、身份机制、世界规则等硬约束要特别详细，不能遗漏
 
 ## 输出格式：
-以 "# World Model" 开头，严格按以下 7 个 ## 二级标题组织：
+以 "# 世界模型" 开头，严格按以下 7 个 ## 二级标题组织：
 
 1. ## 读者承诺与主轴 — 核心看点、题材契约、长线情绪方向
 2. ## 冲突发动机 — 长期/中期/短期冲突、可复用矛盾模板
@@ -62,11 +94,11 @@ EXTRACTION_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是一个世�
 4. ## 软假设 — 可调整设定、待确认问题、疑似设定
 5. ## 未回收承诺 — 伏笔、情感债、必须回收的读者期待
 6. ## 矛盾与风险 — 设定矛盾、高风险写法警告、一致性风险
-7. ## 下游工作流接口 — 对续写/审核/大纲/文风 agent 的创作指令
+7. ## 下游工作流接口 — 对续写/审核/大纲/文风智能体的创作指令
 
-末尾添加覆盖表格，列出所有已处理的 Batch Archive 批次。
+末尾添加覆盖表格，列出所有已处理的批次归档。
 
-直接输出 markdown，不要包裹在代码块中。
+直接输出文档内容，不要包裹在代码块中。
 
 ## 完整阅读档案：
 {summary_text}"""
@@ -75,15 +107,15 @@ VERIFY_PROMPT = CONSTRAINT_LIFECYCLE_PROTOCOL + "\n\n" + """你是事实校验�
 
 请逐一检查世界模型中的硬约束条目：
 1. 在阅读档案中找到对应的原文依据
-2. 如果条目在档案中无依据 → 标记为「待确认」并移入软假设 section
-3. 如果条目与档案矛盾 → 在矛盾与风险 section 中添加修正条目，并修正硬约束中的错误
-4. 如果档案中有重要事实未被提取 → 在对应 section 补充，标注「校验补充」
+2. 如果条目在档案中无依据 → 标记为「待确认」并移入软假设小节
+3. 如果条目与档案矛盾 → 在矛盾与风险小节中添加修正条目，并修正硬约束中的错误
+4. 如果档案中有重要事实未被提取 → 在对应小节补充，标注「校验补充」
 
 同时检查：
 - 数量型事实是否与首次出现的表述一致（不盲目采用后文的矛盾数字）
 - 角色/物品的当前状态是否与最新剧情一致
 
-输出修正后的完整 world_model.md，不要省略任何已有条目。保留原有的 7 个 ## section 结构。
+输出修正后的完整世界模型文档，不要省略任何已有条目。保留原有的 7 个 ## 小节结构。
 
 ## 当前世界模型（初稿）：
 {world_model}
@@ -127,14 +159,37 @@ def _extract_world_model_from_response(text: str) -> str:
     m = code_block_re.search(text)
     if m:
         candidate = m.group(1).strip()
-        if candidate.startswith("# World Model"):
-            return candidate
+        if candidate.startswith(WORLD_MODEL_HEADING):
+            return _localize_world_model_markers(candidate)
+        if candidate.startswith(LEGACY_WORLD_MODEL_HEADING):
+            return _localize_world_model_markers(candidate)
 
-    idx = text.find("# World Model")
+    idx = text.find(WORLD_MODEL_HEADING)
     if idx >= 0:
-        return text[idx:].strip()
+        return _localize_world_model_markers(text[idx:].strip())
 
-    return text.strip()
+    legacy_idx = text.find(LEGACY_WORLD_MODEL_HEADING)
+    if legacy_idx >= 0:
+        return _localize_world_model_markers(text[legacy_idx:].strip())
+
+    return _localize_world_model_markers(text.strip())
+
+
+def _localize_world_model_markers(content: str) -> str:
+    """Localize legacy world-model markers before writing book-facing markdown."""
+    if not content:
+        return content
+
+    content = re.sub(r"^#\s+World Model\s*$", WORLD_MODEL_HEADING, content, flags=re.MULTILINE)
+    for source, target in LIFECYCLE_MARKER_TRANSLATIONS.items():
+        content = re.sub(
+            rf"(?<![A-Za-z0-9_-]){re.escape(source)}(?![A-Za-z0-9_-])",
+            target,
+            content,
+        )
+    content = content.replace("Batch Archive", "批次归档")
+    content = content.replace("backend world_model pipeline", "后端世界模型管线")
+    return content
 
 
 def _validate_sections(content: str) -> tuple[bool, list[str]]:
@@ -155,10 +210,10 @@ def _repair_sections(content: str) -> str:
 
 def _has_constraint_lifecycle_ledger(content: str) -> bool:
     return (
-        "Constraint Lifecycle Ledger" in content
-        and "current-active" in content
-        and "historical-only" in content
-        and "disabled" in content
+        ("约束生命周期台账" in content or "Constraint Lifecycle Ledger" in content)
+        and ("当前生效" in content or "current-active" in content)
+        and ("仅作历史" in content or "historical-only" in content)
+        and ("已禁用" in content or "disabled" in content)
     )
 
 
@@ -208,7 +263,7 @@ def _build_coverage_table(batches: list[dict]) -> str:
     lines = [
         "### 覆盖表格",
         "",
-        "| Batch Archive | 章节范围 | 已处理 |",
+        "| 批次归档 | 章节范围 | 已处理 |",
         "| --- | --- | --- |",
     ]
     for b in batches:
@@ -216,7 +271,7 @@ def _build_coverage_table(batches: list[dict]) -> str:
         if cs and ce:
             range_str = f"第{cs}-{ce}章"
         else:
-            range_str = b["title"].replace("Batch Archive: ", "")
+            range_str = str(b["title"]).replace("Batch Archive: ", "").replace("批次归档：", "")
         lines.append(f"| {b['title']} | {range_str} | ✅ |")
     lines.append(f"\n**总数：{len(batches)}批次**")
     return "\n".join(lines)
@@ -448,8 +503,8 @@ def _batch_range_label(batch: dict) -> str:
     chapter_start = batch.get("chapter_start")
     chapter_end = batch.get("chapter_end")
     if chapter_start and chapter_end:
-        return f"CH{chapter_start}-{chapter_end}"
-    return str(batch.get("title", UNKNOWN_VALUE)).replace("Batch Archive: ", "") or UNKNOWN_VALUE
+        return f"第{chapter_start}-{chapter_end}章"
+    return str(batch.get("title", UNKNOWN_VALUE)).replace("Batch Archive: ", "").replace("批次归档：", "") or UNKNOWN_VALUE
 
 
 def _infer_tension_level(text: str) -> str:
@@ -542,15 +597,15 @@ def _build_status_card(book_dir: str, summary_path: str) -> str:
     promises_section = _extract_summary_section(last_text, "未兑现承诺")
     relationships = _extract_summary_section(last_text, "关系变化")
     constraints = _extract_summary_section(last_text, "本段约束增量")
-    batch_overview = _extract_summary_section_any(last_text, ("Batch Overview", "本批总览"))
-    batch_index = _extract_summary_section_any(last_text, ("Batch Index", "本批索引"))
-    irreversible_facts = _extract_summary_section_any(last_text, ("Irreversible Facts", "不可撤销事实"))
-    open_loops = _extract_summary_section_any(last_text, ("Open Loops And Promises", "开放循环与承诺"))
+    batch_overview = _extract_summary_section_any(last_text, ("Batch Overview", "批次概览", "本批总览"))
+    batch_index = _extract_summary_section_any(last_text, ("Batch Index", "章节索引", "本批索引"))
+    irreversible_facts = _extract_summary_section_any(last_text, ("Irreversible Facts", "不可逆事实", "不可撤销事实"))
+    open_loops = _extract_summary_section_any(last_text, ("Open Loops And Promises", "未闭合线索与承诺", "开放循环与承诺"))
     relationship_changes = _extract_summary_section_any(
         last_text,
         ("Relationship And State Changes", "关系与状态变化"),
     )
-    downstream_constraints = _extract_summary_section_any(last_text, ("Downstream Constraints", "下游约束"))
+    downstream_constraints = _extract_summary_section_any(last_text, ("Downstream Constraints", "下游创作约束", "下游约束"))
 
     combined_latest = "\n".join(
         [
@@ -623,7 +678,7 @@ def _build_status_card(book_dir: str, summary_path: str) -> str:
 
     content_parts = ["# 状态卡片", ""]
     content_parts.append(
-        f"> 本书「{book_name}」初始化运行态，由 backend world_model pipeline 依据最新 Batch Archive 自动生成；证据不足写作「待确认」。"
+        f"> 本书「{book_name}」初始化运行态，由后端世界模型管线依据最新批次归档自动生成；证据不足写作「待确认」。"
     )
     content_parts.append("")
     content_parts.extend(
