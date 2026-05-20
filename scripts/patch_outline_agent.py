@@ -141,6 +141,7 @@ OUTLINE_SEARCH_REFERENCE_PROTOCOL = """OUTLINE_SEARCH_REFERENCE_PROTOCOL：
 
 OUTLINE_LANDING_PROTOCOL = """OUTLINE_LANDING_ENGINE_PROTOCOL：
 - 适用场景：作者明确要求保存、落档、归档、写入大纲、初始化、重建，或把某个已选想法压进大纲层。
+- 适用场景也包括前端按钮触发的“【大纲落档按钮请求】”：这是作者明确点击落档按钮后的写入请求，不是继续讨论。
 - 目标是把作者意图压缩成可审阅、可回退、可继续编辑的大纲工件，而不是继续开放发散。
 - 写入前先形成 landing_plan：来源意图、写入范围、目标文件、证据读取、想法到大纲层映射、世界模型风险、回退风险。
 - 想法到大纲层映射要把每个重要想法落到 brainstorm.md、master_outline.md、arc_outline.md、chapter_outline.md 之一，不让成熟想法漂在闲聊文本里。
@@ -202,6 +203,7 @@ DISCUSS_PROMPT_MARKERS = [
 COMMIT_PROMPT_MARKERS = [
     *COMMON_PROMPT_MARKERS,
     "OUTLINE_LANDING_ENGINE_PROTOCOL",
+    "大纲落档按钮请求",
     "landing_plan",
     "想法到大纲层映射",
     "可执行章节卡",
@@ -366,6 +368,7 @@ CLASS_2_NAME = """用户当前希望把结果整理为 outline 文件草稿，�
 
 适用情况：
 - 用户明确要求写入、保存、归档、整理进去、落档。
+- 用户意图中出现“【大纲落档按钮请求】”或说明这是前端点击落档按钮触发的请求。
 - 用户要求“初始化大纲”“重建大纲”“初始化/重建大纲”“生成四层大纲”“生成大纲四件套”。
 - 用户要求把当前讨论结果写入 brainstorm.md、master_outline.md、arc_outline.md 或 chapter_outline.md。
 - 用户希望输出可审阅、可回退、可继续编辑的 draft/sandbox 草稿。

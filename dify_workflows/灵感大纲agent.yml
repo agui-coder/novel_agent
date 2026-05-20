@@ -420,6 +420,8 @@ workflow:
 
             - 用户明确要求写入、保存、归档、整理进去、落档。
 
+            - 用户意图中出现“【大纲落档按钮请求】”或说明这是前端点击落档按钮触发的请求。
+
             - 用户要求“初始化大纲”“重建大纲”“初始化/重建大纲”“生成四层大纲”“生成大纲四件套”。
 
             - 用户要求把当前讨论结果写入 brainstorm.md、master_outline.md、arc_outline.md 或 chapter_outline.md。
@@ -520,7 +522,7 @@ workflow:
                 thinking: true
           query:
             type: constant
-            value: "当前 book_id：{{#1776085196214.book_id#}}\nOUTLINE_LANDING_ENGINE_PROTOCOL：\n- 适用场景：作者明确要求保存、落档、归档、写入大纲、初始化、重建，或把某个已选想法压进大纲层。\n\
+            value: "当前 book_id：{{#1776085196214.book_id#}}\nOUTLINE_LANDING_ENGINE_PROTOCOL：\n- 适用场景：作者明确要求保存、落档、归档、写入大纲、初始化、重建，或把某个已选想法压进大纲层。\n- 适用场景也包括前端按钮触发的“【大纲落档按钮请求】”：这是作者明确点击落档按钮后的写入请求，不是继续讨论。\n\
               - 目标是把作者意图压缩成可审阅、可回退、可继续编辑的大纲工件，而不是继续开放发散。\n- 写入前先形成 landing_plan：来源意图、写入范围、目标文件、证据读取、想法到大纲层映射、世界模型风险、回退风险。\n\
               - 想法到大纲层映射要把每个重要想法落到 brainstorm.md、master_outline.md、arc_outline.md、chapter_outline.md 之一，不让成熟想法漂在闲聊文本里。\n-\
               \ 每次写入都要包含“证据模式/生产边界”或同义段落，区分 SOURCE_FACT、AUTHOR_PROPOSAL、WORLD_MODEL_REQUIRED、EXTERNAL_REFERENCE、blocked_by_source。\n\
@@ -680,7 +682,7 @@ workflow:
               provider_show_name: LoreGit 后端工具集
           instruction:
             type: constant
-            value: "# Role: COMMIT_AGENT\nOUTLINE_LANDING_ENGINE_PROTOCOL：\n- 适用场景：作者明确要求保存、落档、归档、写入大纲、初始化、重建，或把某个已选想法压进大纲层。\n\
+            value: "# Role: COMMIT_AGENT\nOUTLINE_LANDING_ENGINE_PROTOCOL：\n- 适用场景：作者明确要求保存、落档、归档、写入大纲、初始化、重建，或把某个已选想法压进大纲层。\n- 适用场景也包括前端按钮触发的“【大纲落档按钮请求】”：这是作者明确点击落档按钮后的写入请求，不是继续讨论。\n\
               - 目标是把作者意图压缩成可审阅、可回退、可继续编辑的大纲工件，而不是继续开放发散。\n- 写入前先形成 landing_plan：来源意图、写入范围、目标文件、证据读取、想法到大纲层映射、世界模型风险、回退风险。\n\
               - 想法到大纲层映射要把每个重要想法落到 brainstorm.md、master_outline.md、arc_outline.md、chapter_outline.md 之一，不让成熟想法漂在闲聊文本里。\n-\
               \ 每次写入都要包含“证据模式/生产边界”或同义段落，区分 SOURCE_FACT、AUTHOR_PROPOSAL、WORLD_MODEL_REQUIRED、EXTERNAL_REFERENCE、blocked_by_source。\n\
