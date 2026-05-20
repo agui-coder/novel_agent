@@ -443,6 +443,29 @@ export interface RollingContinuationPayloadResponse {
     plan: any;
 }
 
+export interface RollingOutlineHandoffPayloadResponse {
+    status: 'success';
+    book_id: string;
+    generated_at: string;
+    mode: 'repair' | 'replenish';
+    target_file: 'chapter_outline.md';
+    route_agent_key: 'outline_agent';
+    file_type: 'outline';
+    write_scope: 'active_file_strict';
+    dify_user: string;
+    intent: string;
+    workbench_state: RollingWorkbenchState;
+    outline_handoff_brief: any;
+    no_prose_boundary: {
+        payload_contains_generated_prose: boolean;
+        payload_mutates_chapter_outline: boolean;
+        payload_writes_chapter_draft: boolean;
+        outline_agent_owns_reviewable_outline_edits: boolean;
+        continuation_agent_remains_only_chapter_draft_writer: boolean;
+    };
+    plan: any;
+}
+
 export async function fetchRollingWorkbenchState(
     bookRef: CoreSessionState['bookRef'],
     options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
@@ -468,6 +491,23 @@ export async function buildRollingContinuationPayload(
         payload.review_gate = 'closed';
     }
     return fetchApi<RollingContinuationPayloadResponse>('/api/rolling/continuation_payload', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function buildRollingOutlineHandoffPayload(
+    bookRef: CoreSessionState['bookRef'],
+    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+): Promise<RollingOutlineHandoffPayloadResponse> {
+    const payload: Record<string, unknown> = {
+        [bookRef.kind]: bookRef.value,
+        batch_size: options?.batchSize || 3,
+    };
+    if (options?.reviewGate === 'closed') {
+        payload.review_gate = 'closed';
+    }
+    return fetchApi<RollingOutlineHandoffPayloadResponse>('/api/rolling/outline_handoff_payload', {
         method: 'POST',
         body: JSON.stringify(payload),
     });

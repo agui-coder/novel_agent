@@ -30,7 +30,7 @@ import { RuntimeConfigPanel } from './components/RuntimeConfigPanel';
 
 import { fetchHotFiles, fetchMainlineFile, fetchRepoIntegrity, repairBookLayout, updateMainlineFile } from './api/checkout';
 
-import { buildRollingContinuationPayload, fetchRollingWorkbenchState, runDeductionStream, stopDeductionStream, runBatchInit, runStyleInit, type RollingAuthorWritingBrief, type RollingWorkbenchState } from './api/orchestration';
+import { buildRollingContinuationPayload, buildRollingOutlineHandoffPayload, fetchRollingWorkbenchState, runDeductionStream, stopDeductionStream, runBatchInit, runStyleInit, type RollingAuthorWritingBrief, type RollingWorkbenchState } from './api/orchestration';
 import { type DraftConfirmResponse, type MaterializedChapter, type PostConfirmWorldPayload } from './api/draft';
 import { createConversation } from './api/session';
 import { ApiError } from './api/client';
@@ -1152,6 +1152,217 @@ export default function App() {
                     current: 0,
                     total: 4,
                     label: '续写失败',
+                    lines: [...lines],
+                },
+            }));
+            store.setUiNotice({
+                type: 'error',
+                message,
+                ts: Date.now(),
+            });
+        }
+    }, [
+        hasPendingDraftDecision,
+        loadMainline,
+        loadReviewTargetMainline,
+        repoIntegrity?.needsRepair,
+        rollingActionState.runState,
+        store,
+    ]);
+
+    const handleRunRollingOutlineHandoff = useCallback(async () => {
+        if (rollingActionState.runState === 'running') return;
+        if (repoIntegrity?.needsRepair) {
+            store.setUiNotice({
+                type: 'error',
+                message: '仓库核心布局不完整，修复后才能启动大纲交接。',
+                ts: Date.now(),
+            });
+            return;
+        }
+        if (store.fsmState === 'THINKING') {
+            store.setUiNotice({
+                type: 'info',
+                message: '当前 Agent 正在输出，稍后再启动大纲交接。',
+                ts: Date.now(),
+            });
+            return;
+        }
+        if (store.fsmState === 'REVIEW' || store.fsmState === 'CONFLICT' || hasPendingDraftDecision) {
+            store.setWorkbenchMode('review');
+            store.setUiNotice({
+                type: 'info',
+                message: '当前已有待审草稿，先确权或回滚后再修复/补充章节卡。',
+                ts: Date.now(),
+            });
+            return;
+        }
+
+        const lines = ['刷新滚动队列，准备大纲交接…'];
+        const setRunningProgress = (current: number, total: number, label: string, nextLines = lines) => {
+            setRollingActionState((prev) => ({
+                ...prev,
+                runState: 'running',
+                progress: {
+                    current,
+                    total,
+                    label,
+                    lines: [...nextLines],
+                },
+            }));
+        };
+        setRunningProgress(0, 4, '准备大纲交接');
+
+        try {
+            const payload = await buildRollingOutlineHandoffPayload(store.bookRef, { batchSize: 3 });
+            const modeLabel = payload.mode === 'repair' ? '修复章节卡' : '生成下一批章节卡';
+            lines.push(`交接模式：${modeLabel}`);
+            lines.push(`下一步：${payload.workbench_state.next_action}`);
+            if (payload.mode === 'repair') {
+                lines.push(`需修复：${compactList(payload.workbench_state.blocked_card_numbers)}`);
+            } else {
+                lines.push(`已有章节卡已消耗，准备补充下一批。`);
+            }
+            lines.push('已生成大纲交接包，交给 outline Agent。');
+            setRunningProgress(1, 4, '调用大纲 Agent');
+
+            let draftReady = false;
+            let draftCommitId = '';
+            let draftTargetFile = payload.target_file;
+            let changedFiles: string[] = [];
+            const abortController = new AbortController();
+            await runDeductionStream(payload.intent, useAppStore.getState(), {
+                onAck: (ack) => {
+                    const routed = typeof ack?.routed_agent === 'string' ? ack.routed_agent : 'outline';
+                    lines.push(`大纲 Agent 已接单：${routed}`);
+                    setRunningProgress(2, 4, '大纲处理中');
+                },
+                onStage: (stage) => {
+                    const text = typeof stage?.stage_text === 'string' ? stage.stage_text : '';
+                    if (text) {
+                        lines.push(`执行阶段：${text}`);
+                        setRunningProgress(2, 4, '大纲处理中');
+                    }
+                },
+                onDraftReady: (draftPayload) => {
+                    draftReady = true;
+                    draftTargetFile = typeof draftPayload?.file_name === 'string' ? draftPayload.file_name : payload.target_file;
+                    draftCommitId = typeof draftPayload?.commit_id === 'string' ? draftPayload.commit_id : '';
+                    const draftContent = typeof draftPayload?.content === 'string' ? draftPayload.content : '';
+                    const branch = typeof draftPayload?.branch === 'string' ? draftPayload.branch : store.draftBranch;
+                    const diffPreview = typeof draftPayload?.diff_preview === 'string' ? draftPayload.diff_preview : '';
+                    changedFiles = normalizeChangedFilesPayload(draftPayload?.changed_files);
+                    const reviewChangedFiles = changedFiles.includes(draftTargetFile)
+                        ? changedFiles
+                        : [draftTargetFile, ...changedFiles];
+                    store.setSandboxDraft(draftContent, draftCommitId || null);
+                    store.setReviewTarget(draftTargetFile, reviewChangedFiles);
+                    if (draftTargetFile === store.activeFile) {
+                        store.setReviewMainlineFact(store.mainlineContent, store.baseEtag);
+                    } else {
+                        void loadReviewTargetMainline(draftTargetFile);
+                    }
+                    store.setReviewReadyNotice({
+                        fileName: draftTargetFile,
+                        branch,
+                        commitId: draftCommitId || null,
+                        diffPreview,
+                        changedFiles: reviewChangedFiles,
+                        ts: Date.now(),
+                    });
+                    store.setFsmState('REVIEW');
+                    store.setWorkbenchMode('review');
+                    lines.push(`大纲草稿已写入：${draftTargetFile}${draftCommitId ? ` @ ${draftCommitId.slice(0, 8)}` : ''}`);
+                    setRunningProgress(3, 4, '进入审阅');
+                },
+                onDone: (donePayload) => {
+                    const doneChangedFiles = normalizeChangedFilesPayload(donePayload?.changed_files);
+                    if (!changedFiles.length && doneChangedFiles.length) {
+                        changedFiles = doneChangedFiles;
+                    }
+                    if (!draftCommitId && typeof donePayload?.sync_commit_id === 'string') {
+                        draftCommitId = donePayload.sync_commit_id;
+                    }
+                },
+                onError: (errorPayload) => {
+                    const code = typeof errorPayload?.code === 'string' ? errorPayload.code : 'STREAM_ERROR';
+                    const message = typeof errorPayload?.message === 'string' ? errorPayload.message : '大纲交接失败';
+                    throw new ApiError(
+                        typeof errorPayload?.status === 'number' ? errorPayload.status : 500,
+                        code,
+                        message,
+                        errorPayload,
+                    );
+                },
+            }, {
+                signal: abortController.signal,
+                routeAgentKey: payload.route_agent_key,
+                activeFile: payload.target_file,
+                fileType: payload.file_type,
+                baseEtag: '',
+                detachedJob: true,
+                difyUser: payload.dify_user,
+            });
+
+            if (!draftReady) {
+                lines.push('大纲交接流程结束，但没有检测到 chapter_outline.md 草稿写入。');
+                setRollingActionState((prev) => ({
+                    ...prev,
+                    runState: 'error',
+                    progress: {
+                        current: 3,
+                        total: 4,
+                        label: '未生成大纲草稿',
+                        lines: [...lines],
+                    },
+                }));
+                return;
+            }
+
+            try {
+                const { files, integrity } = await fetchHotFiles(store.bookRef);
+                setRepoIntegrity(integrity);
+                if (files.length > 0) {
+                    store.setHotFiles(files);
+                }
+            } catch (err) {
+                console.warn('Failed to refresh hot files after rolling outline handoff:', err);
+            }
+            await loadMainline(store.activeFile, { preserveDraftReview: true });
+            if (draftTargetFile !== store.activeFile) {
+                await loadReviewTargetMainline(draftTargetFile);
+            }
+            const refreshed = await fetchRollingWorkbenchState(store.bookRef, { batchSize: 3 });
+            lines.push('大纲审阅工作台已打开，确认后将自动回到滚动队列。');
+            setRollingActionState({
+                runState: 'success',
+                state: refreshed.workbench_state,
+                progress: {
+                    current: 4,
+                    total: 4,
+                    label: '已进入审阅',
+                    lines,
+                },
+            });
+            store.setUiNotice({
+                type: 'success',
+                message: draftCommitId
+                    ? `大纲交接完成，草稿提交 ${draftCommitId.slice(0, 8)} 等待审阅。`
+                    : '大纲交接完成，草稿等待审阅。',
+                ts: Date.now(),
+            });
+        } catch (err: any) {
+            const message = err instanceof ApiError
+                ? formatVisibleDeductionError(err.code, err.message)
+                : (err?.message || '大纲交接失败');
+            lines.push(`错误：${message}`);
+            setRollingActionState((prev) => ({
+                ...prev,
+                runState: 'error',
+                progress: {
+                    current: 0,
+                    total: 4,
+                    label: '大纲交接失败',
                     lines: [...lines],
                 },
             }));
@@ -2461,6 +2672,7 @@ export default function App() {
             onRunStyleInit: handleRunStyleInitAction,
             onRefreshRollingState: handleRefreshRollingState,
             onRunRollingContinuation: handleRunRollingContinuation,
+            onRunRollingOutlineHandoff: handleRunRollingOutlineHandoff,
             onOpenRuntimeConfig: () => setRuntimeConfigOpen(true),
             onRunPostConfirmHandoff: handleRunPostConfirmHandoff,
         },

@@ -46,6 +46,7 @@ export interface WorkbenchActionHandlers {
     onRunStyleInit: (options?: { forceRebuild?: boolean }) => void;
     onRefreshRollingState: () => void;
     onRunRollingContinuation: () => void;
+    onRunRollingOutlineHandoff: () => void;
     onOpenRuntimeConfig: () => void;
     onRunPostConfirmHandoff: () => void;
 }
@@ -122,6 +123,11 @@ export function buildWorkbenchActions(
     const rollingCanContinue = rollingRunnable
         && rollingState?.next_action === 'continue_existing_cards'
         && rollingState.selected_card_numbers.length > 0;
+    const rollingCanRepairOutline = rollingRunnable
+        && rollingState?.next_action === 'repair_outline_cards'
+        && rollingState.blocked_card_numbers.length > 0;
+    const rollingCanReplenishOutline = rollingRunnable
+        && rollingState?.next_action === 'replenish_outline';
     const rollingDescription = rollingState
         ? `状态：${rollingNextActionLabel(rollingState.next_action)}；卡 ${rollingState.outline_diagnostics.outline_card_count}/${rollingState.outline_diagnostics.executable_card_count} 可写；本轮 ${formatChapterList(rollingState.selected_card_numbers)}。`
         : rollingActionAvailable
@@ -317,6 +323,22 @@ export function buildWorkbenchActions(
             },
             meta: '/api/rolling/state',
             controls: [
+                ...(rollingState?.next_action === 'repair_outline_cards' ? [{
+                    id: 'repair-outline',
+                    label: '修复章节卡',
+                    description: '调用大纲 Agent 修复当前缺字段或格式错误的章节卡，只提交 chapter_outline.md 的可审阅草稿。',
+                    tone: 'primary' as const,
+                    disabled: !rollingCanRepairOutline || context.rollingRunState === 'running',
+                    onRun: rollingCanRepairOutline ? handlers.onRunRollingOutlineHandoff : undefined,
+                }] : []),
+                ...(rollingState?.next_action === 'replenish_outline' ? [{
+                    id: 'replenish-outline',
+                    label: '生成下一批章节卡',
+                    description: '调用大纲 Agent 在现有逐章大纲后续写下一批可执行章节卡，不清空旧卡。',
+                    tone: 'primary' as const,
+                    disabled: !rollingCanReplenishOutline || context.rollingRunState === 'running',
+                    onRun: rollingCanReplenishOutline ? handlers.onRunRollingOutlineHandoff : undefined,
+                }] : []),
                 {
                     id: 'start',
                     label: '开始写正文',
