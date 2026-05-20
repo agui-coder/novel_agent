@@ -26,6 +26,19 @@ def card(number: int, title: str) -> str:
     )
 
 
+def broken_card_without_conflict(number: int, title: str) -> str:
+    return (
+        f"## \u7ae0\u8282\u5361 {number}: {title}\n\n"
+        "- chapter_goal: goal\n"
+        "- entry_scene: entry\n"
+        "- payoff: payoff\n"
+        "- state_change: state\n"
+        "- foreshadowing_action: foreshadow\n"
+        "- ending_hook: hook\n"
+        "- evidence_mode: AUTHOR_PROPOSAL\n"
+    )
+
+
 def bold_ch_card(number: int, title: str) -> str:
     return (
         f"### CH{number} — {title}\n\n"
@@ -264,6 +277,96 @@ class V70RollingWorkbenchApiTests(unittest.TestCase):
         self.assertEqual(body["code"], "ROLLING_NOT_READY")
         self.assertEqual(body["next_action"], "replenish_outline")
         self.assertEqual(body["workbench_state"]["selected_card_numbers"], [])
+        self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
+
+    def test_outline_handoff_payload_routes_blocked_card_repair_without_mutation(self):
+        book_id, book_dir = self._init_book("v70_outline_repair_payload")
+        outline_text = "# outline\n\n" + "\n".join(
+            [
+                broken_card_without_conflict(1, "broken-title"),
+                card(2, "title-2"),
+                card(3, "title-3"),
+            ]
+        )
+        (book_dir / "chapter_outline.md").write_text(outline_text, encoding="utf-8")
+
+        response = self.client.post(
+            "/api/rolling/outline_handoff_payload",
+            json={"book_id": book_id, "batch_size": 3},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        body_text = repr(body)
+        self.assertEqual(body["status"], "success")
+        self.assertEqual(body["mode"], "repair")
+        self.assertEqual(body["route_agent_key"], "outline_agent")
+        self.assertEqual(body["target_file"], "chapter_outline.md")
+        self.assertEqual(body["file_type"], "outline")
+        self.assertEqual(body["write_scope"], "active_file_strict")
+        self.assertEqual(body["workbench_state"]["next_action"], "repair_outline_cards")
+        brief = body["outline_handoff_brief"]
+        self.assertEqual(brief["mode"], "repair")
+        self.assertEqual(brief["target_file"], "chapter_outline.md")
+        self.assertEqual(brief["route_agent_key"], "outline_agent")
+        self.assertEqual(brief["progress_cursor"]["blocked_card_numbers"], [1])
+        self.assertEqual(brief["repair_scope"]["blocked_cards"][0]["number"], 1)
+        self.assertIn("conflict_or_obstacle", brief["repair_scope"]["blocked_cards"][0]["missing_fields"])
+        self.assertIn("conflict_or_obstacle", brief["repair_scope"]["missing_fields"])
+        self.assertTrue(brief["repair_scope"]["repair_existing_card_first"])
+        self.assertTrue(any(card["number"] == 2 for card in brief["repair_scope"]["neighbor_cards"]))
+        self.assertFalse(brief["no_prose_boundary"]["brief_contains_generated_prose"])
+        self.assertFalse(body["no_prose_boundary"]["payload_contains_generated_prose"])
+        self.assertFalse(body["no_prose_boundary"]["payload_mutates_chapter_outline"])
+        self.assertTrue(body["no_prose_boundary"]["outline_agent_owns_reviewable_outline_edits"])
+        self.assertIn("rolling_outline_handoff_brief JSON", body["intent"])
+        self.assertIn("chapter_draft.md", body["intent"])
+        self.assertNotIn("UNIQUE_DRAFT_PROSE", body_text)
+        self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
+
+    def test_outline_handoff_payload_routes_replenishment_without_mutation(self):
+        book_id, book_dir = self._init_book("v70_outline_replenish_payload")
+        outline_text = "# outline\n\n" + "\n".join(card(i, f"title-{i}") for i in range(1, 3))
+        draft_text = "# draft\n\n" + "\n".join(f"## \u7b2c{i}\u7ae0 title-{i}\nbody\n" for i in range(1, 3))
+        (book_dir / "chapter_outline.md").write_text(outline_text, encoding="utf-8")
+        (book_dir / "chapter_draft.md").write_text(draft_text, encoding="utf-8")
+
+        response = self.client.post(
+            "/api/rolling/outline_handoff_payload",
+            json={"book_id": book_id, "batch_size": 3},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["status"], "success")
+        self.assertEqual(body["mode"], "replenish")
+        self.assertEqual(body["route_agent_key"], "outline_agent")
+        self.assertEqual(body["workbench_state"]["next_action"], "replenish_outline")
+        brief = body["outline_handoff_brief"]
+        self.assertEqual(brief["mode"], "replenish")
+        self.assertEqual(brief["progress_cursor"]["pending_review_chapter_numbers"], [1, 2])
+        self.assertEqual(brief["replenish_scope"]["desired_new_batch_size"], 3)
+        self.assertEqual(brief["replenish_scope"]["start_after_chapter"], 2)
+        self.assertEqual([item["number"] for item in brief["replenish_scope"]["last_known_outline_cards"]], [1, 2])
+        self.assertFalse(body["no_prose_boundary"]["payload_mutates_chapter_outline"])
+        self.assertFalse(body["no_prose_boundary"]["payload_writes_chapter_draft"])
+        self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
+
+    def test_outline_handoff_payload_rejects_when_continuation_is_ready(self):
+        book_id, book_dir = self._init_book("v70_outline_handoff_not_needed")
+        outline_text = "# outline\n\n" + "\n".join(card(i, f"title-{i}") for i in range(1, 4))
+        (book_dir / "chapter_outline.md").write_text(outline_text, encoding="utf-8")
+
+        response = self.client.post(
+            "/api/rolling/outline_handoff_payload",
+            json={"book_id": book_id, "batch_size": 3},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        body = response.get_json()
+        self.assertEqual(body["code"], "ROLLING_OUTLINE_HANDOFF_NOT_NEEDED")
+        self.assertEqual(body["next_action"], "continue_existing_cards")
+        self.assertEqual(body["workbench_state"]["selected_card_numbers"], [1, 2, 3])
         self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
 
 

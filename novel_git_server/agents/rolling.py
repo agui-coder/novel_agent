@@ -164,6 +164,161 @@ def _brief_chapter_cards(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return cards
 
 
+def _card_brief(card: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(card, dict):
+        return {}
+    fields = card.get("fields") if isinstance(card.get("fields"), dict) else {}
+    return {
+        "number": card.get("number"),
+        "title": _brief_text(card.get("title"), limit=80),
+        "heading_line": card.get("heading_line") or 0,
+        "end_line": card.get("end_line") or 0,
+        "executable": bool(card.get("executable")),
+        "missing_fields": list(card.get("missing_fields") or []),
+        "fields": {
+            key: _brief_text(value, limit=260)
+            for key, value in fields.items()
+        },
+    }
+
+
+def _neighbor_cards(plan: dict[str, Any], target_number: int | None, *, radius: int = 2) -> list[dict[str, Any]]:
+    cards = [card for card in plan.get("cards") or [] if isinstance(card, dict)]
+    if target_number is None:
+        return [_card_brief(card) for card in cards[: radius * 2 + 1]]
+    target_index = next(
+        (index for index, card in enumerate(cards) if card.get("number") == target_number),
+        -1,
+    )
+    if target_index < 0:
+        return []
+    start = max(0, target_index - radius)
+    end = min(len(cards), target_index + radius + 1)
+    return [_card_brief(card) for card in cards[start:end]]
+
+
+def _blocked_cards(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    blocked_numbers = set(plan.get("blocked_card_numbers") or [])
+    cards = [
+        card for card in plan.get("cards") or []
+        if isinstance(card, dict) and card.get("number") in blocked_numbers
+    ]
+    return [_card_brief(card) for card in cards]
+
+
+def _last_accepted_cards(plan: dict[str, Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    accepted_numbers = set(plan.get("accepted_chapter_numbers") or plan.get("written_chapter_numbers") or [])
+    cards = [
+        card for card in plan.get("cards") or []
+        if isinstance(card, dict) and card.get("number") in accepted_numbers
+    ]
+    cards = sorted(cards, key=lambda item: int(item.get("number") or 0))
+    return [_card_brief(card) for card in cards[-limit:]]
+
+
+def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_at: str) -> dict[str, Any]:
+    blocked = _blocked_cards(plan)
+    first_blocked_number = blocked[0].get("number") if blocked else None
+    known_numbers = [
+        number for number in (
+            list(plan.get("pending_card_numbers") or [])
+            + list(plan.get("selected_card_numbers") or [])
+            + list(plan.get("accepted_chapter_numbers") or plan.get("written_chapter_numbers") or [])
+            + list(plan.get("pending_review_chapter_numbers") or [])
+            + [
+                card.get("number") for card in plan.get("cards") or []
+                if isinstance(card, dict)
+            ]
+        )
+        if isinstance(number, int)
+    ]
+    return {
+        "schema_version": 1,
+        "brief_type": "rolling_outline_handoff_brief",
+        "mode": mode,
+        "generated_at": generated_at,
+        "book_id": plan.get("book_id"),
+        "target_file": "chapter_outline.md",
+        "route_agent_key": "outline_agent",
+        "progress_cursor": {
+            "batch_size": plan.get("batch_size"),
+            "next_action": plan.get("next_action"),
+            "stop_reason": plan.get("stop_reason") or "",
+            "accepted_chapter_numbers": plan.get("accepted_chapter_numbers") or [],
+            "pending_review_chapter_numbers": plan.get("pending_review_chapter_numbers") or [],
+            "pending_card_numbers": plan.get("pending_card_numbers") or [],
+            "selected_card_numbers": plan.get("selected_card_numbers") or [],
+            "blocked_card_numbers": plan.get("blocked_card_numbers") or [],
+            "remaining_executable_after_selected": plan.get("remaining_executable_after_selected") or [],
+        },
+        "repair_scope": {
+            "blocked_cards": blocked,
+            "neighbor_cards": _neighbor_cards(plan, first_blocked_number),
+            "repair_existing_card_first": mode == "repair",
+            "missing_fields": sorted({field for card in blocked for field in card.get("missing_fields") or []}),
+        },
+        "replenish_scope": {
+            "last_accepted_cards": _last_accepted_cards(plan),
+            "last_known_outline_cards": [_card_brief(card) for card in (plan.get("cards") or [])[-3:] if isinstance(card, dict)],
+            "desired_new_batch_size": plan.get("batch_size") or 3,
+            "start_after_chapter": max(known_numbers or [0]),
+        },
+        "source_files_to_read": [
+            "chapter_outline.md",
+            "arc_outline.md",
+            "master_outline.md",
+            "brainstorm.md",
+            "summary.md",
+            "status_card.md",
+            "world_model.md",
+            "domain_rules.md",
+            "style_constraints_for_continuation.md",
+            "error_archive.md",
+        ],
+        "write_contract": {
+            "where_to_write": "只允许通过大纲路由提交 chapter_outline.md 的可审阅草稿。",
+            "repair_rule": "修复模式优先补齐或重写原编号章节卡，不要为了绕过错误而新造章节编号。",
+            "replenish_rule": "补卡模式只在章节卡耗尽或不足时续写下一批章节卡。",
+            "what_not_to_do": [
+                "不要写 chapter_draft.md 或 chapters/*.md。",
+                "不要生成小说正文。",
+                "不要把 WORLD_MODEL_REQUIRED 当成已确认世界观事实。",
+                "不要清空或物理删除已消耗章节卡。",
+            ],
+        },
+        "no_prose_boundary": {
+            "brief_contains_generated_prose": False,
+            "brief_writes_files": False,
+            "backend_mutates_chapter_outline": False,
+            "outline_agent_owns_reviewable_outline_edits": True,
+            "continuation_agent_remains_only_chapter_draft_writer": True,
+        },
+    }
+
+
+def _build_outline_handoff_intent(*, brief: dict[str, Any]) -> str:
+    mode = brief.get("mode")
+    if mode == "repair":
+        action_line = "请修复当前不可执行的逐章大纲卡，优先补齐原编号章节卡缺失字段。"
+    else:
+        action_line = "请在现有逐章大纲之后生成下一批可执行章节卡。"
+    brief_json = json.dumps(brief, ensure_ascii=False, sort_keys=True)
+    return (
+        "【滚动三章工作台：大纲交接任务】\n"
+        "本任务由前台按钮触发，不是闲聊。请按 outline Agent 的既有读写工具链执行。\n"
+        f"{action_line}\n"
+        "你必须读取 chapter_outline.md、arc_outline.md、master_outline.md、brainstorm.md、summary.md、"
+        "status_card.md、world_model.md、domain_rules.md、style_constraints_for_continuation.md 和 error_archive.md。\n"
+        "只允许提交 chapter_outline.md 的可审阅草稿；不要写 chapter_draft.md，不要写 chapters/*.md，不要生成正文。\n"
+        "修复章节卡时，优先保留原章节编号和章节意图，只补齐缺失字段或规整格式；不要为了绕过错误新造编号。\n"
+        "生成下一批章节卡时，延续现有编号、节奏、冲突、兑现、状态变化和钩子，不要清空旧卡。\n"
+        "如果新增设定需要世界模型确认，请标记为 WORLD_MODEL_REQUIRED，不要当成已确认事实。\n"
+        "完成后只返回简短状态，让前端刷新滚动队列。\n\n"
+        "rolling_outline_handoff_brief JSON：\n"
+        f"{brief_json}"
+    )
+
+
 def _truth_source_list(context_pack: dict[str, Any]) -> list[dict[str, Any]]:
     refs = context_pack.get("truth_source_refs") if isinstance(context_pack.get("truth_source_refs"), dict) else {}
     sources: list[dict[str, Any]] = []
@@ -414,6 +569,82 @@ def create_blueprint(
                     "no_prose_boundary": {
                         "payload_contains_generated_prose": False,
                         "payload_writes_chapter_draft": False,
+                        "continuation_agent_remains_only_chapter_draft_writer": True,
+                    },
+                    "plan": plan,
+                }
+            ),
+            200,
+        )
+
+    @bp.post("/api/rolling/outline_handoff_payload")
+    def rolling_outline_handoff_payload():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            payload = {}
+        book_id, book_err = require_book_id(payload)
+        if book_err:
+            return book_err
+        assert book_id is not None
+
+        paths = get_book_paths(book_id, storage_root)
+        book_dir = paths["book_dir"]
+        if not os.path.isdir(book_dir):
+            return json_error("BOOK_NOT_FOUND", "book not found", 404)
+
+        batch_size = _coerce_batch_size(payload.get("batch_size"))
+        review_gate_open = payload.get("review_gate") != "closed"
+        try:
+            plan = build_rolling_plan(
+                book_id=book_id,
+                book_dir=book_dir,
+                batch_size=batch_size,
+                review_gate_open=review_gate_open,
+            )
+        except ValueError as exc:
+            return json_error("INVALID_PAYLOAD", str(exc), 400)
+
+        next_action = plan.get("next_action")
+        if next_action not in {"repair_outline_cards", "replenish_outline"}:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "code": "ROLLING_OUTLINE_HANDOFF_NOT_NEEDED",
+                        "message": f"rolling workbench does not need outline handoff: {next_action}",
+                        "book_id": book_id,
+                        "next_action": next_action,
+                        "stop_reason": plan.get("stop_reason") or "",
+                        "workbench_state": _build_workbench_state(plan, book_dir),
+                        "plan": plan,
+                    }
+                ),
+                409,
+            )
+
+        mode = "repair" if next_action == "repair_outline_cards" else "replenish"
+        generated_at = _iso_now()
+        brief = _build_outline_handoff_brief(plan=plan, mode=mode, generated_at=generated_at)
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "book_id": book_id,
+                    "generated_at": generated_at,
+                    "mode": mode,
+                    "target_file": "chapter_outline.md",
+                    "route_agent_key": "outline_agent",
+                    "file_type": "outline",
+                    "write_scope": "active_file_strict",
+                    "dify_user": f"loregit-ui-rolling-outline-{mode}",
+                    "intent": _build_outline_handoff_intent(brief=brief),
+                    "workbench_state": _build_workbench_state(plan, book_dir),
+                    "outline_handoff_brief": brief,
+                    "no_prose_boundary": {
+                        "payload_contains_generated_prose": False,
+                        "payload_mutates_chapter_outline": False,
+                        "payload_writes_chapter_draft": False,
+                        "outline_agent_owns_reviewable_outline_edits": True,
                         "continuation_agent_remains_only_chapter_draft_writer": True,
                     },
                     "plan": plan,
