@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { ChatMessage, DraftActionPending, FsmState } from '../types/store';
-import { ChatMessageBubble } from './ChatMessageBubble';
+import { ChatMessageBubble, OutlineLandingTargetFile } from './ChatMessageBubble';
 
 interface ChatPanelProps {
     messages: ChatMessage[];
@@ -16,6 +16,8 @@ interface ChatPanelProps {
     onEditDraftChange?: (next: string) => void;
     onSubmitEditUserMessage?: () => void;
     onCancelEditUserMessage?: () => void;
+    canLandOutlineMessages?: boolean;
+    onLandOutlineMessage?: (message: ChatMessage, targetFile: OutlineLandingTargetFile) => void;
 }
 
 const ChatPanelImpl: React.FC<ChatPanelProps> = ({
@@ -32,6 +34,8 @@ const ChatPanelImpl: React.FC<ChatPanelProps> = ({
     onEditDraftChange,
     onSubmitEditUserMessage,
     onCancelEditUserMessage,
+    canLandOutlineMessages = false,
+    onLandOutlineMessage,
 }) => {
     const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
     const scrollToken = useMemo(() => (
@@ -84,6 +88,8 @@ const ChatPanelImpl: React.FC<ChatPanelProps> = ({
                     onEditDraftChange={onEditDraftChange}
                     onSubmitEditUserMessage={onSubmitEditUserMessage}
                     onCancelEditUserMessage={onCancelEditUserMessage}
+                    canLandOutlineMessage={canLandOutlineMessages}
+                    onLandOutlineMessage={onLandOutlineMessage}
                 />
             ))}
             </div>
@@ -106,7 +112,9 @@ function areChatPanelPropsEqual(prev: ChatPanelProps, next: ChatPanelProps): boo
         prev.onRequestEditUserMessage === next.onRequestEditUserMessage &&
         prev.onEditDraftChange === next.onEditDraftChange &&
         prev.onSubmitEditUserMessage === next.onSubmitEditUserMessage &&
-        prev.onCancelEditUserMessage === next.onCancelEditUserMessage
+        prev.onCancelEditUserMessage === next.onCancelEditUserMessage &&
+        prev.canLandOutlineMessages === next.canLandOutlineMessages &&
+        prev.onLandOutlineMessage === next.onLandOutlineMessage
     );
 }
 

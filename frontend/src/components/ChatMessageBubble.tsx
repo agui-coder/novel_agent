@@ -3,6 +3,15 @@ import { AssistantTimelineSegment, ChatMessage, DraftActionPending, FsmState } f
 import { useUiCopy } from '../i18n/ui';
 import { MarkdownRender } from './MarkdownRender';
 
+export type OutlineLandingTargetFile = 'brainstorm.md' | 'master_outline.md' | 'arc_outline.md' | 'chapter_outline.md';
+
+export const OUTLINE_LANDING_TARGETS: Array<{ fileName: OutlineLandingTargetFile; label: string; hint: string }> = [
+    { fileName: 'brainstorm.md', label: '灵感池', hint: '卖点、路线、风险、待决问题' },
+    { fileName: 'master_outline.md', label: '总纲', hint: '读者承诺、主欲望、长线方向' },
+    { fileName: 'arc_outline.md', label: '阶段纲', hint: '单元目标、压力台阶、兑现顺序' },
+    { fileName: 'chapter_outline.md', label: '逐章纲', hint: '章节卡、场景入口、钩子' },
+];
+
 interface ChatMessageBubbleProps {
     message: ChatMessage;
     fsmState: FsmState;
@@ -17,6 +26,8 @@ interface ChatMessageBubbleProps {
     onEditDraftChange?: (next: string) => void;
     onSubmitEditUserMessage?: () => void;
     onCancelEditUserMessage?: () => void;
+    canLandOutlineMessage?: boolean;
+    onLandOutlineMessage?: (message: ChatMessage, targetFile: OutlineLandingTargetFile) => void;
 }
 
 interface RollingSlotProps {
@@ -320,8 +331,11 @@ const ChatMessageBubbleImpl: React.FC<ChatMessageBubbleProps> = ({
     onEditDraftChange,
     onSubmitEditUserMessage,
     onCancelEditUserMessage,
+    canLandOutlineMessage = false,
+    onLandOutlineMessage,
 }) => {
     const copy = useUiCopy();
+    const [outlineLandingOpen, setOutlineLandingOpen] = useState(false);
     const isUser = message.role === 'user';
     const isError = message.status === 'error';
     const isInterrupted = message.status === 'interrupted';
@@ -382,6 +396,13 @@ const ChatMessageBubbleImpl: React.FC<ChatMessageBubbleProps> = ({
     const contentClassName = isPlainAssistant
         ? 'max-w-[41rem] !text-inherit [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'
         : 'max-w-[32rem] !text-inherit [&>*:first-child]:mt-0 [&>*:last-child]:mb-0';
+    const showOutlineLanding = Boolean(
+        canLandOutlineMessage
+        && onLandOutlineMessage
+        && isPlainAssistant
+        && message.status === 'done'
+        && message.text.trim()
+    );
 
     if (isUser && isEditingUserMessage) {
         return (
@@ -490,6 +511,39 @@ const ChatMessageBubbleImpl: React.FC<ChatMessageBubbleProps> = ({
                     {resolutionText}
                 </div>
             )}
+
+            {showOutlineLanding && (
+                <div className="outline-landing-actions mt-3">
+                    <button
+                        type="button"
+                        className="outline-landing-trigger"
+                        onClick={() => setOutlineLandingOpen((open) => !open)}
+                        title="把这条大纲助手回复整理成可审阅的大纲草稿"
+                    >
+                        <span aria-hidden="true">⇣</span>
+                        <span>落档</span>
+                    </button>
+                    {outlineLandingOpen && (
+                        <div className="outline-landing-menu">
+                            {OUTLINE_LANDING_TARGETS.map((target) => (
+                                <button
+                                    key={target.fileName}
+                                    type="button"
+                                    className="outline-landing-option"
+                                    onClick={() => {
+                                        setOutlineLandingOpen(false);
+                                        onLandOutlineMessage?.(message, target.fileName);
+                                    }}
+                                >
+                                    <span className="outline-landing-option-label">{target.label}</span>
+                                    <span className="outline-landing-option-file">{target.fileName}</span>
+                                    <span className="outline-landing-option-hint">{target.hint}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </>
     );
 
@@ -533,7 +587,9 @@ function areChatMessageBubblePropsEqual(prev: ChatMessageBubbleProps, next: Chat
         prev.onRequestEditUserMessage === next.onRequestEditUserMessage &&
         prev.onEditDraftChange === next.onEditDraftChange &&
         prev.onSubmitEditUserMessage === next.onSubmitEditUserMessage &&
-        prev.onCancelEditUserMessage === next.onCancelEditUserMessage
+        prev.onCancelEditUserMessage === next.onCancelEditUserMessage &&
+        prev.canLandOutlineMessage === next.canLandOutlineMessage &&
+        prev.onLandOutlineMessage === next.onLandOutlineMessage
     );
 }
 

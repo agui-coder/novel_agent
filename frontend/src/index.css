@@ -591,6 +591,97 @@ body {
         animation-delay: 0.3s;
     }
 
+    .outline-landing-actions {
+        position: relative;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .outline-landing-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        height: 1.8rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.016) 100%),
+            rgba(18, 22, 28, 0.92);
+        padding: 0 0.65rem;
+        color: var(--color-dark-text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+    }
+
+    .outline-landing-trigger:hover {
+        border-color: rgba(255, 255, 255, 0.16);
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.024) 100%),
+            rgba(21, 26, 34, 0.96);
+        color: var(--color-dark-text-main);
+    }
+
+    .outline-landing-menu {
+        display: grid;
+        width: min(22rem, calc(100vw - 3rem));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(11, 14, 19, 0.98);
+        padding: 0.5rem;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.02),
+            0 14px 34px rgba(0, 0, 0, 0.26);
+    }
+
+    .outline-landing-option {
+        min-width: 0;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.018);
+        padding: 0.55rem 0.6rem;
+        text-align: left;
+        transition: border-color 160ms ease, background 160ms ease;
+    }
+
+    .outline-landing-option:hover {
+        border-color: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.045);
+    }
+
+    .outline-landing-option-label,
+    .outline-landing-option-file,
+    .outline-landing-option-hint {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .outline-landing-option-label {
+        color: var(--color-dark-text-main);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .outline-landing-option-file {
+        margin-top: 0.12rem;
+        color: var(--color-dark-text-faint);
+        font-family: "IBM Plex Mono", "JetBrains Mono", Consolas, monospace;
+        font-size: 9px;
+    }
+
+    .outline-landing-option-hint {
+        margin-top: 0.2rem;
+        color: var(--color-dark-text-muted);
+        font-size: 10px;
+    }
+
     .reasoning-body {
         animation: reasoningBodySettle 120ms ease-out;
     }
