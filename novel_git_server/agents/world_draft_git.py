@@ -263,6 +263,80 @@ def _changed_draft_files(before_snapshots: dict[str, dict[str, Any]], after_snap
     return changed
 
 
+def _resolve_mainline_branch_for_diff(repo_dir: str) -> str | None:
+    try:
+        current_branch = run_git(repo_dir, ["branch", "--show-current"]).stdout.strip()
+        branches_text = run_git(
+            repo_dir,
+            ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        ).stdout
+    except subprocess.CalledProcessError:
+        return None
+
+    branches = {line.strip() for line in branches_text.splitlines() if line.strip()}
+    if current_branch and current_branch in branches and current_branch != DRAFT_BRANCH_NAME:
+        return current_branch
+    if "main" in branches:
+        return "main"
+    if "master" in branches:
+        return "master"
+    for candidate in sorted(branches):
+        if candidate != DRAFT_BRANCH_NAME:
+            return candidate
+    return None
+
+
+def _git_commit_ref_exists(repo_dir: str, ref_name: str) -> bool:
+    try:
+        run_git(repo_dir, ["rev-parse", "--verify", f"{ref_name}^{{commit}}"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _draft_paths_changed_against_mainline(
+    repo_dir: str,
+    file_names: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> set[str] | None:
+    mainline_branch = _resolve_mainline_branch_for_diff(repo_dir)
+    if not mainline_branch:
+        return None
+    if not _git_commit_ref_exists(repo_dir, mainline_branch):
+        return None
+    if not _git_commit_ref_exists(repo_dir, DRAFT_BRANCH_NAME):
+        return None
+
+    normalized_names = sorted({name.strip().replace("\\", "/") for name in (file_names or []) if isinstance(name, str) and name.strip()})
+    diff_args = ["diff", "--name-only", mainline_branch, DRAFT_BRANCH_NAME]
+    if normalized_names:
+        diff_args.extend(["--", *normalized_names])
+
+    try:
+        output = run_git(repo_dir, diff_args).stdout
+    except subprocess.CalledProcessError:
+        return None
+    return {line.strip().replace("\\", "/") for line in output.splitlines() if line.strip()}
+
+
+def _filter_changed_draft_files_by_git_diff(
+    repo_dir: str,
+    changed_files: list[dict[str, Any]],
+    file_names: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> list[dict[str, Any]]:
+    if not changed_files:
+        return changed_files
+
+    diff_paths = _draft_paths_changed_against_mainline(repo_dir, file_names)
+    if diff_paths is None:
+        return changed_files
+
+    return [
+        item
+        for item in changed_files
+        if str(item.get("file_name") or "").replace("\\", "/") in diff_paths
+    ]
+
+
 def _build_diff_preview(file_name: str, before: str, after: str, max_lines: int = 160) -> str:
     if before == after:
         return ""

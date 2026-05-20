@@ -98,6 +98,7 @@ from agents.world_draft_git import (  # noqa: F401
     _ensure_layout_files_tracked,
     _ensure_repo_identity,
     _extract_dify_answer,
+    _filter_changed_draft_files_by_git_diff,
     _has_pending_changes_for_paths,
     _mainline_file_snapshot,
     _read_branch_file,
@@ -1287,7 +1288,11 @@ def create_blueprint(
                 after_snapshots: dict[str, dict[str, Any]] | None = None,
             ):
                 snapshot_map = after_snapshots or _draft_file_snapshots(repo_dir, dify_route.writable_exact_files)
-                changed_files = _changed_draft_files(before_snapshots, snapshot_map)
+                changed_files = _filter_changed_draft_files_by_git_diff(
+                    repo_dir,
+                    _changed_draft_files(before_snapshots, snapshot_map),
+                    dify_route.writable_exact_files,
+                )
                 draft_changed = bool(changed_files)
                 review_target = next(
                     (item for item in changed_files if item["file_name"] == normalized_rel_path),
@@ -1993,7 +1998,11 @@ def create_blueprint(
                 if exc.response_body:
                     message = f"{message}; response={exc.response_body}"
                 after_snapshots = _draft_file_snapshots(repo_dir, dify_route.writable_exact_files)
-                changed_files = _changed_draft_files(before_snapshots, after_snapshots)
+                changed_files = _filter_changed_draft_files_by_git_diff(
+                    repo_dir,
+                    _changed_draft_files(before_snapshots, after_snapshots),
+                    dify_route.writable_exact_files,
+                )
                 draft_changed = bool(changed_files)
                 review_target = next(
                     (item for item in changed_files if item["file_name"] == normalized_rel_path),
