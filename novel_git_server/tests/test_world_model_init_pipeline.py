@@ -299,11 +299,8 @@ class WorldModelInitPipelineTests(unittest.TestCase):
         shallow_summary = repo_dir / "summary.md"
         shallow_summary.write_text("## Batch Archive: CH1-1\n### 故事阶段\n", encoding="utf-8")
 
-        content = pipeline._build_status_card(str(repo_dir), str(shallow_summary))
-
-        self._assert_required_status_fields(content)
-        self.assertIn("当前节奏阶段：待确认", content)
-        self.assertIn("未兑现承诺 Top3：1. 待确认；2. 待确认；3. 待确认", content)
+        with self.assertRaises(ValueError):
+            pipeline._build_status_card(str(repo_dir), str(shallow_summary))
 
     def test_status_card_driver_focus_skips_category_only_markdown_labels(self):
         repo_dir = self._init_book_repo()
@@ -386,6 +383,45 @@ class WorldModelInitPipelineTests(unittest.TestCase):
 
         self.assertIn("当前节奏阶段：CH221", content)
         self.assertNotIn("当前节奏阶段：CH200", content)
+
+    def test_status_card_quality_gate_rejects_placeholder_projection(self):
+        weak_content = "\n".join(
+            [
+                "# 状态卡片",
+                "",
+                "## 核心运行态",
+                "",
+                "- 当前节奏阶段：待确认",
+                "- 张力等级：待确认",
+                "- 上次满足点位置及类型：待确认",
+                "- 建议下个满足点距离：待确认",
+                "- 当前驱动焦点：待确认",
+                "- 读者预期方向：待确认",
+                "",
+                "## 角色与承诺",
+                "",
+                "- 主角状态：待确认",
+                "- 未兑现承诺 Top3：1. 待确认；2. 待确认；3. 待确认",
+                "- 伏笔压力：待确认",
+                "",
+                "## 证据锚点",
+                "",
+                "- 最新批次：待确认",
+            ]
+        )
+
+        with self.assertRaises(ValueError):
+            pipeline._assert_status_card_quality(weak_content, latest_batch_label="第1-1章")
+
+    def test_status_card_projection_includes_active_world_fact_anchors(self):
+        repo_dir = self._init_book_repo()
+        facts = pipeline._parse_world_facts_answer(WORLD_FACTS_JSON)
+
+        content = pipeline._build_status_card(str(repo_dir), str(repo_dir / "summary.md"), world_facts=facts)
+
+        self.assertIn("## 当前生效世界事实", content)
+        self.assertIn("双线推进", content)
+        self.assertIn("证据：CH4-6 本段约束增量", content)
 
     def test_extraction_and_verify_prompts_require_constraint_lifecycle(self):
         for prompt in (pipeline.EXTRACTION_PROMPT, pipeline.VERIFY_PROMPT):

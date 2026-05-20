@@ -673,6 +673,49 @@ def _count_status_unknown_values(content: str) -> int:
     return count
 
 
+def _count_status_required_field_values(content: str) -> int:
+    count = 0
+    for field in STATUS_CARD_REQUIRED_FIELDS:
+        pattern = rf"{re.escape(field)}\s*[：:]\s*(.+)"
+        match = re.search(pattern, content)
+        if match and _normalize_status_value(match.group(1).strip()):
+            count += 1
+    return count
+
+
+def _status_card_evidence_anchor_count(content: str) -> int:
+    evidence_section = _extract_summary_section(content, "证据锚点")
+    if not evidence_section:
+        return 0
+    count = 0
+    for line in evidence_section.splitlines():
+        value = _clean_status_value(line)
+        if value == UNKNOWN_VALUE:
+            continue
+        if any(marker in value for marker in ("CH", "第", "批次", "证据", "依据")):
+            count += 1
+    return count
+
+
+def _assert_status_card_quality(content: str, *, latest_batch_label: str | None = None) -> None:
+    if not _status_card_has_required_field_lines(content):
+        raise ValueError("status_card.md 缺少必要字段或字段值无效")
+    unknown_count = _count_status_unknown_values(content)
+    if unknown_count > 2:
+        raise ValueError(f"status_card.md 待确认字段过多：{unknown_count}")
+    if _count_status_required_field_values(content) < len(STATUS_CARD_REQUIRED_FIELDS):
+        raise ValueError("status_card.md 必要字段覆盖不足")
+    evidence_count = _status_card_evidence_anchor_count(content)
+    if evidence_count < 3:
+        raise ValueError(f"status_card.md 证据锚点不足：{evidence_count}")
+    if latest_batch_label and latest_batch_label not in content:
+        raise ValueError(f"status_card.md 缺少最新批次证据锚点：{latest_batch_label}")
+    generic_markers = ("本批没有明确新增", "暂无", "无明确", "没有足够证据")
+    generic_count = sum(content.count(marker) for marker in generic_markers)
+    if generic_count >= 4:
+        raise ValueError("status_card.md 内容过于空泛")
+
+
 def _status_card_has_required_fields(content: str) -> bool:
     if not _status_card_has_required_field_lines(content):
         return False
@@ -924,7 +967,20 @@ def _format_top3(values: list[str]) -> str:
     return "；".join(f"{idx}. {value}" for idx, value in enumerate(filled, start=1))
 
 
-def _build_status_card(book_dir: str, summary_path: str) -> str:
+def _current_active_world_fact_lines(facts: list[WorldFact] | None, *, limit: int = 4) -> list[str]:
+    if not facts:
+        return []
+    selected: list[str] = []
+    for fact in facts:
+        if fact.lifecycle not in {"当前生效", "有条件生效", "待解决"}:
+            continue
+        selected.append(f"{fact.subject}：{fact.content}（证据：{fact.evidence}）")
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _build_status_card(book_dir: str, summary_path: str, world_facts: list[WorldFact] | None = None) -> str:
     """Build a short, complete status_card.md from the latest summary batch."""
     import json
 
@@ -1033,7 +1089,7 @@ def _build_status_card(book_dir: str, summary_path: str) -> str:
 
     content_parts = ["# 状态卡片", ""]
     content_parts.append(
-        f"> 本书「{book_name}」初始化运行态，由后端世界模型管线依据最新批次归档自动生成；证据不足写作「待确认」。"
+        f"> 本书「{book_name}」初始化运行态，由后端世界模型管线依据最新批次归档和已校验世界事实自动生成；证据不足写作「待确认」。"
     )
     content_parts.append("")
     content_parts.extend(
@@ -1062,14 +1118,25 @@ def _build_status_card(book_dir: str, summary_path: str) -> str:
             f"- 承诺/伏笔依据：{foreshadow_pressure}",
         ]
     )
+    active_world_lines = _current_active_world_fact_lines(world_facts)
+    if active_world_lines:
+        content_parts.extend(["", "## 当前生效世界事实", ""])
+        content_parts.extend(f"- {line}" for line in active_world_lines)
 
     content = "\n".join(content_parts).strip() + "\n"
     if not _status_card_has_required_field_lines(content):
         raise ValueError("Generated status_card.md is missing required initialized fields")
+    _assert_status_card_quality(content, latest_batch_label=_batch_range_label(last_batch))
     return content
 
 
-def _populate_status_card(book_dir: str, summary_path: str, *, force: bool = False) -> str | None:
+def _populate_status_card(
+    book_dir: str,
+    summary_path: str,
+    *,
+    force: bool = False,
+    world_facts: list[WorldFact] | None = None,
+) -> str | None:
     """Auto-fill status_card.md from latest summary batch data."""
     status_card_path = os.path.join(book_dir, "status_card.md")
     existing = ""
@@ -1080,7 +1147,7 @@ def _populate_status_card(book_dir: str, summary_path: str, *, force: bool = Fal
     if existing and not force and _status_card_has_required_fields(existing):
         return None
 
-    content = _build_status_card(book_dir, summary_path)
+    content = _build_status_card(book_dir, summary_path, world_facts=world_facts)
     if existing == content:
         return None
 
@@ -1213,7 +1280,7 @@ def run_pipeline(
         f.write(content)
 
     try:
-        _populate_status_card(book_dir, summary_path, force=True)
+        _populate_status_card(book_dir, summary_path, force=True, world_facts=facts)
     except Exception as e:
         log.error("Status card initialization failed: %s", e, exc_info=True)
         if sse_queue:
