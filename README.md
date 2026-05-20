@@ -115,7 +115,7 @@ flowchart TB
 
 ## 如何部署
 
-这个项目目前定位为“可复现的本地 demo + 可展示的工程样例”，不是把所有密钥、Dify 数据库和私有书库都打进包里的黑盒一键应用。推荐路线是：先用 Release ZIP 跑通前后端和书库工作台，再接入自己的 Dify Runtime、模型供应商和 Dify App API Key。
+这个项目目前定位为“可复现的本地 demo + 可展示的工程样例”，不是把所有密钥、Dify 数据库和私有书库都打进包里的黑盒一键应用。推荐路线是：先用 Release ZIP、源码 clone 或 GHCR 镜像跑通前后端和书库工作台，再接入自己的 Dify Runtime、模型供应商和 Dify App API Key。
 
 部署边界先说清楚：
 
@@ -130,6 +130,7 @@ flowchart TB
 
 1. 在 [GitHub Releases](https://github.com/blackzhanzhan/novel_agent/releases) 下载最新的 `novel-agent-demo-v*.zip`。
 2. 解压到一个没有中文空格干扰的目录，例如 `D:\demo\novel_agent`。
+   Release ZIP 使用跨平台目录路径；在 WSL/Linux 解压后也应能看到 `deploy/demo/.env.example` 和 `docs/DEPLOYMENT.md`。
 3. 第一次运行时初始化配置文件：
 
 ```powershell

@@ -75,6 +75,8 @@
 - Dify continuation workflow prompt and tool changes must be verified from the live PostgreSQL workflow graph and live LoreGit ToolProvider rows, not only from exported YAML or historical patch scripts.
 - Retired Dify reading archive runtime rows are historical evidence only. Re-enabling them as the default `summary.md` owner requires an architecture and ER amendment.
 - Reproducible deployment has two official surfaces: a local Windows demo bootstrap around `start_all.ps1`, and a Compose demo pack for backend/frontend/demo storage plus explicit Dify connectivity.
+- Public Release ZIP assets must use portable `/` path separators so WSL/Linux extraction produces real directories, not literal backslash filenames.
+- Compose demo users may change host ports with `BACKEND_HOST_PORT` and `FRONTEND_HOST_PORT`; backend and frontend container ports stay fixed at `8000` and `5173` unless a separate deployment-topology amendment changes health checks and proxying.
 - Local deployment may provide configurable defaults for the developer's Dify compose path, but it must not require a single user-specific path to work.
 - Deployment smoke checks must prove backend, frontend, Dify API, and Dify-to-LoreGit reachability; process liveness alone is insufficient.
 

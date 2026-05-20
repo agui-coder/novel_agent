@@ -8,6 +8,12 @@ A new evaluator should be able to run the workbench, connect it to a valid Dify 
 
 ## Supported Modes
 
+### Public Reproducibility Boundary
+
+The public repository and release assets are expected to reproduce the workbench shell, local storage model, backend API, frontend UI, deployment scripts, sanitized Dify DSL snapshots, and smoke checks. They intentionally do not include private Dify PostgreSQL state, model-provider credentials, Dify App API keys, private books, `.runtime`, or `novel_git_server/storage/`.
+
+Release ZIP assets must be portable archives: entry names use `/` path separators so Windows, WSL, and Linux extraction all produce real directories such as `deploy/demo/` and `docs/`.
+
 ### Mode A: Local Windows Demo Pack
 
 This mode is for the main development machine or a Windows laptop with Docker Desktop, Python, Node.js, and an existing Dify compose stack.

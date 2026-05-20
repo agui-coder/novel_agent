@@ -75,6 +75,8 @@ The local Windows demo pack is a thin wrapper around the existing runtime: it ch
 
 The Compose demo pack is the reproducibility target for a fresh evaluator: it runs the Flask backend and frontend from the repository, mounts an explicit demo storage volume, and either connects to an externally restored Dify stack or starts a documented Dify dependency when that slice is implemented. Compose packaging must preserve the same agent ownership boundaries as local development: outline content comes from the outline Agent, chapter prose comes from the continuation Agent, review findings come from the review Agent, and Codex/local scripts only orchestrate, validate, restore, or package evidence.
 
+The public Release ZIP is a portable source/demo package, not only a Windows archive. Its zip entries must use `/` separators so WSL/Linux extraction produces real directories such as `deploy/demo/` and `docs/`. Compose host ports are configurable through `BACKEND_HOST_PORT` and `FRONTEND_HOST_PORT`, while backend and frontend container ports remain fixed at `8000` and `5173` to preserve health checks, frontend proxying, and smoke checks.
+
 Dify live PostgreSQL plus plugin storage remain the source of runtime truth. Sanitized seeds or backups may reproduce that runtime, but `dify_workflows/*.yml` is exported evidence only unless a contract explicitly synchronizes it into the live database. Deployment scripts must never commit API keys, model credentials, private `.dify_backups`, or real `novel_git_server/storage/` book workspaces.
 
 ### Import And Summary Archive
