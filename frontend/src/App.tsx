@@ -39,7 +39,7 @@ import { resolveFileType } from './lib/fileType';
 import { findLatestUserMessage } from './lib/tailRewrite.js';
 import { getAgentLabel, getFileTypeLabel, getFsmStateLabel, getUiCopy } from './i18n/ui';
 import { DEFAULT_WORKBENCH_THEME_ID } from './lib/themePresets';
-import { AgentKey, ChatMessage, HotFileItem, ReasoningTrace, RepoIntegrity, WorkbenchMode } from './types/store';
+import { AgentKey, ChatMessage, HotFileItem, MessageScope, ReasoningTrace, RepoIntegrity, WorkbenchMode } from './types/store';
 import { isTargetPathForbidden, getErrorMessage, isLayoutRepairRequired, extractIntegrityFromError, extractReqIdFromErrorMessage, formatVisibleDeductionError, formatSuppressedBackendErrorTitle } from './lib/errorUtils';
 import { mapConversationMessages, normalizeChangedFilesPayload } from './lib/conversationUtils';
 import { MAX_SUPPRESSED_DEBUG_LOGS, shouldSuppressBackendError, type SuppressedBackendErrorLog } from './lib/errorSuppression';
@@ -762,7 +762,23 @@ export default function App() {
         store.bookRef.value,
     ]);
 
-    const getLatestUserMessage = useCallback(() => findLatestUserMessage(store.chatMessages), [store.chatMessages]);
+    const getLatestUserMessage = useCallback((agent?: AgentKey, activeFile?: string) => {
+        const targetAgent = agent || store.activeAgent;
+        const targetFile = activeFile || store.activeFile;
+        const messages = targetAgent === store.activeAgent
+            ? store.chatMessages
+            : (store.chatMessagesByAgent[targetAgent] ?? []);
+        return findLatestUserMessage(messages.filter((message) => {
+            if (!message.activeFile) return true;
+            return isSameConversationScope(
+                message.activeFile,
+                resolveFileType(message.activeFile),
+                targetFile,
+                resolveFileType(targetFile),
+                targetAgent,
+            );
+        }));
+    }, [store.activeAgent, store.activeFile, store.chatMessages, store.chatMessagesByAgent]);
 
     const handleStopStream = useCallback(async () => {
         const taskId = streamTaskIdRef.current;
@@ -1489,21 +1505,37 @@ export default function App() {
             return;
         }
         const routeAgentKey = options?.routeAgentKey;
-        const shouldBindConversationToActiveAgent = !routeAgentKey || routeAgentKey === store.activeAgent;
-        if (!store.conversationId) {
+        const scopedAgent = routeAgentKey || store.activeAgent;
+        const scopedActiveFile = options?.activeFile || store.activeFile;
+        const scopedConversationId = store.conversationByAgent[scopedAgent] || (
+            scopedAgent === store.activeAgent ? store.conversationId : null
+        );
+        const scopedUpstreamConversationId = store.upstreamConversationByAgent[scopedAgent] || (
+            scopedAgent === store.activeAgent ? store.upstreamConversationId : null
+        );
+        const messageScope: MessageScope = {
+            agent: scopedAgent,
+            activeFile: scopedActiveFile,
+            conversationId: scopedConversationId,
+            upstreamConversationId: scopedUpstreamConversationId,
+        };
+        const shouldBindConversationToActiveAgent = scopedAgent === store.activeAgent;
+        if (!scopedConversationId) {
             try {
                 const payload = await createConversation(
                     { kind: store.bookRef.kind, value: store.bookRef.value },
-                    store.activeAgent,
-                    store.activeFile,
+                    scopedAgent,
+                    scopedActiveFile,
                 );
                 store.hydrateAgentConversation(
-                    store.activeAgent,
+                    scopedAgent,
                     payload.active_conversation_id || payload.conversation_id || null,
                     payload.upstream_conversation_id || null,
                     mapConversationMessages(payload.messages || []),
                     payload.conversations || [],
                 );
+                messageScope.conversationId = payload.active_conversation_id || payload.conversation_id || null;
+                messageScope.upstreamConversationId = payload.upstream_conversation_id || null;
             } catch (err) {
                 console.error('Failed to create implicit conversation before send:', err);
                 store.setUiNotice({
@@ -1515,9 +1547,9 @@ export default function App() {
             }
         }
         if (options?.rewriteUserMessageId) {
-            store.rewriteTailFromUserMessage(options.rewriteUserMessageId, intent);
+            store.rewriteTailFromUserMessage(options.rewriteUserMessageId, intent, messageScope);
         } else {
-            store.pushUserMessage(intent);
+            store.pushUserMessage(intent, messageScope);
         }
         setSuppressedBackendErrors([]);
         setSuppressedDebugOpen(false);
@@ -1527,8 +1559,8 @@ export default function App() {
         } else {
             options?.onAccepted?.();
         }
-        const assistantMessageId = store.startAssistantMessage();
-        streamStableUpstreamConversationIdRef.current = useAppStore.getState().upstreamConversationId;
+        const assistantMessageId = store.startAssistantMessage(messageScope);
+        streamStableUpstreamConversationIdRef.current = messageScope.upstreamConversationId ?? null;
         streamTaskIdRef.current = null;
         const abortController = new AbortController();
         streamAbortControllerRef.current = abortController;
@@ -1567,7 +1599,7 @@ export default function App() {
                 window.clearTimeout(buffered.timer);
             }
             reasoningBuffers.delete(key);
-            store.appendAssistantReasoning(assistantMessageId, buffered.trace);
+            store.appendAssistantReasoning(assistantMessageId, buffered.trace, messageScope);
         };
         const flushReasoningBuffers = () => {
             Array.from(reasoningBuffers.keys()).forEach(flushReasoningBuffer);
@@ -1575,7 +1607,7 @@ export default function App() {
         const enqueueReasoningTrace = (trace: ReasoningTrace) => {
             if (!trace.append || trace.status === 'done') {
                 flushReasoningBuffers();
-                store.appendAssistantReasoning(assistantMessageId, trace);
+                store.appendAssistantReasoning(assistantMessageId, trace, messageScope);
                 return;
             }
             const key = getReasoningBufferKey(trace);
@@ -1646,7 +1678,7 @@ export default function App() {
                         sourceEvent,
                         nodeTitle,
                         nodeType,
-                    });
+                    }, messageScope);
                 },
                 onReasoning: (payload) => {
                     if (typeof payload?.task_id === 'string' && payload.task_id) {
@@ -1682,14 +1714,14 @@ export default function App() {
                         label,
                         text,
                         sourceEvent,
-                    });
+                    }, messageScope);
                 },
                 onDelta: (delta, payload) => {
                     if (typeof payload?.task_id === 'string' && payload.task_id) {
                         streamTaskIdRef.current = payload.task_id;
                     }
                     flushReasoningBuffers();
-                    store.appendAssistantDelta(assistantMessageId, delta, payload?.upstream_conversation_id || null);
+                    store.appendAssistantDelta(assistantMessageId, delta, payload?.upstream_conversation_id || null, messageScope);
                 },
                 onDraftReady: (payload) => {
                     const draftContent = typeof payload?.content === 'string' ? payload.content : '';
@@ -1726,7 +1758,7 @@ export default function App() {
                         etag,
                         content: draftContent,
                         diffPreview,
-                    });
+                    }, messageScope);
                     store.setReviewReadyNotice({
                         fileName: reviewSurfaceFile,
                         branch,
@@ -1776,11 +1808,11 @@ export default function App() {
                         ? [reviewTargetFile, ...changedFiles]
                         : changedFiles;
                     const hadDraftReadyEvent = Boolean(draftWriteState.reviewTargetFile);
-                    store.finishAssistantMessage(assistantMessageId, conversationId, upstreamConversationId, finalAnswer);
+                    store.finishAssistantMessage(assistantMessageId, conversationId, upstreamConversationId, finalAnswer, messageScope);
                     if (conversationId && shouldBindConversationToActiveAgent) {
                         store.setConversationId(conversationId);
                         store.setUpstreamConversationId(upstreamConversationId);
-                        void loadConversationContext(store.activeAgent, conversationId);
+                        void loadConversationContext(scopedAgent, conversationId);
                     }
                     draftWriteState.compatibilityPayloadDetected = compatibilityPayloadDetected;
                     draftWriteState.syncStatus = syncStatus;
@@ -1836,7 +1868,7 @@ export default function App() {
                     }
                     maybeShowDefenseToast(code, message);
                     maybeShowDeductionErrorToast(code, message);
-                    store.failAssistantMessage(assistantMessageId, code, visibleMessage);
+                    store.failAssistantMessage(assistantMessageId, code, visibleMessage, messageScope);
                     streamErrorHandled = true;
                 },
             }, {
@@ -1886,9 +1918,11 @@ export default function App() {
         } catch (err) {
             flushReasoningBuffers();
             if (err instanceof ApiError && err.code === 'REQUEST_ABORTED') {
-                store.interruptAssistantMessage(assistantMessageId);
-                store.setUpstreamConversationId(streamStableUpstreamConversationIdRef.current);
-                const latestUserMessage = getLatestUserMessage();
+                store.interruptAssistantMessage(assistantMessageId, messageScope);
+                if (shouldBindConversationToActiveAgent) {
+                    store.setUpstreamConversationId(streamStableUpstreamConversationIdRef.current);
+                }
+                const latestUserMessage = getLatestUserMessage(scopedAgent, scopedActiveFile);
                 if (latestUserMessage) {
                     beginRewriteFromMessage(latestUserMessage.id, latestUserMessage.text);
                 }
@@ -1903,7 +1937,13 @@ export default function App() {
             if (err instanceof ApiError && shouldSuppressBackendError(err.code, err.message)) {
                 appendSuppressedBackendError(err.code, err.message);
                 console.warn('[world_deduce] ignored ApiError after successful write path:', err.code, err.message);
-                store.finishAssistantMessage(assistantMessageId, store.conversationId, store.upstreamConversationId, undefined);
+                store.finishAssistantMessage(
+                    assistantMessageId,
+                    messageScope.conversationId,
+                    messageScope.upstreamConversationId,
+                    undefined,
+                    messageScope,
+                );
                 store.setFsmState('IDLE');
                 return;
             }
@@ -1918,16 +1958,16 @@ export default function App() {
             if (err instanceof ApiError && ([409, 428].includes(err.status) || ['WRITE_CONFLICT', 'PRECONDITION_REQUIRED'].includes(err.code))) {
                 store.setFsmState('CONFLICT');
                 maybeShowDeductionErrorToast(err.code, err.message);
-                store.failAssistantMessage(assistantMessageId, err.code, formatVisibleDeductionError(err.code, err.message));
+                store.failAssistantMessage(assistantMessageId, err.code, formatVisibleDeductionError(err.code, err.message), messageScope);
             } else {
                 console.error('Deduction failed:', err);
                 if (err instanceof ApiError) {
                     maybeShowDefenseToast(err.code, err.message);
                     maybeShowDeductionErrorToast(err.code, err.message);
-                    store.failAssistantMessage(assistantMessageId, err.code, formatVisibleDeductionError(err.code, err.message));
+                    store.failAssistantMessage(assistantMessageId, err.code, formatVisibleDeductionError(err.code, err.message), messageScope);
                 } else {
                     maybeShowDeductionErrorToast('UNKNOWN_ERROR', '推演失败');
-                    store.failAssistantMessage(assistantMessageId, 'UNKNOWN_ERROR', '推演失败');
+                    store.failAssistantMessage(assistantMessageId, 'UNKNOWN_ERROR', '推演失败', messageScope);
                 }
                 store.setFsmState('IDLE');
             }
@@ -2015,6 +2055,7 @@ export default function App() {
 
     const {
         conversationPanelAgent,
+        setConversationPanelAgent,
         loadConversationContext,
         handleConversationSelect,
         handleSwitchConversationAgent,
@@ -2506,24 +2547,21 @@ export default function App() {
         />
     );
 
-    const visibleChatMessages = useMemo(() => (
-        store.chatMessages.filter((message) => {
-            if (!message.activeFile) return true;
-            return isSameConversationScope(
-                message.activeFile,
-                resolveFileType(message.activeFile),
-                store.activeFile,
-                store.activeFileType,
-                store.activeAgent,
-            );
-        })
-    ), [store.activeAgent, store.activeFile, store.activeFileType, store.chatMessages]);
-    const latestUserMessageId = getLatestUserMessage()?.id ?? null;
+    const draftAttachmentMessages = store.chatMessages.filter((message) => {
+        if (!message.activeFile) return true;
+        return isSameConversationScope(
+            message.activeFile,
+            resolveFileType(message.activeFile),
+            store.activeFile,
+            store.activeFileType,
+            store.activeAgent,
+        );
+    });
     const latestDraftAttachment = useMemo(() => (
-        [...visibleChatMessages]
+        [...draftAttachmentMessages]
             .reverse()
             .find((message) => message.diffAttachment)?.diffAttachment || null
-    ), [visibleChatMessages]);
+    ), [draftAttachmentMessages]);
     const reviewTargetFile = useMemo(() => (
         store.reviewTargetFile
         || store.reviewReadyNotice?.fileName
@@ -2538,6 +2576,48 @@ export default function App() {
     const currentReviewDraftAttachment = latestDraftAttachment?.fileName === reviewTargetFile
         ? latestDraftAttachment
         : null;
+    const isProseReviewSurface = isReviewMode && reviewTargetFile === 'chapter_draft.md';
+    useEffect(() => {
+        if (isProseReviewSurface && conversationPanelAgent !== 'review_agent' && conversationPanelAgent !== 'continuation_agent') {
+            setConversationPanelAgent('review_agent');
+        }
+    }, [conversationPanelAgent, isProseReviewSurface, setConversationPanelAgent]);
+    const rightPanelAgent: AgentKey = isProseReviewSurface
+        ? (
+            conversationPanelAgent === 'review_agent' || conversationPanelAgent === 'continuation_agent'
+                ? conversationPanelAgent
+                : 'review_agent'
+        )
+        : conversationPanelAgent;
+    const rightPanelActiveFile = isProseReviewSurface ? 'chapter_draft.md' : store.activeFile;
+    const rightPanelFileType = resolveFileType(rightPanelActiveFile);
+    const rightPanelConversationActionScope = isProseReviewSurface
+        ? { agent: rightPanelAgent, activeFile: rightPanelActiveFile, switchActiveFile: false }
+        : undefined;
+    const rightPanelAgentOptions: AgentKey[] | undefined = isProseReviewSurface
+        ? ['review_agent', 'continuation_agent']
+        : undefined;
+    const rightPanelMessages = rightPanelAgent === store.activeAgent
+        ? store.chatMessages
+        : (store.chatMessagesByAgent[rightPanelAgent] ?? []);
+    const rightPanelVisibleChatMessages = useMemo(() => (
+        rightPanelMessages.filter((message) => {
+            if (!message.activeFile) return true;
+            return isSameConversationScope(
+                message.activeFile,
+                resolveFileType(message.activeFile),
+                rightPanelActiveFile,
+                rightPanelFileType,
+                rightPanelAgent,
+            );
+        })
+    ), [rightPanelActiveFile, rightPanelAgent, rightPanelFileType, rightPanelMessages]);
+    const rightPanelLatestUserMessageId = getLatestUserMessage(rightPanelAgent, rightPanelActiveFile)?.id ?? null;
+    useEffect(() => {
+        if (isProseReviewSurface) {
+            void loadConversationContext(rightPanelAgent);
+        }
+    }, [isProseReviewSurface, loadConversationContext, rightPanelAgent]);
     const handleEnterReviewFromNotice = () => {
         store.setWorkbenchMode('review');
         store.clearReviewReadyNotice();
@@ -2565,10 +2645,14 @@ export default function App() {
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                         <div className="text-[11px] font-medium text-[var(--color-dark-text-main)]">
-                            {getAgentLabel(store.uiLanguage, conversationPanelAgent)}
+                            {isProseReviewSurface
+                                ? '正文审阅台'
+                                : getAgentLabel(store.uiLanguage, rightPanelAgent)}
                         </div>
                         <div className="truncate text-[9px] text-[var(--color-dark-text-faint)]">
-                            {store.activeFile}
+                            {isProseReviewSurface
+                                ? 'chapter_draft.md · 审核 Agent / 续写 Agent'
+                                : rightPanelActiveFile}
                         </div>
                     </div>
                     <div className="rounded-[8px] border border-[rgba(255,255,255,0.035)] bg-[rgba(255,255,255,0.01)] px-2 py-[2px] text-[8px] font-mono text-[var(--color-dark-text-faint)]">
@@ -2577,17 +2661,25 @@ export default function App() {
                 </div>
             </div>
             <AgentConversationList
-                agent={conversationPanelAgent}
+                agent={rightPanelAgent}
                 currentFileAgent={store.activeAgent}
-                activeConversationId={store.conversationByAgent[conversationPanelAgent] ?? null}
-                activeFile={store.activeFile}
-                conversations={store.conversationIndexByAgent[conversationPanelAgent] ?? []}
-                onSwitchAgent={(agent) => { void handleSwitchConversationAgent(agent); }}
-                onCreateConversation={() => { void handleCreateConversation(); }}
-                onSelectConversation={(conversationId) => { void handleConversationSelect(conversationId); }}
-                onRenameConversation={(conversationId) => { void handleRenameConversation(conversationId); }}
-                onArchiveConversation={(conversationId) => { void handleArchiveConversation(conversationId); }}
-                onDeleteConversation={(conversationId) => { void handleDeleteConversation(conversationId); }}
+                activeConversationId={store.conversationByAgent[rightPanelAgent] ?? null}
+                activeFile={rightPanelActiveFile}
+                conversations={store.conversationIndexByAgent[rightPanelAgent] ?? []}
+                agentOptions={rightPanelAgentOptions}
+                onSwitchAgent={(agent) => {
+                    if (isProseReviewSurface) {
+                        setConversationPanelAgent(agent);
+                        void loadConversationContext(agent);
+                    } else {
+                        void handleSwitchConversationAgent(agent);
+                    }
+                }}
+                onCreateConversation={() => { void handleCreateConversation(rightPanelConversationActionScope); }}
+                onSelectConversation={(conversationId) => { void handleConversationSelect(conversationId, rightPanelConversationActionScope); }}
+                onRenameConversation={(conversationId) => { void handleRenameConversation(conversationId, rightPanelConversationActionScope); }}
+                onArchiveConversation={(conversationId) => { void handleArchiveConversation(conversationId, rightPanelConversationActionScope); }}
+                onDeleteConversation={(conversationId) => { void handleDeleteConversation(conversationId, rightPanelConversationActionScope); }}
                 disabled={store.fsmState === 'THINKING'}
             />
             {suppressedBackendErrors.length > 0 && (
@@ -2625,20 +2717,20 @@ export default function App() {
                 </div>
             )}
             <ChatPanel
-                messages={visibleChatMessages}
+                messages={rightPanelVisibleChatMessages}
                 fsmState={store.fsmState}
                 onConfirmDraft={handleConfirm}
                 onRollbackDraft={handleRollback}
                 isConfirmDisabled={store.fsmState === 'CONFLICT'}
                 draftActionPending={store.draftActionPending}
-                editableUserMessageId={latestUserMessageId}
+                editableUserMessageId={rightPanelLatestUserMessageId}
                 onRequestEditUserMessage={beginRewriteFromMessage}
                 editingUserMessageId={rewriteUserMessageId}
                 editDraftValue={commandInput}
                 onEditDraftChange={setCommandInput}
                 onSubmitEditUserMessage={handleInlineRewriteSubmit}
                 onCancelEditUserMessage={handleCancelRewrite}
-                canLandOutlineMessages={conversationPanelAgent === 'outline_agent'}
+                canLandOutlineMessages={!isReviewMode && rightPanelAgent === 'outline_agent'}
                 onLandOutlineMessage={handleOutlineLandingFromMessage}
             />
             {!rewriteUserMessageId ? (

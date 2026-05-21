@@ -10,6 +10,13 @@ export type GitDiffScope = 'unstaged' | 'staged' | 'commit';
 export type AgentKey = 'world_agent' | 'outline_agent' | 'style_agent' | 'continuation_agent' | 'review_agent';
 export type UiLanguage = 'zh-CN' | 'en-US';
 
+export interface MessageScope {
+    agent?: AgentKey;
+    activeFile?: string;
+    conversationId?: string | null;
+    upstreamConversationId?: string | null;
+}
+
 export interface RepoIntegrity {
     bookId: string;
     exists: boolean;
@@ -265,24 +272,25 @@ export interface StoreActions {
         messages: ChatMessage[],
         conversations: ConversationMeta[]
     ) => void;
-    pushUserMessage: (text: string) => string;
-    startAssistantMessage: () => string;
-    appendAssistantDelta: (messageId: string, delta: string, conversationId?: string | null) => void;
-    appendAssistantPreview: (messageId: string, preview: PreviewTrace) => void;
-    appendAssistantReasoning: (messageId: string, reasoning: ReasoningTrace) => void;
-    setAssistantStageProgress: (messageId: string, stage: StageProgress | null) => void;
+    pushUserMessage: (text: string, scope?: MessageScope) => string;
+    startAssistantMessage: (scope?: MessageScope) => string;
+    appendAssistantDelta: (messageId: string, delta: string, conversationId?: string | null, scope?: MessageScope) => void;
+    appendAssistantPreview: (messageId: string, preview: PreviewTrace, scope?: MessageScope) => void;
+    appendAssistantReasoning: (messageId: string, reasoning: ReasoningTrace, scope?: MessageScope) => void;
+    setAssistantStageProgress: (messageId: string, stage: StageProgress | null, scope?: MessageScope) => void;
     finishAssistantMessage: (
         messageId: string,
         conversationId?: string | null,
         upstreamConversationId?: string | null,
-        finalAnswer?: string
+        finalAnswer?: string,
+        scope?: MessageScope
     ) => void;
-    failAssistantMessage: (messageId: string, code: string, reason: string) => void;
-    interruptAssistantMessage: (messageId: string) => void;
-    attachDiffToAssistantMessage: (messageId: string, attachment: DiffAttachment) => void;
+    failAssistantMessage: (messageId: string, code: string, reason: string, scope?: MessageScope) => void;
+    interruptAssistantMessage: (messageId: string, scope?: MessageScope) => void;
+    attachDiffToAssistantMessage: (messageId: string, attachment: DiffAttachment, scope?: MessageScope) => void;
     updateUserMessageText: (messageId: string, text: string) => void;
     removeMessagesAfter: (messageId: string) => void;
-    rewriteTailFromUserMessage: (messageId: string, text: string) => void;
+    rewriteTailFromUserMessage: (messageId: string, text: string, scope?: MessageScope) => void;
     setDraftActionPending: (pending: DraftActionPending) => void;
     setUiNotice: (notice: UiNotice) => void;
     clearUiNotice: () => void;

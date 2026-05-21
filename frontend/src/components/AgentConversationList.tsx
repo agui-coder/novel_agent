@@ -8,6 +8,7 @@ interface AgentConversationListProps {
     activeFile: string;
     conversations: ConversationMeta[];
     currentFileAgent: AgentKey;
+    agentOptions?: AgentKey[];
     onSwitchAgent: (agent: AgentKey) => void;
     onCreateConversation: () => void;
     onSelectConversation: (conversationId: string) => void;
@@ -23,6 +24,7 @@ export const AgentConversationList: React.FC<AgentConversationListProps> = ({
     activeFile,
     conversations,
     currentFileAgent,
+    agentOptions,
     onSwitchAgent,
     onCreateConversation,
     onSelectConversation,
@@ -31,7 +33,7 @@ export const AgentConversationList: React.FC<AgentConversationListProps> = ({
     onDeleteConversation,
     disabled = false,
 }) => {
-    const agentOptions: AgentKey[] = ['world_agent', 'outline_agent', 'style_agent', 'continuation_agent', 'review_agent'];
+    const availableAgentOptions: AgentKey[] = agentOptions || ['world_agent', 'outline_agent', 'style_agent', 'continuation_agent', 'review_agent'];
     const copy = useUiCopy();
     const uiLanguage = useUiLanguage();
     const [panelOpen, setPanelOpen] = useState(false);
@@ -176,7 +178,7 @@ export const AgentConversationList: React.FC<AgentConversationListProps> = ({
                     </div>
 
                     <div className="mb-2 flex gap-1">
-                        {agentOptions.map((candidate) => {
+                        {availableAgentOptions.map((candidate) => {
                             const isSelected = candidate === agent;
                             const isCurrent = candidate === currentFileAgent;
                             return (

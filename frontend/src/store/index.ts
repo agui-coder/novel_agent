@@ -4,7 +4,6 @@ import {
     AssistantTimelineSegment,
     ChatMessage,
     CoreSessionState,
-    DiffAttachment,
     DraftResolution,
     GitBranchRow,
     GitCommitFile,
@@ -14,7 +13,7 @@ import {
     GitStatusSummary,
     GitWorkingTreeEntry,
     ReasoningTrace,
-    StageProgress,
+    MessageScope,
 } from '../types/store';
 import { resolveAgentKey } from '../lib/agentKey';
 import { rewriteTailMessages } from '../lib/tailRewrite.js';
@@ -182,6 +181,47 @@ function markTimelineSegmentsDone(segments: AssistantTimelineSegment[]): Assista
     }));
 }
 
+function resolveMessageScope(state: CoreSessionState, scope?: MessageScope) {
+    const agent = scope?.agent ?? state.activeAgent;
+    return {
+        agent,
+        isActiveAgent: agent === state.activeAgent,
+        activeFile: scope?.activeFile ?? state.activeFile,
+        conversationId: scope?.conversationId ?? (
+            agent === state.activeAgent
+                ? state.conversationId
+                : (state.conversationByAgent[agent] ?? null)
+        ),
+        upstreamConversationId: scope?.upstreamConversationId ?? (
+            agent === state.activeAgent
+                ? state.upstreamConversationId
+                : (state.upstreamConversationByAgent[agent] ?? null)
+        ),
+    };
+}
+
+function messagesForScope(state: CoreSessionState, agent: string): ChatMessage[] {
+    return agent === state.activeAgent
+        ? state.chatMessages
+        : (state.chatMessagesByAgent[agent] ?? []);
+}
+
+function patchScopedMessage(
+    state: CoreSessionState,
+    scope: ReturnType<typeof resolveMessageScope>,
+    messageId: string,
+    updater: (current: ChatMessage) => ChatMessage
+) {
+    const nextScopedMessages = patchMessage(messagesForScope(state, scope.agent), messageId, updater);
+    return {
+        chatMessages: scope.isActiveAgent ? nextScopedMessages : state.chatMessages,
+        chatMessagesByAgent: {
+            ...state.chatMessagesByAgent,
+            [scope.agent]: nextScopedMessages,
+        },
+    };
+}
+
 function resetGitState(): Pick<
     CoreSessionState,
     | 'gitStatus'
@@ -347,72 +387,21 @@ export const useAppStore = create<AppStore>()((set) => ({
                 chatMessages: state.activeAgent === agent ? messages : state.chatMessages,
             };
         }),
-    pushUserMessage: (text) => {
+    pushUserMessage: (text, scope) => {
         const id = createMessageId('user');
-        set((state) => ({
-            chatMessages: (() => {
-                const nextMessages = [
-                    ...state.chatMessages,
-                    {
-                        id,
-                        role: 'user' as const,
-                        text,
-                        status: 'done' as const,
-                        conversationId: state.conversationId,
-                        upstreamConversationId: state.upstreamConversationId,
-                        activeFile: state.activeFile,
-                        diffAttachment: null,
-                        stageProgress: null,
-                        stageEvents: [],
-                        reasoningEvents: [],
-                        previewEvents: [],
-                        timelineSegments: [],
-                        resolution: null,
-                        resolvedAt: null,
-                    },
-                ];
-                return nextMessages;
-            })(),
-            chatMessagesByAgent: {
-                ...state.chatMessagesByAgent,
-                [state.activeAgent]: [
-                    ...state.chatMessages,
-                    {
-                        id,
-                        role: 'user' as const,
-                        text,
-                        status: 'done' as const,
-                        conversationId: state.conversationId,
-                        upstreamConversationId: state.upstreamConversationId,
-                        activeFile: state.activeFile,
-                        diffAttachment: null,
-                        stageProgress: null,
-                        stageEvents: [],
-                        reasoningEvents: [],
-                        previewEvents: [],
-                        timelineSegments: [],
-                        resolution: null,
-                        resolvedAt: null,
-                    },
-                ],
-            },
-        }));
-        return id;
-    },
-    startAssistantMessage: () => {
-        const id = createMessageId('assistant');
-        set((state) => ({
-            activeAssistantMessageId: id,
-            chatMessages: [
-                ...state.chatMessages,
+        set((state) => {
+            const resolvedScope = resolveMessageScope(state, scope);
+            const currentMessages = messagesForScope(state, resolvedScope.agent);
+            const nextMessages = [
+                ...currentMessages,
                 {
                     id,
-                    role: 'assistant' as const,
-                    text: '',
-                    status: 'streaming' as const,
-                    conversationId: state.conversationId,
-                    upstreamConversationId: state.upstreamConversationId,
-                    activeFile: state.activeFile,
+                    role: 'user' as const,
+                    text,
+                    status: 'done' as const,
+                    conversationId: resolvedScope.conversationId,
+                    upstreamConversationId: resolvedScope.upstreamConversationId,
+                    activeFile: resolvedScope.activeFile,
                     diffAttachment: null,
                     stageProgress: null,
                     stageEvents: [],
@@ -422,45 +411,66 @@ export const useAppStore = create<AppStore>()((set) => ({
                     resolution: null,
                     resolvedAt: null,
                 },
-            ],
-            chatMessagesByAgent: {
-                ...state.chatMessagesByAgent,
-                [state.activeAgent]: [
-                    ...state.chatMessages,
-                    {
-                        id,
-                        role: 'assistant' as const,
-                        text: '',
-                        status: 'streaming' as const,
-                        conversationId: state.conversationId,
-                        upstreamConversationId: state.upstreamConversationId,
-                        activeFile: state.activeFile,
-                        diffAttachment: null,
-                        stageProgress: null,
-                        stageEvents: [],
-                        reasoningEvents: [],
-                        previewEvents: [],
-                        timelineSegments: [],
-                        resolution: null,
-                        resolvedAt: null,
-                    },
-                ],
-            },
-        }));
+            ];
+            return {
+                chatMessages: resolvedScope.isActiveAgent ? nextMessages : state.chatMessages,
+                chatMessagesByAgent: {
+                    ...state.chatMessagesByAgent,
+                    [resolvedScope.agent]: nextMessages,
+                },
+            };
+        });
         return id;
     },
-    appendAssistantDelta: (messageId, delta, conversationId) =>
+    startAssistantMessage: (scope) => {
+        const id = createMessageId('assistant');
         set((state) => {
-            const nextUpstreamConversationId = conversationId ?? state.upstreamConversationId;
+            const resolvedScope = resolveMessageScope(state, scope);
+            const currentMessages = messagesForScope(state, resolvedScope.agent);
+            const nextMessages = [
+                ...currentMessages,
+                {
+                    id,
+                    role: 'assistant' as const,
+                    text: '',
+                    status: 'streaming' as const,
+                    conversationId: resolvedScope.conversationId,
+                    upstreamConversationId: resolvedScope.upstreamConversationId,
+                    activeFile: resolvedScope.activeFile,
+                    diffAttachment: null,
+                    stageProgress: null,
+                    stageEvents: [],
+                    reasoningEvents: [],
+                    previewEvents: [],
+                    timelineSegments: [],
+                    resolution: null,
+                    resolvedAt: null,
+                },
+            ];
+            return {
+                activeAssistantMessageId: id,
+                chatMessages: resolvedScope.isActiveAgent ? nextMessages : state.chatMessages,
+                chatMessagesByAgent: {
+                    ...state.chatMessagesByAgent,
+                    [resolvedScope.agent]: nextMessages,
+                },
+            };
+        });
+        return id;
+    },
+    appendAssistantDelta: (messageId, delta, conversationId, scope) =>
+        set((state) => {
+            const resolvedScope = resolveMessageScope(state, scope);
+            const nextUpstreamConversationId = conversationId ?? resolvedScope.upstreamConversationId;
             const nextConversationByAgent = { ...state.conversationByAgent };
             const nextUpstreamConversationByAgent = { ...state.upstreamConversationByAgent };
-            if (state.conversationId) {
-                nextConversationByAgent[state.activeAgent] = state.conversationId;
+            if (resolvedScope.conversationId) {
+                nextConversationByAgent[resolvedScope.agent] = resolvedScope.conversationId;
             }
             if (nextUpstreamConversationId) {
-                nextUpstreamConversationByAgent[state.activeAgent] = nextUpstreamConversationId;
+                nextUpstreamConversationByAgent[resolvedScope.agent] = nextUpstreamConversationId;
             }
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const patched = patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...msg,
                 text: `${msg.text}${delta}`,
                 status: 'streaming',
@@ -469,20 +479,17 @@ export const useAppStore = create<AppStore>()((set) => ({
                 timelineSegments: appendAnswerTimelineSegment(msg.timelineSegments, delta),
             }));
             return {
-                conversationId: state.conversationId,
-                upstreamConversationId: nextUpstreamConversationId,
+                conversationId: resolvedScope.isActiveAgent ? resolvedScope.conversationId : state.conversationId,
+                upstreamConversationId: resolvedScope.isActiveAgent ? nextUpstreamConversationId : state.upstreamConversationId,
                 conversationByAgent: nextConversationByAgent,
                 upstreamConversationByAgent: nextUpstreamConversationByAgent,
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
+                ...patched,
             };
         }),
-    appendAssistantPreview: (messageId, preview) =>
+    appendAssistantPreview: (messageId, preview, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => {
+            const resolvedScope = resolveMessageScope(state, scope);
+            return patchScopedMessage(state, resolvedScope, messageId, (msg) => {
                 const normalizedPreview = {
                     ...preview,
                     status: preview.status || 'streaming' as const,
@@ -532,17 +539,11 @@ export const useAppStore = create<AppStore>()((set) => ({
                         : [...nextExisting.slice(-11), normalizedPreview],
                 };
             });
-            return {
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
-            };
         }),
-    appendAssistantReasoning: (messageId, reasoning) =>
+    appendAssistantReasoning: (messageId, reasoning, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => {
+            const resolvedScope = resolveMessageScope(state, scope);
+            return patchScopedMessage(state, resolvedScope, messageId, (msg) => {
                 const normalizedReasoning = {
                     ...reasoning,
                     status: reasoning.status || 'streaming' as const,
@@ -597,17 +598,11 @@ export const useAppStore = create<AppStore>()((set) => ({
                     timelineSegments: appendThinkingTimelineSegment(msg.timelineSegments, normalizedReasoning),
                 };
             });
-            return {
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
-            };
         }),
-    setAssistantStageProgress: (messageId, stage: StageProgress | null) =>
+    setAssistantStageProgress: (messageId, stage, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const resolvedScope = resolveMessageScope(state, scope);
+            return patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...(() => {
                     const existing = msg.stageEvents;
                     if (!stage) {
@@ -663,27 +658,21 @@ export const useAppStore = create<AppStore>()((set) => ({
                     };
                 })(),
             }));
-            return {
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
-            };
         }),
-    finishAssistantMessage: (messageId, conversationId, upstreamConversationId, finalAnswer) =>
+    finishAssistantMessage: (messageId, conversationId, upstreamConversationId, finalAnswer, scope) =>
         set((state) => {
-            const nextConversationId = conversationId ?? state.conversationId;
-            const nextUpstreamConversationId = upstreamConversationId ?? state.upstreamConversationId;
+            const resolvedScope = resolveMessageScope(state, scope);
+            const nextConversationId = conversationId ?? resolvedScope.conversationId;
+            const nextUpstreamConversationId = upstreamConversationId ?? resolvedScope.upstreamConversationId;
             const nextConversationByAgent = { ...state.conversationByAgent };
             const nextUpstreamConversationByAgent = { ...state.upstreamConversationByAgent };
             if (nextConversationId) {
-                nextConversationByAgent[state.activeAgent] = nextConversationId;
+                nextConversationByAgent[resolvedScope.agent] = nextConversationId;
             }
             if (nextUpstreamConversationId) {
-                nextUpstreamConversationByAgent[state.activeAgent] = nextUpstreamConversationId;
+                nextUpstreamConversationByAgent[resolvedScope.agent] = nextUpstreamConversationId;
             }
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const patched = patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...msg,
                 status: 'done',
                 text: msg.text || (typeof finalAnswer === 'string' ? finalAnswer : ''),
@@ -719,20 +708,17 @@ export const useAppStore = create<AppStore>()((set) => ({
             }));
             return {
                 activeAssistantMessageId: state.activeAssistantMessageId === messageId ? null : state.activeAssistantMessageId,
-                conversationId: nextConversationId,
-                upstreamConversationId: nextUpstreamConversationId,
+                conversationId: resolvedScope.isActiveAgent ? nextConversationId : state.conversationId,
+                upstreamConversationId: resolvedScope.isActiveAgent ? nextUpstreamConversationId : state.upstreamConversationId,
                 conversationByAgent: nextConversationByAgent,
                 upstreamConversationByAgent: nextUpstreamConversationByAgent,
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
+                ...patched,
             };
         }),
-    failAssistantMessage: (messageId, code, reason) =>
+    failAssistantMessage: (messageId, code, reason, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const resolvedScope = resolveMessageScope(state, scope);
+            const patched = patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...msg,
                 status: 'error',
                 code,
@@ -754,16 +740,13 @@ export const useAppStore = create<AppStore>()((set) => ({
             }));
             return {
                 activeAssistantMessageId: state.activeAssistantMessageId === messageId ? null : state.activeAssistantMessageId,
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
+                ...patched,
             };
         }),
-    interruptAssistantMessage: (messageId) =>
+    interruptAssistantMessage: (messageId, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const resolvedScope = resolveMessageScope(state, scope);
+            const patched = patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...msg,
                 status: 'interrupted',
                 stageProgress: null,
@@ -783,28 +766,18 @@ export const useAppStore = create<AppStore>()((set) => ({
             }));
             return {
                 activeAssistantMessageId: state.activeAssistantMessageId === messageId ? null : state.activeAssistantMessageId,
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
+                ...patched,
             };
         }),
-    attachDiffToAssistantMessage: (messageId, attachment: DiffAttachment) =>
+    attachDiffToAssistantMessage: (messageId, attachment, scope) =>
         set((state) => {
-            const nextMessages = patchMessage(state.chatMessages, messageId, (msg) => ({
+            const resolvedScope = resolveMessageScope(state, scope);
+            return patchScopedMessage(state, resolvedScope, messageId, (msg) => ({
                 ...msg,
                 diffAttachment: attachment,
                 resolution: null,
                 resolvedAt: null,
             }));
-            return {
-                chatMessages: nextMessages,
-                chatMessagesByAgent: {
-                    ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
-                },
-            };
         }),
     updateUserMessageText: (messageId, text) =>
         set((state) => {
@@ -836,17 +809,18 @@ export const useAppStore = create<AppStore>()((set) => ({
                 },
             };
         }),
-    rewriteTailFromUserMessage: (messageId, text) =>
+    rewriteTailFromUserMessage: (messageId, text, scope) =>
         set((state) => {
-            const nextMessages = rewriteTailMessages(state.chatMessages, messageId, text);
+            const resolvedScope = resolveMessageScope(state, scope);
+            const nextMessages = rewriteTailMessages(messagesForScope(state, resolvedScope.agent), messageId, text);
             return {
                 activeAssistantMessageId: nextMessages.some((msg) => msg.id === state.activeAssistantMessageId)
                     ? state.activeAssistantMessageId
                     : null,
-                chatMessages: nextMessages,
+                chatMessages: resolvedScope.isActiveAgent ? nextMessages : state.chatMessages,
                 chatMessagesByAgent: {
                     ...state.chatMessagesByAgent,
-                    [state.activeAgent]: nextMessages,
+                    [resolvedScope.agent]: nextMessages,
                 },
             };
         }),

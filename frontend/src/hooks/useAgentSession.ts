@@ -30,6 +30,12 @@ export function useAgentSession(deps: {
 
     const [conversationPanelAgent, setConversationPanelAgent] = useState<AgentKey>(store.activeAgent);
 
+    type ConversationActionScope = {
+        agent?: AgentKey;
+        activeFile?: string;
+        switchActiveFile?: boolean;
+    };
+
     const loadConversationContext = useCallback(async (agentOverride?: AgentKey, conversationIdOverride?: string | null) => {
         if (!store.bookRef.value) return;
         const agent = agentOverride ?? store.activeAgent;
@@ -102,8 +108,10 @@ export function useAgentSession(deps: {
         setConversationPanelAgent(store.activeAgent);
     }, [store.activeAgent]);
 
-    const handleConversationSelect = async (conversationId: string) => {
+    const handleConversationSelect = async (conversationId: string, scope?: ConversationActionScope) => {
         if (!store.bookRef.value) return;
+        const scopedAgent = scope?.agent ?? conversationPanelAgent;
+        const allowFileSwitch = scope?.switchActiveFile !== false;
         if (hasPendingDraftDecision) {
             const reviewFile = pendingReviewTargetFile();
             store.setUiNotice({
@@ -113,19 +121,20 @@ export function useAgentSession(deps: {
             });
             return;
         }
-        const meta = (store.conversationIndexByAgent[conversationPanelAgent] ?? [])
+        const meta = (store.conversationIndexByAgent[scopedAgent] ?? [])
             .find((row) => row.conversation_id === conversationId);
         const nextFile = meta?.last_active_file;
         const nextFileType = nextFile ? resolveFileType(nextFile) : undefined;
         if (
-            nextFile
+            allowFileSwitch
+            && nextFile
             && nextFile !== store.activeFile
             && !isSameConversationScope(
                 nextFile,
                 nextFileType,
                 store.activeFile,
                 store.activeFileType,
-                conversationPanelAgent,
+                scopedAgent,
             )
         ) {
             if (!prepareFileContextSwitch(nextFile)) return;
@@ -135,11 +144,11 @@ export function useAgentSession(deps: {
         try {
             const payload = await activateConversation(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
-                conversationPanelAgent,
+                scopedAgent,
                 conversationId,
             );
             store.hydrateAgentConversation(
-                conversationPanelAgent,
+                scopedAgent,
                 payload.active_conversation_id || payload.conversation_id || null,
                 payload.upstream_conversation_id || null,
                 mapConversationMessages(payload.messages || []),
@@ -158,11 +167,13 @@ export function useAgentSession(deps: {
     const defaultFileForAgent = (agent: AgentKey): string => {
         if (agent === 'style_agent') return 'style_guide.md';
         if (agent === 'outline_agent') return 'brainstorm.md';
+        if (agent === 'continuation_agent' || agent === 'review_agent') return 'chapter_draft.md';
         return 'world_model.md';
     };
 
-    const handleSwitchConversationAgent = async (agent: AgentKey) => {
+    const handleSwitchConversationAgent = async (agent: AgentKey, options?: { switchActiveFile?: boolean }) => {
         setConversationPanelAgent(agent);
+        const allowFileSwitch = options?.switchActiveFile !== false;
         try {
             const payload = await fetchConversationContext(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
@@ -175,7 +186,8 @@ export function useAgentSession(deps: {
             const nextFile = activeMeta?.last_active_file;
             const nextFileType = nextFile ? resolveFileType(nextFile) : undefined;
             if (
-                nextFile
+                allowFileSwitch
+                && nextFile
                 && nextFile !== store.activeFile
                 && !isSameConversationScope(
                     nextFile,
@@ -206,8 +218,10 @@ export function useAgentSession(deps: {
         }
     };
 
-    const handleCreateConversation = async () => {
+    const handleCreateConversation = async (scope?: ConversationActionScope) => {
         if (!store.bookRef.value) return;
+        const scopedAgent = scope?.agent ?? conversationPanelAgent;
+        const allowFileSwitch = scope?.switchActiveFile !== false;
         if (hasPendingDraftDecision) {
             store.setUiNotice({
                 type: 'info',
@@ -216,10 +230,10 @@ export function useAgentSession(deps: {
             });
             return;
         }
-        const targetFile = conversationPanelAgent === store.activeAgent
+        const targetFile = scope?.activeFile || (scopedAgent === store.activeAgent
             ? store.activeFile
-            : defaultFileForAgent(conversationPanelAgent);
-        if (targetFile !== store.activeFile) {
+            : defaultFileForAgent(scopedAgent));
+        if (allowFileSwitch && targetFile !== store.activeFile) {
             if (!prepareFileContextSwitch(targetFile)) return;
             store.setActiveFile(targetFile, resolveFileType(targetFile));
             await loadMainline(targetFile);
@@ -227,11 +241,11 @@ export function useAgentSession(deps: {
         try {
             const payload = await createConversation(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
-                conversationPanelAgent,
+                scopedAgent,
                 targetFile,
             );
             store.hydrateAgentConversation(
-                conversationPanelAgent,
+                scopedAgent,
                 payload.active_conversation_id || payload.conversation_id || null,
                 payload.upstream_conversation_id || null,
                 mapConversationMessages(payload.messages || []),
@@ -252,21 +266,22 @@ export function useAgentSession(deps: {
         }
     };
 
-    const handleRenameConversation = async (conversationId: string) => {
+    const handleRenameConversation = async (conversationId: string, scope?: ConversationActionScope) => {
         if (!store.bookRef.value) return;
-        const current = (store.conversationIndexByAgent[conversationPanelAgent] ?? [])
+        const scopedAgent = scope?.agent ?? conversationPanelAgent;
+        const current = (store.conversationIndexByAgent[scopedAgent] ?? [])
             .find((row) => row.conversation_id === conversationId);
         const title = window.prompt('输入新的会话标题', current?.title || '');
         if (!title || !title.trim()) return;
         try {
             const payload = await renameConversation(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
-                conversationPanelAgent,
+                scopedAgent,
                 conversationId,
                 title.trim(),
             );
             store.hydrateAgentConversation(
-                conversationPanelAgent,
+                scopedAgent,
                 payload.active_conversation_id || payload.conversation_id || null,
                 payload.upstream_conversation_id || null,
                 mapConversationMessages(payload.messages || []),
@@ -282,24 +297,25 @@ export function useAgentSession(deps: {
         }
     };
 
-    const handleArchiveConversation = async (conversationId: string) => {
+    const handleArchiveConversation = async (conversationId: string, scope?: ConversationActionScope) => {
         if (!store.bookRef.value) return;
+        const scopedAgent = scope?.agent ?? conversationPanelAgent;
         const ok = window.confirm('确认归档这条会话吗？会话历史会保留，但默认不再显示。');
         if (!ok) return;
         try {
             const payload = await archiveConversation(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
-                conversationPanelAgent,
+                scopedAgent,
                 conversationId,
             );
             store.hydrateAgentConversation(
-                conversationPanelAgent,
+                scopedAgent,
                 payload.active_conversation_id || payload.conversation_id || null,
                 payload.upstream_conversation_id || null,
                 mapConversationMessages(payload.messages || []),
                 payload.conversations || [],
             );
-            if (conversationPanelAgent === store.activeAgent && (payload.conversation_id || payload.active_conversation_id)) {
+            if (scopedAgent === store.activeAgent && (payload.conversation_id || payload.active_conversation_id)) {
                 const nextId = payload.active_conversation_id || payload.conversation_id || null;
                 store.setConversationId(nextId);
                 store.setUpstreamConversationId(payload.upstream_conversation_id || null);
@@ -314,25 +330,26 @@ export function useAgentSession(deps: {
         }
     };
 
-    const handleDeleteConversation = async (conversationId: string) => {
+    const handleDeleteConversation = async (conversationId: string, scope?: ConversationActionScope) => {
         if (!store.bookRef.value) return;
+        const scopedAgent = scope?.agent ?? conversationPanelAgent;
         const ok = window.confirm('确认彻底删除这条会话吗？消息历史会一并移除，且不可恢复。');
         if (!ok) return;
         try {
             const payload = await deleteConversation(
                 { kind: store.bookRef.kind, value: store.bookRef.value },
-                conversationPanelAgent,
+                scopedAgent,
                 conversationId,
             );
             const nextId = payload.active_conversation_id || payload.conversation_id || null;
             store.hydrateAgentConversation(
-                conversationPanelAgent,
+                scopedAgent,
                 nextId,
                 payload.upstream_conversation_id || null,
                 mapConversationMessages(payload.messages || []),
                 payload.conversations || [],
             );
-            if (conversationPanelAgent === store.activeAgent) {
+            if (scopedAgent === store.activeAgent) {
                 store.setConversationId(nextId);
                 store.setUpstreamConversationId(payload.upstream_conversation_id || null);
             }
