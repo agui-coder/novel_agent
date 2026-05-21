@@ -1,6 +1,6 @@
 # AI 小说创作工作台
 
-一个面向长篇网文作者的本地 AI 创作工作台：用 Dify Agent 生成，用 Git 管剧情分支，用审查工作台控制失控风险。
+一个面向长篇网文作者的本地 AI 创作工作台：用 Dify Agent 和后端 LangChain 链路协同生成与蒸馏，用 LoreGit 工具层读写书库，用 Git 管剧情分支，用审查工作台控制失控风险。
 
 它不是一个“让模型凭空写小说”的聊天框，而是一个类似 Cursor 的小说创作 IDE。作者可以把已有小说导入为可维护的章节资料库，再把世界观、状态卡、文风指纹、大纲、章节草稿和审查意见沉淀成可回滚、可比较、可分支实验的创作资产。
 
@@ -86,12 +86,14 @@ flowchart TB
   FE --> BE["Flask LoreGit 后端"]
   BE --> FS["每本书独立 Markdown 工作区"]
   BE --> GIT["每本书独立 Git 仓库"]
+  BE --> LC["LangChain 本地链路"]
+  LC --> MODEL["OpenAI-compatible 模型接口"]
   FE --> DIFY["Dify Agents"]
   DIFY --> TOOLS["LoreGit ToolProvider"]
   TOOLS --> BE
 ```
 
-## Dify Agent
+## Dify Agent 与 LangChain 链路
 
 当前仓库包含 6 个净化后的 Dify DSL 快照：
 
@@ -104,11 +106,13 @@ flowchart TB
 
 这些 YAML 可以导入 Dify 复现工作流结构、提示词、节点图和工具引用，但不是完整运行时备份。新环境仍需配置模型供应商、Dify App API Key 和 LoreGit ToolProvider 地址。
 
+项目不是纯 Dify 应用。Dify 主要承载可视化 Agent 工作流和人机协作入口；后端 LangChain 链路承载部分本地自动化、摘要/章节卡修复、OpenAI-compatible 模型调用和可测试的服务端编排；LoreGit ToolProvider 负责把 Dify Agent 的写入动作落到每本书的 Markdown 工作区和 Git 仓库里。
+
 ## 技术栈
 
 - Frontend: React, TypeScript, Vite
 - Backend: Flask, Python
-- Agent Orchestration: Dify Workflow / Chatbot Agent
+- Agent Orchestration: Dify Workflow / Chatbot Agent + LangChain backend chains
 - Storage: Markdown files, local filesystem
 - Versioning: nested Git repositories per book
 - Runtime: local Windows development stack with Docker / Dify
@@ -116,6 +120,8 @@ flowchart TB
 ## 如何部署
 
 这个项目目前定位为“可复现的本地 demo + 可展示的工程样例”，不是把所有密钥、Dify 数据库和私有书库都打进包里的黑盒一键应用。推荐路线是：先用 Release ZIP、源码 clone 或 GHCR 镜像跑通前后端和书库工作台，再接入自己的 Dify Runtime、模型供应商和 Dify App API Key。
+
+部署说明：项目目前由个人维护，且架构原创性较高，是“本地书库 + Dify Agent 工作流 + 后端 LangChain 链路 + LoreGit 工具层 + 每书 Git 仓库”的混合系统，还没有成熟商业软件那种覆盖所有机器环境的一键部署方案。如果部署过程中遇到端口占用、Docker/WSL、Dify Runtime、模型 Key、ToolProvider 连通性或路径差异问题，建议把报错日志、`deploy/demo/.env` 配置和当前系统环境交给 AI 辅助排查。多数问题可以快速定位到路径、网络、密钥、服务启动顺序或 Dify 到后端的访问地址。
 
 部署边界先说清楚：
 

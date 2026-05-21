@@ -2,9 +2,11 @@
 
 This document defines the reproducible demo target for `novel_agent`. It is intentionally conservative: the demo must make the existing project chain easier to start, not replace the chain with local fake generation.
 
+Operator note: `novel_agent` is currently maintained by an individual and uses a relatively original mixed architecture: local book workspaces, Dify Agent workflows, backend LangChain chains, the LoreGit ToolProvider layer, and one nested Git repository per book. It is not yet a mature commercial one-click deployment product for every possible machine. If setup fails, collect the terminal error, `deploy/demo/.env`, Docker/WSL state, Dify runtime status, model key configuration, and ToolProvider endpoint, then use an AI assistant to help narrow the issue. Most deployment failures come from paths, ports, credentials, service startup order, or the address Dify must use to reach the Flask backend.
+
 ## Goal
 
-A new evaluator should be able to run the workbench, connect it to a valid Dify runtime, import or open a demo book, and verify that outline, continuation, review, Git branch, and rollback flows still use the project-owned agents and LoreGit tools.
+A new evaluator should be able to run the workbench, connect it to a valid Dify runtime and backend LangChain model configuration, import or open a demo book, and verify that outline, continuation, review, local repair chains, Git branch, and rollback flows still use the project-owned agents and LoreGit tools.
 
 ## Supported Modes
 
