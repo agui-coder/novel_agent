@@ -84,12 +84,32 @@ class V69RollingChapterPlannerTests(unittest.TestCase):
         self.assertEqual(parse_chapter_number("十三"), 13)
         self.assertEqual(parse_chapter_number("二十"), 20)
 
-    def test_parse_cards_marks_missing_fields(self):
+    def test_parse_cards_keeps_missing_fields_advisory(self):
         cards = parse_chapter_cards("## 章节卡 1：短卡\n\n- chapter_goal：目标\n")
 
         self.assertEqual(len(cards), 1)
-        self.assertFalse(cards[0].executable)
+        self.assertTrue(cards[0].executable)
         self.assertIn("entry_scene", cards[0].missing_fields)
+        self.assertIn("chapter_goal", cards[0].outline_text)
+
+    def test_missing_card_fields_do_not_block_rolling_continuation(self):
+        (self.temp_dir / "chapter_outline.md").write_text(
+            "# 逐章大纲\n\n"
+            "## 章节卡 1：松散条目\n\n"
+            "这一章先写主角进入新轮回，发现旧约束已经失效，只保留章节号和剧情方向。\n\n"
+            "## 章节卡 2：继续推进\n\n"
+            "- chapter_goal：让角色确认新规则。\n",
+            encoding="utf-8",
+        )
+
+        plan = build_rolling_plan(book_id="book", book_dir=self.temp_dir, batch_size=3)
+
+        self.assertEqual(plan["next_action"], "continue_existing_cards")
+        self.assertEqual(plan["blocked_card_numbers"], [])
+        self.assertEqual(plan["selected_card_numbers"], [1, 2])
+        self.assertEqual(plan["executable_card_count"], 2)
+        self.assertIn("剧情方向", plan["selected_cards"][0]["outline_text"])
+        self.assertIn("entry_scene", plan["selected_cards"][0]["missing_fields"])
 
     def test_parse_cards_accepts_ch_heading_and_bold_chinese_fields(self):
         cards = parse_chapter_cards("# 逐章大纲\n\n" + bold_ch_card(153, "伊甸园的钟"))

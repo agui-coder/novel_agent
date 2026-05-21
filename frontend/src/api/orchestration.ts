@@ -447,7 +447,7 @@ export interface RollingOutlineHandoffPayloadResponse {
     status: 'success';
     book_id: string;
     generated_at: string;
-    mode: 'repair' | 'replenish';
+    mode: 'replenish';
     target_file: 'chapter_outline.md';
     route_agent_key: 'outline_agent';
     file_type: 'outline';

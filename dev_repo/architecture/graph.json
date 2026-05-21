@@ -446,7 +446,7 @@
         "Record chapter context packs as derived current-chapter execution evidence; do not treat them as source prose, hidden canon, hidden outline state, or approval.",
         "When rolling evidence packages world/status constraints, it must preserve lifecycle labels so historical-only, retired, disabled, or unresolved constraints cannot masquerade as current-active blockers.",
         "Continuation workbench state is transient projection over outline/draft/review state and must not physically mutate chapter_outline.md.",
-        "When next_action is repair_outline_cards or replenish_outline, the workbench may request an outline handoff payload but only the outline route may write reviewable outline edits."
+        "When next_action is replenish_outline, the workbench may request an outline handoff payload but only the outline route may write reviewable outline edits. Missing structured card fields are advisory when a readable chapter number and outline text exist."
       ],
       "allowed_change_types": [
         "Read-only cursor derivation",

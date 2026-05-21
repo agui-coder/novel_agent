@@ -279,8 +279,8 @@ class V70RollingWorkbenchApiTests(unittest.TestCase):
         self.assertEqual(body["workbench_state"]["selected_card_numbers"], [])
         self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
 
-    def test_outline_handoff_payload_routes_blocked_card_repair_without_mutation(self):
-        book_id, book_dir = self._init_book("v70_outline_repair_payload")
+    def test_outline_handoff_payload_no_longer_repairs_missing_card_fields(self):
+        book_id, book_dir = self._init_book("v70_outline_repair_removed")
         outline_text = "# outline\n\n" + "\n".join(
             [
                 broken_card_without_conflict(1, "broken-title"),
@@ -295,33 +295,47 @@ class V70RollingWorkbenchApiTests(unittest.TestCase):
             json={"book_id": book_id, "batch_size": 3},
         )
 
+        self.assertEqual(response.status_code, 409)
+        body = response.get_json()
+        self.assertEqual(body["status"], "error")
+        self.assertEqual(body["code"], "ROLLING_OUTLINE_HANDOFF_NOT_NEEDED")
+        self.assertEqual(body["next_action"], "continue_existing_cards")
+        self.assertEqual(body["workbench_state"]["next_action"], "continue_existing_cards")
+        self.assertEqual(body["workbench_state"]["blocked_card_numbers"], [])
+        self.assertEqual(body["workbench_state"]["selected_card_numbers"], [1, 2, 3])
+        self.assertIn(
+            "conflict_or_obstacle",
+            body["workbench_state"]["outline_card_states"][0]["missing_fields"],
+        )
+        self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
+
+    def test_continuation_payload_accepts_missing_card_fields(self):
+        book_id, book_dir = self._init_book("v70_missing_fields_continue")
+        outline_text = "# outline\n\n" + "\n".join(
+            [
+                broken_card_without_conflict(1, "broken-title"),
+                card(2, "title-2"),
+            ]
+        )
+        (book_dir / "chapter_outline.md").write_text(outline_text, encoding="utf-8")
+
+        response = self.client.post(
+            "/api/rolling/continuation_payload",
+            json={"book_id": book_id, "batch_size": 3},
+        )
+
         self.assertEqual(response.status_code, 200)
         body = response.get_json()
-        body_text = repr(body)
         self.assertEqual(body["status"], "success")
-        self.assertEqual(body["mode"], "repair")
-        self.assertEqual(body["route_agent_key"], "outline_agent")
-        self.assertEqual(body["target_file"], "chapter_outline.md")
-        self.assertEqual(body["file_type"], "outline")
         self.assertEqual(body["write_scope"], "active_file_strict")
-        self.assertEqual(body["workbench_state"]["next_action"], "repair_outline_cards")
-        brief = body["outline_handoff_brief"]
-        self.assertEqual(brief["mode"], "repair")
-        self.assertEqual(brief["target_file"], "chapter_outline.md")
-        self.assertEqual(brief["route_agent_key"], "outline_agent")
-        self.assertEqual(brief["progress_cursor"]["blocked_card_numbers"], [1])
-        self.assertEqual(brief["repair_scope"]["blocked_cards"][0]["number"], 1)
-        self.assertIn("conflict_or_obstacle", brief["repair_scope"]["blocked_cards"][0]["missing_fields"])
-        self.assertIn("conflict_or_obstacle", brief["repair_scope"]["missing_fields"])
-        self.assertTrue(brief["repair_scope"]["repair_existing_card_first"])
-        self.assertTrue(any(card["number"] == 2 for card in brief["repair_scope"]["neighbor_cards"]))
-        self.assertFalse(brief["no_prose_boundary"]["brief_contains_generated_prose"])
+        self.assertEqual(body["workbench_state"]["next_action"], "continue_existing_cards")
+        self.assertEqual(body["workbench_state"]["selected_card_numbers"], [1, 2])
+        chapter_cards = body["author_writing_brief"]["chapter_cards"]
+        self.assertEqual(chapter_cards[0]["number"], 1)
+        self.assertIn("conflict_or_obstacle", chapter_cards[0]["missing_fields"])
+        self.assertIn("chapter_goal", chapter_cards[0]["outline_text"])
+        self.assertIn("chapter_context_pack JSON", body["intent"])
         self.assertFalse(body["no_prose_boundary"]["payload_contains_generated_prose"])
-        self.assertFalse(body["no_prose_boundary"]["payload_mutates_chapter_outline"])
-        self.assertTrue(body["no_prose_boundary"]["outline_agent_owns_reviewable_outline_edits"])
-        self.assertIn("rolling_outline_handoff_brief JSON", body["intent"])
-        self.assertIn("chapter_draft.md", body["intent"])
-        self.assertNotIn("UNIQUE_DRAFT_PROSE", body_text)
         self.assertEqual((book_dir / "chapter_outline.md").read_text(encoding="utf-8"), outline_text)
 
     def test_outline_handoff_payload_routes_replenishment_without_mutation(self):

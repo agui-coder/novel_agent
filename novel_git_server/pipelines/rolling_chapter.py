@@ -170,6 +170,7 @@ class ChapterCard:
     heading_line: int
     end_line: int
     fields: dict[str, str]
+    outline_text: str
     executable: bool
     missing_fields: tuple[str, ...]
 
@@ -180,6 +181,7 @@ class ChapterCard:
             "heading_line": self.heading_line,
             "end_line": self.end_line,
             "fields": self.fields,
+            "outline_text": self.outline_text,
             "executable": self.executable,
             "missing_fields": list(self.missing_fields),
         }
@@ -296,6 +298,11 @@ def _extract_fields(lines: list[str]) -> dict[str, str]:
     return fields
 
 
+def _outline_text_from_lines(lines: list[str]) -> str:
+    text = "\n".join(_strip_line_ending(line).rstrip() for line in lines).strip()
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
 def parse_chapter_cards(markdown: str) -> list[ChapterCard]:
     lines = _split_lines(markdown)
     headings = _chapter_card_headings(markdown)
@@ -303,7 +310,8 @@ def parse_chapter_cards(markdown: str) -> list[ChapterCard]:
     for index, (heading_line, number, title) in enumerate(headings):
         next_heading_line = headings[index + 1][0] if index + 1 < len(headings) else len(lines) + 1
         end_line = next_heading_line - 1
-        fields = _extract_fields(lines[heading_line:end_line])
+        section_lines = lines[heading_line:end_line]
+        fields = _extract_fields(section_lines)
         missing = tuple(sorted(EXECUTABLE_CARD_FIELDS - set(fields)))
         cards.append(
             ChapterCard(
@@ -312,7 +320,8 @@ def parse_chapter_cards(markdown: str) -> list[ChapterCard]:
                 heading_line=heading_line,
                 end_line=end_line,
                 fields=fields,
-                executable=not missing,
+                outline_text=_outline_text_from_lines(section_lines),
+                executable=True,
                 missing_fields=missing,
             )
         )
@@ -951,6 +960,7 @@ def _card_execution_brief(card: dict[str, Any]) -> dict[str, Any]:
         "end_line": card.get("end_line"),
         "executable": bool(card.get("executable")),
         "missing_fields": list(card.get("missing_fields") or []),
+        "outline_text": card.get("outline_text") or "",
         "fields": {
             key: fields.get(key, "")
             for key in CHAPTER_CONTEXT_CARD_FIELDS
@@ -1350,16 +1360,13 @@ def build_rolling_plan(
     pending_review_numbers = {chapter.number for chapter in pending_review}
     consumed_numbers = accepted_numbers | pending_review_numbers
     pending_cards = [card for card in cards if card.number not in consumed_numbers]
-    blocked_cards = [card for card in pending_cards if not card.executable]
-    executable_pending = [card for card in pending_cards if card.executable]
+    blocked_cards: list[ChapterCard] = []
+    executable_pending = pending_cards
     selected = executable_pending[:batch_size]
 
     if not review_gate_open:
         next_action = "await_human_review"
         stop_reason = "human_review_gate_closed"
-    elif blocked_cards and (not selected or blocked_cards[0].number < selected[0].number):
-        next_action = "repair_outline_cards"
-        stop_reason = "next_pending_card_is_not_executable"
     elif selected:
         next_action = "continue_existing_cards"
         stop_reason = ""

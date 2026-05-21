@@ -1286,14 +1286,9 @@ export default function App() {
 
         try {
             const payload = await buildRollingOutlineHandoffPayload(store.bookRef, { batchSize: 3 });
-            const modeLabel = payload.mode === 'repair' ? '修复章节卡' : '生成下一批章节卡';
-            lines.push(`交接模式：${modeLabel}`);
+            lines.push('交接模式：生成下一批章节卡');
             lines.push(`下一步：${payload.workbench_state.next_action}`);
-            if (payload.mode === 'repair') {
-                lines.push(`需修复：${compactList(payload.workbench_state.blocked_card_numbers)}`);
-            } else {
-                lines.push(`已有章节卡已消耗，准备补充下一批。`);
-            }
+            lines.push(`已有章节卡已消耗，准备补充下一批。`);
             lines.push('已生成大纲交接包，交给 outline Agent。');
             setRunningProgress(1, 4, '调用大纲 Agent');
 

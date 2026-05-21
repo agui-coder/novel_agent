@@ -151,6 +151,8 @@ def _brief_chapter_cards(plan: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "number": number,
                 "title": _brief_text(card.get("title"), limit=80),
+                "outline_text": _brief_text(card.get("outline_text"), limit=520),
+                "missing_fields": list(card.get("missing_fields") or []),
                 "goal": _brief_text(fields.get("chapter_goal")),
                 "entry_scene": _brief_text(fields.get("entry_scene")),
                 "conflict": _brief_text(fields.get("conflict_or_obstacle")),
@@ -175,6 +177,7 @@ def _card_brief(card: dict[str, Any] | None) -> dict[str, Any]:
         "end_line": card.get("end_line") or 0,
         "executable": bool(card.get("executable")),
         "missing_fields": list(card.get("missing_fields") or []),
+        "outline_text": _brief_text(card.get("outline_text"), limit=520),
         "fields": {
             key: _brief_text(value, limit=260)
             for key, value in fields.items()
@@ -197,15 +200,6 @@ def _neighbor_cards(plan: dict[str, Any], target_number: int | None, *, radius: 
     return [_card_brief(card) for card in cards[start:end]]
 
 
-def _blocked_cards(plan: dict[str, Any]) -> list[dict[str, Any]]:
-    blocked_numbers = set(plan.get("blocked_card_numbers") or [])
-    cards = [
-        card for card in plan.get("cards") or []
-        if isinstance(card, dict) and card.get("number") in blocked_numbers
-    ]
-    return [_card_brief(card) for card in cards]
-
-
 def _last_accepted_cards(plan: dict[str, Any], *, limit: int = 3) -> list[dict[str, Any]]:
     accepted_numbers = set(plan.get("accepted_chapter_numbers") or plan.get("written_chapter_numbers") or [])
     cards = [
@@ -216,9 +210,7 @@ def _last_accepted_cards(plan: dict[str, Any], *, limit: int = 3) -> list[dict[s
     return [_card_brief(card) for card in cards[-limit:]]
 
 
-def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_at: str) -> dict[str, Any]:
-    blocked = _blocked_cards(plan)
-    first_blocked_number = blocked[0].get("number") if blocked else None
+def _build_outline_handoff_brief(*, plan: dict[str, Any], generated_at: str) -> dict[str, Any]:
     known_numbers = [
         number for number in (
             list(plan.get("pending_card_numbers") or [])
@@ -235,7 +227,7 @@ def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_a
     return {
         "schema_version": 1,
         "brief_type": "rolling_outline_handoff_brief",
-        "mode": mode,
+        "mode": "replenish",
         "generated_at": generated_at,
         "book_id": plan.get("book_id"),
         "target_file": "chapter_outline.md",
@@ -248,14 +240,7 @@ def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_a
             "pending_review_chapter_numbers": plan.get("pending_review_chapter_numbers") or [],
             "pending_card_numbers": plan.get("pending_card_numbers") or [],
             "selected_card_numbers": plan.get("selected_card_numbers") or [],
-            "blocked_card_numbers": plan.get("blocked_card_numbers") or [],
             "remaining_executable_after_selected": plan.get("remaining_executable_after_selected") or [],
-        },
-        "repair_scope": {
-            "blocked_cards": blocked,
-            "neighbor_cards": _neighbor_cards(plan, first_blocked_number),
-            "repair_existing_card_first": mode == "repair",
-            "missing_fields": sorted({field for card in blocked for field in card.get("missing_fields") or []}),
         },
         "replenish_scope": {
             "last_accepted_cards": _last_accepted_cards(plan),
@@ -277,8 +262,7 @@ def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_a
         ],
         "write_contract": {
             "where_to_write": "只允许通过大纲路由提交 chapter_outline.md 的可审阅草稿。",
-            "repair_rule": "修复模式优先补齐或重写原编号章节卡，不要为了绕过错误而新造章节编号。",
-            "replenish_rule": "补卡模式只在章节卡耗尽或不足时续写下一批章节卡。",
+            "replenish_rule": "只在章节卡耗尽或不足时续写下一批章节卡。",
             "what_not_to_do": [
                 "不要写 chapter_draft.md 或 chapters/*.md。",
                 "不要生成小说正文。",
@@ -297,20 +281,14 @@ def _build_outline_handoff_brief(*, plan: dict[str, Any], mode: str, generated_a
 
 
 def _build_outline_handoff_intent(*, brief: dict[str, Any]) -> str:
-    mode = brief.get("mode")
-    if mode == "repair":
-        action_line = "请修复当前不可执行的逐章大纲卡，优先补齐原编号章节卡缺失字段。"
-    else:
-        action_line = "请在现有逐章大纲之后生成下一批可执行章节卡。"
     brief_json = json.dumps(brief, ensure_ascii=False, sort_keys=True)
     return (
         "【滚动三章工作台：大纲交接任务】\n"
         "本任务由前台按钮触发，不是闲聊。请按 outline Agent 的既有读写工具链执行。\n"
-        f"{action_line}\n"
+        "请在现有逐章大纲之后生成下一批可执行章节卡。\n"
         "你必须读取 chapter_outline.md、arc_outline.md、master_outline.md、brainstorm.md、summary.md、"
         "status_card.md、world_model.md、domain_rules.md、style_constraints_for_continuation.md 和 error_archive.md。\n"
         "只允许提交 chapter_outline.md 的可审阅草稿；不要写 chapter_draft.md，不要写 chapters/*.md，不要生成正文。\n"
-        "修复章节卡时，优先保留原章节编号和章节意图，只补齐缺失字段或规整格式；不要为了绕过错误新造编号。\n"
         "生成下一批章节卡时，延续现有编号、节奏、冲突、兑现、状态变化和钩子，不要清空旧卡。\n"
         "如果新增设定需要世界模型确认，请标记为 WORLD_MODEL_REQUIRED，不要当成已确认事实。\n"
         "完成后只返回简短状态，让前端刷新滚动队列。\n\n"
@@ -605,7 +583,7 @@ def create_blueprint(
             return json_error("INVALID_PAYLOAD", str(exc), 400)
 
         next_action = plan.get("next_action")
-        if next_action not in {"repair_outline_cards", "replenish_outline"}:
+        if next_action != "replenish_outline":
             return (
                 jsonify(
                     {
@@ -622,9 +600,9 @@ def create_blueprint(
                 409,
             )
 
-        mode = "repair" if next_action == "repair_outline_cards" else "replenish"
+        mode = "replenish"
         generated_at = _iso_now()
-        brief = _build_outline_handoff_brief(plan=plan, mode=mode, generated_at=generated_at)
+        brief = _build_outline_handoff_brief(plan=plan, generated_at=generated_at)
         return (
             jsonify(
                 {
