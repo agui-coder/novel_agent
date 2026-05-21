@@ -270,6 +270,54 @@ class V62MarkdownSectionWriteTests(unittest.TestCase):
         draft_content = self._git_show(repo_dir, "draft/sandbox", "chapter_draft.md")
         self.assertIn("## A\n重复词。\n## B\n替换词。", draft_content)
 
+    def test_flat_replace_markdown_section_initializes_empty_markdown_file(self):
+        book_id, repo_dir = self._init_book(book_name="v62_empty_markdown_init")
+        self._write_markdown(repo_dir, "brainstorm.md", "")
+        base_etag = self._read_etag(book_id, "brainstorm.md")
+        content = "# 头脑风暴\n\n## 核心方向\n\n- 保留作者确认后的灵感。\n"
+
+        resp = self.client.post(
+            "/api/draft/replace_markdown_section",
+            json={
+                "book_id": book_id,
+                "file_name": "brainstorm.md",
+                "section_path": "头脑风暴",
+                "content": content,
+                "base_etag": base_etag,
+                "origin": "explicit_user_write",
+                "message": "initialize empty brainstorm",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["status"], "success")
+        self.assertEqual(body["updated_files"][0]["file_name"], "brainstorm.md")
+        self.assertEqual(self._git_show(repo_dir, "draft/sandbox", "brainstorm.md"), content)
+        self.assertEqual(self._git_show(repo_dir, body["mainline_branch"], "brainstorm.md"), "")
+
+    def test_flat_replace_markdown_section_still_rejects_missing_section_in_non_empty_file(self):
+        book_id, repo_dir = self._init_book(book_name="v62_missing_section_still_rejected")
+        original = "# 头脑风暴\n\n## 已有方向\n\n- 旧内容。\n"
+        self._write_markdown(repo_dir, "brainstorm.md", original)
+        base_etag = self._read_etag(book_id, "brainstorm.md")
+
+        resp = self.client.post(
+            "/api/draft/replace_markdown_section",
+            json={
+                "book_id": book_id,
+                "file_name": "brainstorm.md",
+                "section_path": "头脑风暴 > 不存在",
+                "content": "## 不存在\n\n- 不应被静默创建。\n",
+                "base_etag": base_etag,
+                "origin": "explicit_user_write",
+                "message": "missing section should fail",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["code"], "SECTION_NOT_FOUND")
+        self.assertEqual((repo_dir / "brainstorm.md").read_text(encoding="utf-8"), original)
 
     def test_chapter_draft_ai_write_loop_guard_blocks_seventh_recent_update(self):
         book_id, repo_dir = self._init_book(book_name="v62_ai_write_loop_guard")

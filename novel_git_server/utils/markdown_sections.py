@@ -235,9 +235,26 @@ def _normalize_patch_block(block: str, *, prefix_has_trailing_newline: bool, suf
     return normalized
 
 
+def _starts_with_atx_heading(markdown: str) -> bool:
+    for raw_line in _split_lines(markdown):
+        line = _strip_trailing_line_ending(raw_line).lstrip("\ufeff")
+        if not line.strip():
+            continue
+        return ATX_HEADING_RE.match(line) is not None
+    return False
+
+
 def replace_markdown_section(markdown: str, section_path: Iterable[Any], replacement_markdown: str) -> str:
+    normalized_path = _normalize_path_tokens(section_path)
+    if not markdown.strip():
+        if not _starts_with_atx_heading(replacement_markdown):
+            raise MarkdownPatchApplyError(
+                "replacement content must start with a markdown heading when initializing an empty markdown file"
+            )
+        return replacement_markdown
+
     lines = _split_lines(markdown)
-    section = find_markdown_section(markdown, section_path)
+    section = find_markdown_section(markdown, normalized_path)
     start_index = section.heading_line - 1
     end_index = section.end_line
     prefix = lines[:start_index]
