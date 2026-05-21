@@ -203,6 +203,7 @@
         "Book paths must stay inside storage root.",
         "Important writes must commit or return explicit failure.",
         "Draft writes belong on draft/sandbox until confirmed.",
+        "Draft review state is branch-scoped: diff, review, confirm, and rollback must use the draft source plot branch as baseline.",
         "Accepted continuation chapters become formal ChapterFile artifacts only through deterministic confirm-time canonization into chapters/*.md.",
         "chapter_draft.md AI write loops must be bounded by recent repair-like Git history so continuation repair cannot create unbounded tiny draft commits."
       ],
@@ -214,6 +215,7 @@
       "requires_amendment_when": [
         "Changing tracked layout files",
         "Changing branch names or merge semantics",
+        "Changing draft source-branch binding, source inference, or cross-branch confirm behavior",
         "Changing source-versus-derived classification of book files",
         "Changing how confirmed chapter_draft.md sections become chapters/*.md",
         "Changing AI write loop budget semantics for chapter_draft.md"
@@ -831,6 +833,11 @@
       "from": "rolling-production-orchestrator",
       "to": "book-storage-git",
       "relation": "derives_chapter_cursor_from_chapters_outline_and_draft"
+    },
+    {
+      "from": "book-storage-git",
+      "to": "book-storage-git",
+      "relation": "binds_draft_sandbox_to_source_plot_branch"
     },
     {
       "from": "rolling-production-orchestrator",

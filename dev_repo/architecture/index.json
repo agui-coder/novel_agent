@@ -407,6 +407,7 @@
       "Dify LoreGit ToolProvider endpoint synchronization semantics",
       "deployment reproducibility topology, sanitized Dify restore authority, or secret/demo-data boundary changes",
       "review/draft runtime flow changes",
+      "draft source-branch binding, source inference, diff baseline, confirm target, or rollback target changes",
       "batch pipeline execution model or section schema changes",
       "style initialization ownership between backend pipeline and Dify workflow",
       "summary archive ownership between backend pipeline and Dify reading archive workflow",
@@ -417,6 +418,7 @@
     ],
     "data_model": [
       "Book workspace identity or deletion semantics changes",
+      "DraftSandbox source-branch identity, source-commit capture, legacy source inference, confirm target, or rollback target semantics",
       "Book deletion cancellation or pending-cleanup semantics changes",
       "tracked layout file changes",
       "conversation log format changes",

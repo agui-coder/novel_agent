@@ -224,6 +224,16 @@
       "confidence": "confirmed"
     },
     {
+      "id": "draft-sandbox-binds-source-branch",
+      "from": "DraftSandbox",
+      "to": "GitRepositoryState",
+      "cardinality": "many:1",
+      "kind": "branch-scoped-review-baseline",
+      "deletion_semantics": "Deleting the draft branch removes pending review state. Deleting or renaming the source plot branch invalidates confirm until metadata is rebound or the branch is restored.",
+      "source_artifacts": ["Git branch draft/sandbox", ".loregit/draft_meta.json", "local Git refs"],
+      "confidence": "confirmed"
+    },
+    {
       "id": "workflow-updates-knowledge-files",
       "from": "DifyWorkflowDefinition",
       "to": "KnowledgeFile",

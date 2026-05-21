@@ -69,15 +69,15 @@
     },
     {
       "id": "DraftSandbox",
-      "purpose": "Reviewable draft branch and changed files before confirmation.",
+      "purpose": "Branch-scoped reviewable draft branch and changed files before confirmation.",
       "owning_architecture_node": "book-storage-git",
       "source_or_derived": "derived",
-      "source_artifacts": ["Git branch draft/sandbox", "draft response payloads"],
-      "identity": "BookWorkspace + branch name draft/sandbox",
-      "state_fields": ["branch", "mainline_branch", "commit_id", "changed_files", "etag"],
+      "source_artifacts": ["Git branch draft/sandbox", ".loregit/draft_meta.json runtime metadata", "draft response payloads"],
+      "identity": "BookWorkspace + draft branch name + bound source plot branch",
+      "state_fields": ["branch", "base_branch", "base_commit", "draft_commit", "changed_files", "etag", "metadata_source"],
       "derived_from": ["KnowledgeFile", "DifyWorkflowRun", "human edits"],
-      "migration_notes": "Branch name or confirm/rollback semantics require amendment.",
-      "requires_amendment_when": ["Changing branch name", "Changing confirm or rollback semantics"],
+      "migration_notes": "Legacy draft/sandbox branches may be source-bound by Git inference. Branch name, source binding, metadata persistence, or confirm/rollback semantics require amendment.",
+      "requires_amendment_when": ["Changing branch name", "Changing source-branch binding semantics", "Changing legacy source inference", "Changing confirm or rollback semantics"],
       "confidence": "confirmed"
     },
     {

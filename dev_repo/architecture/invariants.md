@@ -15,6 +15,10 @@
 - The frontend must not write book storage directly.
 - Dify workflows must write book files only through Flask/LoreGit tools.
 - Draft mutations must go through `draft/sandbox` until confirmed.
+- A draft branch is not globally valid across plot branches. Each `draft/sandbox` review state must be bound to the source plot branch and source commit that existed when the draft was created or migrated.
+- Draft diff, review, confirm, and rollback must use the bound source plot branch as the baseline. They must not silently compare against or merge into the branch that happens to be checked out later.
+- If the current checkout differs from the draft source plot branch, confirm must fail closed with a branch-mismatch error or require an explicit switch to the source plot branch before merging.
+- Legacy `draft/sandbox` branches without source metadata must be inferred only from Git evidence such as merge-base and changed-file diff against local heads. If the source branch cannot be inferred unambiguously, review/confirm must fail closed rather than merging across plot lines.
 - When confirmed draft changes include `chapter_draft.md`, deterministic backend canonization may archive the accepted chapter sections into `chapters/*.md`; this step must preserve accepted prose exactly, fail on ambiguous/conflicting chapter files, and never author new prose.
 - After successful `chapter_draft.md` canonization, the backend must reset `chapter_draft.md` to its lightweight draft placeholder only after accepted prose has landed in `chapters/*.md`; failed, conflicting, or unparseable canonization must leave the draft branch review surface intact.
 - Important book writes must either produce a Git commit or return an explicit error.
@@ -104,7 +108,7 @@ Open an architecture amendment before changing:
 - style initialization ownership between backend pipeline and Dify workflow;
 - summary archive ownership between backend pipeline and Dify reading archive workflow;
 - post-confirm archive bridge ordering, ownership, or stale-summary retry semantics;
-- file write ownership or draft/review flow;
+- file write ownership or draft/review flow, including draft source-branch binding and confirm/rollback baseline semantics;
 - outline production-control evidence modes or world-model gating semantics;
 - continuation chapter-card execution, length-gate semantics, or `chapter_draft.md` production ownership;
 - `chapter_draft.md` AI write loop budget semantics or guard threshold/window;

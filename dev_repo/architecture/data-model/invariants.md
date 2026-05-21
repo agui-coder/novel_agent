@@ -45,7 +45,11 @@
 ## Draft And Git
 
 - `draft/sandbox` is the review branch for material AI or human draft writes.
+- `draft/sandbox` is branch-scoped review state, not a global story draft. Its durable review semantics include a source plot branch and source commit captured at draft creation or inferred during legacy migration.
 - Confirm/rollback semantics are part of the data model.
+- Confirming a draft must merge into the draft source plot branch only. A checkout on another plot branch must not become the merge target by accident.
+- Diff/review baselines must come from the draft source plot branch, not from a later current checkout branch.
+- Rollback must reset or delete only the draft review branch and must not rewrite the source plot branch unless a future explicit recovery contract says so.
 - Per-book `.git` is not optional once a workspace is initialized.
 
 ## Conversation Runtime
@@ -84,6 +88,7 @@ Open an ER/data-model amendment before changing:
 - continuation production ownership of `chapter_draft.md`, chapter-card execution semantics, or chapter length gate semantics;
 - accepted chapter canonization semantics between `chapter_draft.md` and `chapters/*.md`;
 - `chapter_draft.md` AI write-loop budget threshold/window or guard failure semantics;
+- `DraftSandbox` source-branch identity, source-commit capture, legacy source inference, confirm target, or rollback target semantics;
 - style advisory or metric-delta repair evidence semantics, protected-metric stop rules, scheduler-lock semantics, or continuation repair loop semantics;
 - chapter context pack derived-evidence semantics, source-reference requirements, or continuation consumption rules;
 - rolling production cursor semantics, replenishment semantics, review bridge semantics, human unlock semantics, or human-review stop-gate semantics;
