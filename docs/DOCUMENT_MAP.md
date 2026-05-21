@@ -21,7 +21,24 @@
 - B 站视频观众。
 - 第一次打开仓库的人。
 
-### 2. Demo 剧本
+### 2. 技术档案
+
+文件：
+
+- `docs/TECHNICAL_DOSSIER.md`
+
+用途：
+
+- 面向技术读者、面试官和未来维护者，系统说明项目的架构边界、运行时权威、关键数据对象、核心调用链、代码地图、测试证据和发布边界。
+- 重点解释项目为什么不是纯 Dify 应用、不是普通聊天壳，而是 Dify + 后端 LangChain + LoreGit ToolProvider + 每书 Git 仓库的混合系统。
+
+适合谁看：
+
+- 想追问工程实现的面试官。
+- 想判断项目原创性和可维护性的技术读者。
+- 准备继续开发的人。
+
+### 3. Demo 剧本
 
 文件：
 
@@ -37,7 +54,7 @@
 - 准备录制项目演示的人。
 - 想快速理解产品闭环的人。
 
-### 3. 架构总览
+### 4. 架构总览
 
 文件：
 
@@ -54,7 +71,7 @@
 - 技术评审。
 - 后续开发者。
 
-### 4. 部署与可复现 Demo
+### 5. 部署与可复现 Demo
 
 文件：
 
@@ -69,7 +86,7 @@
 - 想在新机器上复现项目的人。
 - 准备把项目交给面试官、评审或未来接手者的人。
 
-### 5. Dify 持久化与备份恢复
+### 6. Dify 持久化与备份恢复
 
 文件：
 
@@ -84,7 +101,7 @@
 - 需要恢复 Dify 运行时的开发者。
 - 失忆后重新接手的自己。
 
-### 6. 收口清单
+### 7. 收口清单
 
 文件：
 
@@ -194,6 +211,7 @@
 ```text
 README.md
 docs/
+├── TECHNICAL_DOSSIER.md
 ├── DEMO_SCRIPT.md
 ├── ARCHITECTURE.md
 ├── DEPLOYMENT.md
@@ -207,6 +225,7 @@ dify_workflows/
 ## 维护规则
 
 - 外部展示入口优先维护 `README.md` 和 `docs/DEMO_SCRIPT.md`。
+- 技术解释入口优先维护 `docs/TECHNICAL_DOSSIER.md` 和 `docs/ARCHITECTURE.md`。
 - 部署复现入口优先维护 `docs/DEPLOYMENT.md`。
 - 架构变化优先更新 `docs/ARCHITECTURE.md`。
 - 最后冲刺任务变化优先更新 `docs/CLOSEOUT_CHECKLIST.md`。
@@ -219,7 +238,7 @@ dify_workflows/
 新的文档体系把项目分成三层：
 
 - 外部展示层：`README.md`、`docs/DEMO_SCRIPT.md`
-- 技术解释层：`docs/ARCHITECTURE.md`
+- 技术解释层：`docs/TECHNICAL_DOSSIER.md`、`docs/ARCHITECTURE.md`
 - 收口执行层：`docs/CLOSEOUT_CHECKLIST.md`
 
 旧 PRD 和后端内部资料继续保留，但不再承担第一入口职责。
