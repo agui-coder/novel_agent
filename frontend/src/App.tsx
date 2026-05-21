@@ -686,6 +686,7 @@ export default function App() {
         handleGitCheckout,
         handleGitSelectBranch,
         handleGitCreateBranch,
+        handleGitRenameBranch,
         handleGitMerge,
         handleGitHardRollback,
         handleGitOpenCommitDiff,
@@ -2317,6 +2318,9 @@ export default function App() {
                         }}
                         onCreateBranch={(payload) => {
                             void handleGitCreateBranch(payload);
+                        }}
+                        onRenameBranch={(payload) => {
+                            void handleGitRenameBranch(payload);
                         }}
                         onHardRollback={(targetCommit) => {
                             void handleGitHardRollback(targetCommit);

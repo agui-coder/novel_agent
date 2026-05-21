@@ -14,6 +14,7 @@ interface GitBranchPanelProps {
     onCheckout: (branchName: string) => void;
     onMerge: (payload: { sourceBranch: string; noFf: boolean }) => void;
     onCreateBranch: (payload: { branchName: string; fromRef: string | null }) => void;
+    onRenameBranch: (payload: { oldName: string; newName: string }) => void;
     onHardRollback: (targetCommit: string) => void;
 }
 
@@ -29,6 +30,7 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
     onCheckout,
     onMerge,
     onCreateBranch,
+    onRenameBranch,
     onHardRollback,
 }) => {
     const copy = useUiCopy();
@@ -37,6 +39,7 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
 
     const [newBranchName, setNewBranchName] = useState('');
     const [fromRef, setFromRef] = useState('');
+    const [renameBranchName, setRenameBranchName] = useState('');
     const [mergeSource, setMergeSource] = useState('');
     const [mergeNoFf, setMergeNoFf] = useState(false);
     const [mergeConflictFiles, setMergeConflictFiles] = useState<string[]>([]);
@@ -57,8 +60,18 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
         }
     }, [selectedCommitId, fromRef]);
 
+    useEffect(() => {
+        setRenameBranchName('');
+    }, [selectedBranchName]);
+
     const selectedBranch = selectedBranchName || currentBranch;
+    const selectedBranchRow = branches.find((branch) => branch.name === selectedBranch);
     const canSwitch = Boolean(selectedBranch) && selectedBranch !== currentBranch && !pending;
+    const canRenameSelected = Boolean(selectedBranch)
+        && !pending
+        && selectedBranch !== mainlineBranch
+        && selectedBranch !== 'draft/sandbox'
+        && selectedBranch !== 'draft/world_model';
     const sortedBranches = useMemo(() => {
         const rows = [...branches];
         rows.sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.name.localeCompare(b.name));
@@ -173,6 +186,36 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
                         >
                             {copy.git.backToMainline(mainlineBranch)}
                         </button>
+                        <div className="border-t border-[var(--color-dark-border)] pt-3">
+                            <div className="mb-2 text-[10px] font-semibold tracking-wide text-[var(--color-dark-text-muted)]">
+                                改名选中剧情分支
+                            </div>
+                            <input
+                                value={renameBranchName}
+                                onChange={(event) => setRenameBranchName(event.target.value)}
+                                placeholder={selectedBranch || 'plot/new-name'}
+                                disabled={!canRenameSelected}
+                                className="git-console-field w-full rounded-[12px] px-2.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const nextName = renameBranchName.trim();
+                                    if (!selectedBranch || !nextName) return;
+                                    onRenameBranch({ oldName: selectedBranch, newName: nextName });
+                                    setRenameBranchName('');
+                                }}
+                                disabled={!canRenameSelected || !renameBranchName.trim() || renameBranchName.trim() === selectedBranch}
+                                className="mt-2 w-full rounded-[12px] border border-[var(--color-dark-border)] px-3 py-2 text-xs text-[var(--color-dark-text-main)] hover:border-[var(--color-dark-border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                改名为新剧情分支名
+                            </button>
+                            {selectedBranchRow?.isMainline && (
+                                <div className="mt-2 text-[10px] leading-5 text-[var(--color-dark-text-faint)]">
+                                    主剧情线名称受保护，请新建分支后再改名。
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

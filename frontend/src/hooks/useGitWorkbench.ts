@@ -13,6 +13,7 @@ import {
     fetchGitStatus,
     fetchGitWorkingTree,
     hardRollbackGitBranch,
+    renameGitBranch,
     stageAllGitFiles,
     stageGitFile,
     unstageGitFile,
@@ -392,6 +393,41 @@ export function useGitWorkbench(deps: {
         });
     };
 
+    const handleGitRenameBranch = async (payload: { oldName: string; newName: string }) => {
+        if (!store.bookRef.value || !payload.oldName || !payload.newName) return;
+        if (hasPendingDraftDecision) {
+            store.setUiNotice({
+                type: 'info',
+                message: '当前存在未完成草稿，禁止改名剧情分支。',
+                ts: Date.now(),
+            });
+            return;
+        }
+
+        await runGitAction(async () => {
+            try {
+                const result = await renameGitBranch(
+                    { kind: store.bookRef.kind, value: store.bookRef.value },
+                    payload,
+                );
+                store.setSelectedGitBranchName(result.new_name);
+                await loadGitWorkbench();
+                store.setUiNotice({
+                    type: 'success',
+                    message: `剧情分支已改名：${result.old_name} -> ${result.new_name}`,
+                    ts: Date.now(),
+                });
+            } catch (err) {
+                const message = getErrorMessage(err, '改名剧情分支失败');
+                store.setUiNotice({
+                    type: 'error',
+                    message: `改名剧情分支失败：${message}`,
+                    ts: Date.now(),
+                });
+            }
+        });
+    };
+
     const handleGitMerge = async (payload: { sourceBranch: string; noFf: boolean }) => {
         if (!store.bookRef.value || !payload.sourceBranch) return;
         if (hasPendingDraftDecision) {
@@ -583,6 +619,7 @@ export function useGitWorkbench(deps: {
         handleGitCheckout,
         handleGitSelectBranch,
         handleGitCreateBranch,
+        handleGitRenameBranch,
         handleGitMerge,
         handleGitHardRollback,
         handleGitOpenCommitDiff,

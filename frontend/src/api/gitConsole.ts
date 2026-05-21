@@ -382,6 +382,28 @@ export async function createGitBranch(
     });
 }
 
+export async function renameGitBranch(
+    bookRef: { kind: 'book_name' | 'book_id'; value: string },
+    payload: { oldName: string; newName: string }
+): Promise<{
+    status: 'success';
+    book_id: string;
+    old_name: string;
+    new_name: string;
+    current_branch: string;
+    mainline_branch: string;
+    head_commit: string;
+}> {
+    return fetchApi('/books/git_branch_rename', {
+        method: 'POST',
+        body: JSON.stringify({
+            [bookRef.kind]: bookRef.value,
+            old_name: payload.oldName,
+            new_name: payload.newName,
+        }),
+    });
+}
+
 export async function hardRollbackGitBranch(
     bookRef: { kind: 'book_name' | 'book_id'; value: string },
     payload: { targetCommit: string; deleteOtherBranches?: boolean }
