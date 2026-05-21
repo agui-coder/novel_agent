@@ -22,6 +22,42 @@ export function useDraftReview(deps: {
 
     const [reviewDiffFullscreenOpen, setReviewDiffFullscreenOpen] = useState(false);
 
+    const recoverResolvedConfirmFailure = useCallback(async () => {
+        const runtimeState = useAppStore.getState();
+        if (!runtimeState.bookRef.value) return false;
+        try {
+            const branchesPayload = await fetchGitBranches(runtimeState.bookRef);
+            const draftBranch = branchesPayload.branches.find((row) => row.name === runtimeState.draftBranch);
+            const mainlineBranch = branchesPayload.branches.find((row) => row.name === branchesPayload.mainlineBranch);
+            if (!mainlineBranch) return false;
+            const draftWasDeleted = !draftBranch;
+            const draftMatchesMainline = Boolean(
+                draftBranch?.headCommit
+                && mainlineBranch?.headCommit
+                && draftBranch.headCommit === mainlineBranch.headCommit
+            );
+            if (!draftWasDeleted && !draftMatchesMainline) return false;
+
+            const latestStore = useAppStore.getState();
+            latestStore.markDraftResolved('confirmed');
+            latestStore.resetSandbox();
+            latestStore.clearReviewReadyNotice();
+            latestStore.setWorkbenchMode('editor');
+            await loadMainline();
+            latestStore.setUiNotice({
+                type: 'success',
+                message: draftWasDeleted
+                    ? '后端已完成归档并关闭草稿分支，审阅锁已自动解除。'
+                    : '草稿分支已与主线一致，审阅锁已自动解除。',
+                ts: Date.now(),
+            });
+            return true;
+        } catch (recoveryErr) {
+            console.warn('Failed to recover stale draft review state after confirm error:', recoveryErr);
+            return false;
+        }
+    }, [loadMainline]);
+
     const loadReviewTargetMainline = useCallback(async (targetFile: string) => {
         if (!store.bookRef.value || !targetFile) return;
         try {
@@ -209,6 +245,8 @@ export function useDraftReview(deps: {
             await onPostConfirm?.(result);
         } catch (err) {
             console.error('Confirmation failed:', err);
+            const recovered = await recoverResolvedConfirmFailure();
+            if (recovered) return;
             if (err instanceof ApiError) {
                 if (err.status === 409 || err.code === 'MERGE_CONFLICT') {
                     store.setFsmState('CONFLICT');
