@@ -368,6 +368,10 @@ def _ensure_branch_name_valid(repo_dir: str, branch_name: str) -> None:
     run_git(repo_dir, ["check-ref-format", "--branch", branch_name])
 
 
+def _is_protected_branch_name(branch_name: str, mainline_branch: str) -> bool:
+    return branch_name in {mainline_branch, "draft/sandbox", "draft/world_model"}
+
+
 def _resolve_commit(repo_dir: str, raw_ref: Any) -> str:
     if isinstance(raw_ref, str) and raw_ref.strip():
         resolved = raw_ref.strip()
@@ -981,6 +985,67 @@ def create_blueprint(
                     "from_commit": from_commit,
                     "checked_out": checkout_after_create,
                     "current_branch": current_branch,
+                    "head_commit": _head_commit(repo_dir),
+                }
+            ),
+            200,
+        )
+
+    @bp.post("/books/git_branch_rename")
+    def books_git_branch_rename():
+        payload, err = parse_json_payload(["old_name", "new_name"])
+        if err:
+            return err
+
+        book_id, book_err = require_book_id(payload)
+        if book_err:
+            return book_err
+
+        try:
+            old_name = _sanitize_branch_name(payload.get("old_name"))
+            new_name = _sanitize_branch_name(payload.get("new_name"))
+        except ValueError as exc:
+            return json_error("INVALID_PAYLOAD", str(exc), 400)
+
+        repo_dir, _, ready_err = _require_ready_repo(book_id, storage_root)
+        if ready_err:
+            return ready_err
+        assert repo_dir is not None
+
+        current_branch = _current_branch(repo_dir)
+        mainline_branch = _resolve_mainline_branch(repo_dir, current_branch)
+
+        if old_name == new_name:
+            return json_error("INVALID_PAYLOAD", "old_name and new_name must differ", 400)
+        if _is_protected_branch_name(old_name, mainline_branch):
+            return json_error("PROTECTED_BRANCH", f"branch cannot be renamed: {old_name}", 409)
+        if _is_protected_branch_name(new_name, mainline_branch):
+            return json_error("PROTECTED_BRANCH", f"branch name is reserved: {new_name}", 409)
+        if not _branch_exists(repo_dir, old_name):
+            return json_error("BRANCH_NOT_FOUND", f"branch does not exist: {old_name}", 404)
+        if _branch_exists(repo_dir, new_name):
+            return json_error("BRANCH_EXISTS", f"branch already exists: {new_name}", 409)
+
+        try:
+            _ensure_branch_name_valid(repo_dir, new_name)
+        except subprocess.CalledProcessError as exc:
+            return json_error("INVALID_PAYLOAD", format_git_error(exc) or "invalid branch name", 400)
+
+        try:
+            run_git(repo_dir, ["branch", "-m", old_name, new_name])
+        except subprocess.CalledProcessError as exc:
+            return json_error("GIT_OPERATION_FAILED", format_git_error(exc) or "failed to rename branch", 500)
+
+        current_branch = _current_branch(repo_dir)
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "book_id": book_id,
+                    "old_name": old_name,
+                    "new_name": new_name,
+                    "current_branch": current_branch,
+                    "mainline_branch": _resolve_mainline_branch(repo_dir, current_branch),
                     "head_commit": _head_commit(repo_dir),
                 }
             ),

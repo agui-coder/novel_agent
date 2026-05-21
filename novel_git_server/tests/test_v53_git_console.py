@@ -92,6 +92,104 @@ class V53GitConsoleTests(unittest.TestCase):
         self.assertEqual(clean_checkout.status_code, 200)
         self.assertEqual(clean_checkout.get_json()["current_branch"], mainline_branch)
 
+    def test_branch_rename_current_branch_and_guards(self):
+        book_name = "v53_branch_rename"
+        _, repo_dir = self._bootstrap_book(book_name=book_name)
+
+        status_resp = self.client.get("/books/git_status", query_string={"book_name": book_name})
+        self.assertEqual(status_resp.status_code, 200)
+        status_body = status_resp.get_json()
+        mainline_branch = status_body["mainline_branch"]
+
+        create_resp = self.client.post(
+            "/books/git_branch_create",
+            json={
+                "book_name": book_name,
+                "branch_name": "plot/old-name",
+                "from_ref": status_body["head_commit"],
+                "checkout": True,
+            },
+        )
+        self.assertEqual(create_resp.status_code, 200)
+
+        rename_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/old-name", "new_name": "plot/new-name"},
+        )
+        self.assertEqual(rename_resp.status_code, 200, rename_resp.get_json())
+        rename_body = rename_resp.get_json()
+        self.assertEqual(rename_body["current_branch"], "plot/new-name")
+        branches = self._git(repo_dir, "branch", "--format=%(refname:short)").splitlines()
+        self.assertIn("plot/new-name", branches)
+        self.assertNotIn("plot/old-name", branches)
+
+        same_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/new-name", "new_name": "plot/new-name"},
+        )
+        self.assertEqual(same_resp.status_code, 400)
+        self.assertEqual(same_resp.get_json()["code"], "INVALID_PAYLOAD")
+
+        mainline_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": mainline_branch, "new_name": "plot/mainline-renamed"},
+        )
+        self.assertEqual(mainline_resp.status_code, 409)
+        self.assertEqual(mainline_resp.get_json()["code"], "PROTECTED_BRANCH")
+
+        draft_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/new-name", "new_name": "draft/sandbox"},
+        )
+        self.assertEqual(draft_resp.status_code, 409)
+        self.assertEqual(draft_resp.get_json()["code"], "PROTECTED_BRANCH")
+
+    def test_branch_rename_non_current_branch_and_conflicts(self):
+        book_name = "v53_branch_rename_non_current"
+        _, repo_dir = self._bootstrap_book(book_name=book_name)
+
+        status = self.client.get("/books/git_status", query_string={"book_name": book_name}).get_json()
+        mainline = status["mainline_branch"]
+        head = status["head_commit"]
+
+        for branch_name in ["plot/source", "plot/existing"]:
+            resp = self.client.post(
+                "/books/git_branch_create",
+                json={
+                    "book_name": book_name,
+                    "branch_name": branch_name,
+                    "from_ref": head,
+                    "checkout": False,
+                },
+            )
+            self.assertEqual(resp.status_code, 200, resp.get_json())
+
+        self.assertEqual(self._git(repo_dir, "branch", "--show-current"), mainline)
+
+        conflict_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/source", "new_name": "plot/existing"},
+        )
+        self.assertEqual(conflict_resp.status_code, 409)
+        self.assertEqual(conflict_resp.get_json()["code"], "BRANCH_EXISTS")
+
+        missing_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/missing", "new_name": "plot/new"},
+        )
+        self.assertEqual(missing_resp.status_code, 404)
+        self.assertEqual(missing_resp.get_json()["code"], "BRANCH_NOT_FOUND")
+
+        rename_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/source", "new_name": "plot/renamed"},
+        )
+        self.assertEqual(rename_resp.status_code, 200, rename_resp.get_json())
+        self.assertEqual(rename_resp.get_json()["current_branch"], mainline)
+        branches = self._git(repo_dir, "branch", "--format=%(refname:short)").splitlines()
+        self.assertIn("plot/renamed", branches)
+        self.assertNotIn("plot/source", branches)
+
     def test_file_level_stage_unstage_and_diff_view(self):
         book_name = "v53_stage_unstage"
         _, repo_dir = self._bootstrap_book(book_name=book_name)
