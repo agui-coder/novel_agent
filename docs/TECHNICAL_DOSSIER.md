@@ -48,7 +48,7 @@ flowchart TB
 | --- | --- | --- |
 | 前端工作台 | 书架、导入、文件浏览、聊天、动作面板、审阅台、Git 分支台、配置入口 | `frontend/src/App.tsx`, `frontend/src/bookshelf/BookshelfApp.tsx`, `frontend/src/components/*` |
 | Flask 后端 | 统一 API、路径安全、书库布局、Git 操作、Dify 桥接、SSE 进度、运行配置 | `novel_git_server/app.py`, `novel_git_server/agents/*.py`, `novel_git_server/utils/*.py` |
-| Dify 工作流 | 世界模型、文风、大纲、续写、审核等语义 Agent 编排 | `dify_workflows/*.yml` |
+| Dify 工作流 | 活跃的大纲、续写、审核，以及初始化后世界/文风协作；部分旧 DSL 已退役或降级为历史兼容 | `dify_workflows/*.yml` |
 | 后端 LangChain 管线 | 摘要归档、世界/状态初始化、文风初始化、结构化批处理和 OpenAI-compatible 调用 | `novel_git_server/pipelines/*.py` |
 | LoreGit ToolProvider | 让 Dify Agent 以受控工具方式读写书库、校验章节、提交草稿 | `novel_git_server/agents/tools.py`, `novel_git_server/docs/openapi_v3_5_1_draft_min.json` |
 | 每书工作区 | 章节、知识文件、草稿、导入报告、嵌套 Git 历史 | `novel_git_server/storage/<book_id>/` |
@@ -176,16 +176,20 @@ flowchart LR
 
 | 能力 | 主要承载层 | 原因 |
 | --- | --- | --- |
-| 互动式世界观讨论、局部修正 | Dify Agent | 需要多轮语义判断和工具调用 |
+| 世界/状态初始化和重建 | 后端 LangChain 管线 | 需要结构化世界事实、生命周期校验、状态投影和确定性渲染 |
+| 互动式世界观讨论、局部修正 | Dify world Agent | 初始化/重建职责已退役；保留多轮解释、局部修订和考据 |
+| 文风档案初始化和重建 | 后端管线 + LoreGit 诊断 | 需要可重复诊断、三件套一起提交和后端证据控制 |
+| 文风讨论与作者协作修订 | Dify style Agent | 初始化/重建职责已退役；保留解释、建议和显式修订 |
 | 大纲头脑风暴与落档 | Dify Agent + LoreGit 工具 | 需要作者讨论，也需要受控写入 |
 | 续写章节草稿 | Dify continuation Agent | 需要长上下文、写作能力和工具校验 |
 | 审核剧情冲突 | Dify review Agent | 需要语义审查和证据解释 |
 | 摘要归档初始化/重建 | 后端 LangChain 管线 | 需要批处理、结构化校验、确定性渲染和进度状态 |
-| 世界/状态初始化 | 后端 LangChain 管线 | 初始抽取更像固定批处理，不应藏在聊天里 |
-| 文风档案初始化 | 后端管线 + LoreGit 诊断 | 需要可重复诊断和多文件一起提交 |
+| 读书存档 Agent | 已退役，仅历史兼容 | `summary.md` 主链路已迁移到后端摘要归档管线 |
 | 文件读写、Git 提交、diff、回退 | Flask + LoreGit | 必须确定、可测试、可审计 |
 
 这也是项目原创性的主要来源：Dify 不是唯一运行时，LangChain 也不是唯一编排层；两者都通过本地书库和 LoreGit 工具层汇合。
+
+当前退役边界要单独说明：`读书存档agent` 不再作为 `summary.md` 的主动生产入口；世界模型 Agent 和文风学习 Agent 没有整体退役，但它们的初始化/重建管线已经退役，当前只承担初始化后的讨论、解释、局部修订和作者协作。
 
 ## 核心代码地图
 
@@ -374,6 +378,10 @@ git diff --check
 ### Dify DSL 是不是完整备份？
 
 不是。DSL 是工作流结构和提示词快照，可以导入 Dify 作为模板；完整运行还需要 Dify Runtime、模型供应商、插件包、ToolProvider 地址和 App API Key。
+
+### 哪些 Dify 管线已经退役？
+
+`读书存档agent` 已从当前主动链路退役，`summary.md` 初建和重建由后端 LangChain 摘要归档管线负责。世界模型和文风学习两个 Dify Agent 没有整体退役，但它们的初始化/重建职责已经迁移到后端管线；Dify 侧只保留初始化后的讨论、解释、局部修订和作者协作入口。
 
 ## 继续阅读
 

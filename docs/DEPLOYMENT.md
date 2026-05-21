@@ -128,12 +128,14 @@ Dify live PostgreSQL plus plugin storage are the runtime source of truth. The ex
 
 Current exported DSL files:
 
-- `dify_workflows/世界模型agent.yml`
-- `dify_workflows/文风学习agent.yml`
-- `dify_workflows/灵感大纲agent.yml`
-- `dify_workflows/续写agent.yml`
-- `dify_workflows/审核agent.yml`
-- `dify_workflows/读书存档agent.yml`
+| DSL | Current status |
+| --- | --- |
+| `dify_workflows/世界模型agent.yml` | Kept for post-initialization discussion, explanation, correction, and verification. Its first-create/rebuild ownership is retired and replaced by the backend LangChain world/state pipeline. |
+| `dify_workflows/文风学习agent.yml` | Kept for post-initialization style discussion and author-guided refinement. Its first-create/rebuild ownership is retired and replaced by the backend style pipeline and LoreGit diagnostics. |
+| `dify_workflows/灵感大纲agent.yml` | Active. |
+| `dify_workflows/续写agent.yml` | Active. |
+| `dify_workflows/审核agent.yml` | Active. |
+| `dify_workflows/读书存档agent.yml` | Retired. Kept only as historical compatibility evidence; `summary.md` first-create/rebuild is owned by the backend LangChain summary archive pipeline. |
 
 After importing DSL files into a fresh Dify runtime, configure model providers, app API keys, and the LoreGit ToolProvider endpoint before running the workbench.
 

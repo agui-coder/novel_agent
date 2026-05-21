@@ -97,18 +97,20 @@ flowchart TB
 
 ## Dify Agent 与 LangChain 链路
 
-当前仓库包含 6 个净化后的 Dify DSL 快照：
+当前仓库包含 6 个净化后的 Dify DSL 快照，但它们的职责状态并不相同：
 
-- `dify_workflows/世界模型agent.yml`
-- `dify_workflows/文风学习agent.yml`
-- `dify_workflows/灵感大纲agent.yml`
-- `dify_workflows/续写agent.yml`
-- `dify_workflows/审核agent.yml`
-- `dify_workflows/读书存档agent.yml`
+| DSL | 当前状态 | 当前职责 |
+| --- | --- | --- |
+| `dify_workflows/世界模型agent.yml` | 保留，初始化/重建职责已退役 | 世界/状态初始化已迁移到后端 LangChain 管线；Dify 世界模型 Agent 负责初始化后的讨论、解释、局部修订和考据 |
+| `dify_workflows/文风学习agent.yml` | 保留，初始化/重建职责已退役 | 文风初始化已迁移到后端管线和 LoreGit 诊断；Dify 文风 Agent 负责初始化后的讨论、解释和作者协作修订 |
+| `dify_workflows/灵感大纲agent.yml` | 活跃 | 大纲讨论、联网参考、四层大纲落档和章节卡补充 |
+| `dify_workflows/续写agent.yml` | 活跃 | 按章节卡和项目档案写入 `chapter_draft.md` |
+| `dify_workflows/审核agent.yml` | 活跃 | 审查剧情、设定、状态、断章和正文归档风险，写入 `error_archive.md` |
+| `dify_workflows/读书存档agent.yml` | 已退役，仅历史兼容 | `summary.md` 初建/重建已迁移到后端 LangChain 摘要归档管线 |
 
 这些 YAML 可以导入 Dify 复现工作流结构、提示词、节点图和工具引用，但不是完整运行时备份。新环境仍需配置模型供应商、Dify App API Key 和 LoreGit ToolProvider 地址。
 
-项目不是纯 Dify 应用。Dify 主要承载可视化 Agent 工作流和人机协作入口；后端 LangChain 链路承载部分本地自动化、摘要/章节卡修复、OpenAI-compatible 模型调用和可测试的服务端编排；LoreGit ToolProvider 负责把 Dify Agent 的写入动作落到每本书的 Markdown 工作区和 Git 仓库里。
+项目不是纯 Dify 应用。Dify 主要承载仍活跃的可视化 Agent 工作流和人机协作入口；后端 LangChain 链路已经接管摘要归档、世界/状态初始化、文风初始化、章节卡/摘要结构修复等可重复管线；LoreGit ToolProvider 负责把活跃 Dify Agent 的写入动作落到每本书的 Markdown 工作区和 Git 仓库里。
 
 ## 技术栈
 
@@ -129,8 +131,8 @@ flowchart TB
 
 - Release ZIP / GHCR 镜像包含：前端、后端、启动脚本、Dify DSL YAML、部署示例配置和 smoke check。
 - Release ZIP / GHCR 镜像不包含：真实模型密钥、Dify App API Key、Dify 数据库备份、私有书库、`.runtime`、运行时草稿和个人环境文件。
-- Dify 工作流需要导入后重新配置模型供应商，并生成每个 App 的 API Key。
-- Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则 Dify 会生成文本但无法读写书库文件。
+- 活跃 Dify 工作流需要导入后重新配置模型供应商，并生成对应 App 的 API Key；已退役 DSL 可以不导入，只作为历史兼容资料保留。
+- Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则活跃 Dify Agent 会生成文本但无法读写书库文件。
 
 ### 路线 A：Release ZIP，本地演示推荐
 
@@ -233,16 +235,16 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 
 ### Dify 工作流导入
 
-在 Dify 控制台中为每个 YAML 创建或导入一个 App。文件位于 `dify_workflows/`：
+在 Dify 控制台中为需要运行的 YAML 创建或导入 App。文件位于 `dify_workflows/`：
 
-| 文件 | 用途 |
-| --- | --- |
-| `世界模型agent.yml` | 抽取和维护世界观、人物、组织、地点、规则。 |
-| `文风学习agent.yml` | 生成文风档案、文风提示和续写参考约束。 |
-| `灵感大纲agent.yml` | 生成人机协作的大纲、章节计划和滚动三章计划。 |
-| `续写agent.yml` | 按章节大纲、原文片段和项目档案生成续写草稿。 |
-| `审核agent.yml` | 审查剧情冲突、设定冲突、断章和正文归档风险。 |
-| `读书存档agent.yml` | 历史兼容工作流；核心导入和摘要能力已逐步迁移到后端链路。 |
+| 文件 | 状态 | 用途 |
+| --- | --- | --- |
+| `世界模型agent.yml` | 保留，初始化/重建职责已退役 | 后初始化世界观讨论、局部修订、在线考据和约束生命周期整理。 |
+| `文风学习agent.yml` | 保留，初始化/重建职责已退役 | 文风档案生成后的讨论、解释、证据诊断和局部修订。 |
+| `灵感大纲agent.yml` | 活跃 | 生成人机协作的大纲、章节计划和滚动三章计划。 |
+| `续写agent.yml` | 活跃 | 按章节大纲、原文片段和项目档案生成续写草稿。 |
+| `审核agent.yml` | 活跃 | 审查剧情冲突、设定冲突、断章和正文归档风险。 |
+| `读书存档agent.yml` | 已退役，仅历史兼容 | `summary.md` 初建和重建已迁移到后端 LangChain 摘要归档管线。 |
 
 导入后需要逐项检查：
 
@@ -250,7 +252,7 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 2. 对需要推理的 Agent 开启对应模型的思考能力；不需要思考的归档类 Agent 可以关闭。
 3. 每个 App 生成 API Key，并写入 `deploy/demo/.env`。
 4. LoreGit ToolProvider 指向本项目后端，例如本机 `http://host.docker.internal:8000` 或局域网可访问地址。
-5. 在 Dify 控制台单独运行一次每个 App，确认不会因为模型、工具或变量缺失失败。
+5. 在 Dify 控制台单独运行一次需要启用的活跃 App，确认不会因为模型、工具或变量缺失失败。
 
 ### 验证部署
 
@@ -259,7 +261,7 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 1. 打开 `http://127.0.0.1:5173/bookshelf.html`，确认书架页面可见。
 2. 进入一本书，确认正文、世界观、文风、大纲、草稿等文件可以切换查看。
 3. 打开右下角“动作”面板，确认初始化、重跑、滚动三章、正文归档入口可见。
-4. 打开配置入口，确认 Dify Base URL、各 Agent API Key 和模型配置已经保存。
+4. 打开配置入口，确认 Dify Base URL、活跃 Agent API Key 和后端 LangChain 模型配置已经保存。
 5. 运行一次文风或世界观初始化，确认后端能写入书库文件。
 6. 运行一次章节续写或滚动三章，确认草稿生成后可以进入审核和正文归档。
 7. 正文归档后确认章节文件、状态卡和必要世界观更新被写入，并且草稿不会无限膨胀。
@@ -306,7 +308,7 @@ prd.md                 # 历史 PRD 与产品蓝图
 
 ## 项目状态
 
-项目处于本地 demo 收口阶段，已经具备前后端工作台、Dify 工具桥、小说导入、世界观/文风/大纲/续写/审核 Agent 主链路，以及剧情分支/回退的核心能力。
+项目处于本地 demo 收口阶段，已经具备前后端工作台、Dify 工具桥、小说导入、后端 LangChain 摘要/世界/文风初始化管线、活跃大纲/续写/审核 Agent 主链路，以及剧情分支/回退的核心能力。`读书存档agent` 已退役，世界模型和文风 Agent 的初始化/重建职责也已迁移到后端管线。
 
 推荐阅读：
 

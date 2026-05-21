@@ -14,13 +14,16 @@
 │ Flask Backend        │
 │ 文件工具 / Git / API │
 └──────────┬──────────┘
-           │ Dify App API + OpenAPI tools
-┌──────────▼──────────┐
-│ Dify Agent Workflows │
-│ 大纲 / 世界 / 文风 / 续写 / 审核 │
-└──────────┬──────────┘
-           │ read/write tools
-┌──────────▼──────────┐
+        ┌──┴───────────────┐
+        │                  │
+┌───────▼────────┐ ┌───────▼────────────┐
+│ LangChain 管线 │ │ Dify Agent Workflows│
+│ 摘要/世界/文风初始化 │ │ 大纲 / 续写 / 审核 │
+└───────┬────────┘ └───────┬────────────┘
+        │                  │ LoreGit tools
+        └──────────┬───────┘
+                   ▼
+┌─────────────────────┐
 │ storage/<book_id>/   │
 │ Markdown + nested Git│
 └─────────────────────┘
@@ -65,20 +68,20 @@
 - 不代替 Agent 合并语义冲突。
 - 不把复杂世界观规则硬编码进 Python。
 
-## Dify Agent 职责
+## Dify Agent 与 LangChain 职责
 
-Dify 承担语义编排和 Agent 决策。
+Dify 承担仍活跃的语义编排和 Agent 决策；后端 LangChain 管线承担已经从 Dify 迁出的可重复初始化、重建和结构化修复工作。
 
-当前核心 Agent：
+当前主链路：
 
-- 后端摘要归档管线：从导入章节中生成和重建 `summary.md`，作为后续蒸馏的资料底座。
-- 世界模型 Agent：维护世界观、机制、状态卡和题材规则。
-- 文风学习 Agent：生成叙事结构指纹、作者可读审查和续写硬约束。
+- 后端摘要归档管线：从导入章节中生成和重建 `summary.md`，作为后续蒸馏的资料底座；`读书存档agent` 已退役，仅保留历史兼容和审计价值。
+- 后端世界/状态初始化管线：生成和重建 `world_model.md`、`status_card.md`；世界模型 Dify Agent 的初始化/重建职责已退役，保留后初始化讨论、解释、局部修订和考据。
+- 后端文风初始化管线：生成和重建文风诊断三件套；文风学习 Dify Agent 的初始化/重建职责已退役，保留后初始化讨论、解释、证据诊断和作者协作修订。
 - 灵感大纲 Agent：支持 brainstorm、master outline、arc outline、chapter outline。
 - 续写 Agent：按章节大纲生成草稿，并支持局部修复。
 - 审核 Agent：检查草稿是否违反世界观、状态卡、文风、大纲边界和错误档案。
 
-Dify 调用后端工具完成读写，但最终写入仍由后端落盘和 Git 归档。
+活跃 Dify Agent 调用后端工具完成读写，但最终写入仍由后端落盘和 Git 归档。已退役 Dify 管线不再作为当前主动生产入口。
 
 ## 存储协议
 
@@ -120,8 +123,8 @@ novel_git_server/storage/<book_id>/
   -> 章节解析和质量门槛
   -> chapters/*.md + import_report.json
   -> 后端摘要归档管线生成 summary.md
-  -> 世界模型 / 状态卡
-  -> 文风指纹和续写硬约束
+  -> 后端世界/状态初始化管线生成 world_model.md + status_card.md
+  -> 后端文风初始化管线生成文风诊断三件套
   -> 大纲底座
 ```
 
@@ -129,7 +132,7 @@ novel_git_server/storage/<book_id>/
 
 - 导入器只做确定性清洗，不重写原文。
 - 质量门槛只拦明显坏数据，不替作者判断文学质量。
-- 导入后的章节可以被 `get_cold_archive_range` 读取，供后端摘要归档、世界模型和其他 Agent 分段取证。
+- 导入后的章节可以被后端摘要归档、世界/状态初始化、文风初始化和后续 Dify Agent 分段取证。
 
 ## 创作循环链路
 
@@ -197,4 +200,4 @@ main
 - 剧情分支实验。
 - 导入质量门槛和章节归档。
 
-因此本项目采用 Dify + Flask + React + Git 的组合：Dify 负责语义，Flask 负责确定性工具，React 负责产品体验，Git 负责版本宇宙。
+因此本项目采用 Dify + LangChain + Flask + React + Git 的组合：Dify 负责仍活跃的互动式语义 Agent，LangChain/后端批处理负责已迁移的初始化和结构化归档管线，Flask 负责确定性工具，React 负责产品体验，Git 负责版本宇宙。
