@@ -150,6 +150,7 @@ BOOK_GITIGNORE = (
     "sessions/\n"
     ".sessions/\n"
     ".runtime/\n"
+    ".loregit/\n"
 )
 BOOK_ID_PATTERN = re.compile(r"^[\w\-]{1,64}$", re.UNICODE)
 CHAPTER_FILE_INDEX_PATTERN = re.compile(r"^(\d+)(?:_|\.|$)")

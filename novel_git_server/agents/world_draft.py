@@ -89,6 +89,8 @@ from agents.world_draft_git import (  # noqa: F401
     _build_review_diff_preview,
     _changed_draft_files,
     _compose_content,
+    _delete_draft_review_metadata,
+    _draft_review_metadata,
     _draft_file_snapshot,
     _draft_file_snapshots,
     _empty_draft_snapshot,
@@ -103,6 +105,7 @@ from agents.world_draft_git import (  # noqa: F401
     _mainline_file_snapshot,
     _read_branch_file,
     _read_file_text,
+    _refresh_draft_review_metadata,
     _repo_lock,
     _resolve_mainline_branch,
     _safe_int,
@@ -831,11 +834,14 @@ def create_blueprint(
 
                 changed_entries = [entry for entry in resolved_entries if entry["new_content"] != entry["original_content"]]
                 if not changed_entries:
+                    draft_meta = _refresh_draft_review_metadata(repo_dir)
                     response_body = {
                         "status": "success",
                         "book_id": book_id,
                         "branch": DRAFT_BRANCH_NAME,
-                        "mainline_branch": mainline_branch,
+                        "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                        "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                        "draft_meta": draft_meta,
                         "commit_id": _safe_current_head(repo_dir),
                         "updated_files": [
                             {
@@ -886,6 +892,7 @@ def create_blueprint(
                             if not is_nothing_to_commit_error(exc):
                                 raise
                         commit_id = run_git(repo_dir, ["rev-parse", "HEAD"]).stdout.strip()
+                    draft_meta = _refresh_draft_review_metadata(repo_dir)
                 except Exception as exc:
                     rollback_warning = None
                     try:
@@ -923,7 +930,9 @@ def create_blueprint(
                     "status": "success",
                     "book_id": book_id,
                     "branch": DRAFT_BRANCH_NAME,
-                    "mainline_branch": mainline_branch,
+                    "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                    "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                    "draft_meta": draft_meta,
                     "commit_id": commit_id,
                     "updated_files": [
                         {
@@ -1345,6 +1354,8 @@ def create_blueprint(
                             "book_id": book_id,
                             "file_name": review_target["file_name"],
                             "branch": DRAFT_BRANCH_NAME,
+                            "base_branch": (_draft_review_metadata(repo_dir).get("base_branch") or ""),
+                            "draft_meta": _draft_review_metadata(repo_dir),
                             "commit_id": snapshot.get("commit_id"),
                             "etag": snapshot.get("etag"),
                             "content": snapshot.get("content"),
@@ -2133,22 +2144,34 @@ def create_blueprint(
             _ensure_gitpython_or_raise()
             with _repo_lock(repo_dir):
                 repo = Repo(repo_dir)
-                mainline_branch = _resolve_mainline_branch(repo)
+                fallback_branch = _resolve_mainline_branch(repo)
+                current_branch_before_draft = repo.git.branch("--show-current").strip()
                 has_draft, migrated_from_legacy = _ensure_draft_branch(
                     repo,
-                    mainline_branch,
+                    fallback_branch,
                     create_if_missing=False,
                 )
                 if not has_draft:
                     return json_error("DRAFT_BRANCH_NOT_FOUND", "draft branch does not exist", 404)
+                draft_meta = _draft_review_metadata(repo_dir)
+                if draft_meta.get("status") != "success":
+                    return json_error(
+                        str(draft_meta.get("code") or "DRAFT_BASE_BRANCH_UNRESOLVED"),
+                        "draft base branch cannot be resolved; review is blocked to prevent cross-branch rollback",
+                        409,
+                    )
+                mainline_branch = str(draft_meta["base_branch"])
 
                 repo.git.checkout(DRAFT_BRANCH_NAME)
                 repo.git.reset("--hard", target_hash.strip())
+                draft_meta = _refresh_draft_review_metadata(repo_dir)
 
                 response_body = {
                     "status": "success",
                     "book_id": book_id,
                     "branch": DRAFT_BRANCH_NAME,
+                    "base_branch": mainline_branch,
+                    "draft_meta": draft_meta,
                     "commit_id": repo.head.commit.hexsha,
                     "content": _read_file_text(paths["world_model_path"]),
                 }
@@ -2189,18 +2212,43 @@ def create_blueprint(
             with _repo_lock(repo_dir):
                 repo = Repo(repo_dir)
 
-                mainline_branch = _resolve_mainline_branch(repo)
+                fallback_branch = _resolve_mainline_branch(repo)
+                current_branch_before_draft = repo.git.branch("--show-current").strip()
                 has_draft, migrated_from_legacy = _ensure_draft_branch(
                     repo,
-                    mainline_branch,
+                    fallback_branch,
                     create_if_missing=False,
                 )
                 if not has_draft:
                     return json_error("DRAFT_BRANCH_NOT_FOUND", "draft branch does not exist", 404)
+                draft_meta = _draft_review_metadata(repo_dir)
+                if draft_meta.get("status") != "success":
+                    return json_error(
+                        str(draft_meta.get("code") or "DRAFT_BASE_BRANCH_UNRESOLVED"),
+                        "draft base branch cannot be resolved; confirm is blocked to prevent cross-branch merge",
+                        409,
+                    )
+                mainline_branch = str(draft_meta["base_branch"])
 
                 head_names = {head.name for head in repo.heads}
                 if mainline_branch not in head_names:
                     return json_error("MAINLINE_BRANCH_NOT_FOUND", f"{mainline_branch} branch does not exist", 404)
+                if current_branch_before_draft not in {mainline_branch, DRAFT_BRANCH_NAME}:
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "code": "DRAFT_BASE_BRANCH_MISMATCH",
+                                "message": "current plot branch does not match the draft source branch; checkout the source branch before confirming",
+                                "book_id": book_id,
+                                "base_branch": mainline_branch,
+                                "current_branch": current_branch_before_draft,
+                                "draft_branch": DRAFT_BRANCH_NAME,
+                                "draft_meta": draft_meta,
+                            }
+                        ),
+                        409,
+                    )
 
                 changed_files = [
                     item["file_name"]
@@ -2242,6 +2290,7 @@ def create_blueprint(
                         repo_dir=repo_dir,
                     )
                 repo.delete_head(DRAFT_BRANCH_NAME, force=True)
+                _delete_draft_review_metadata(repo_dir)
                 remaining_heads = {head.name for head in repo.heads}
                 draft_branch_deleted = DRAFT_BRANCH_NAME not in remaining_heads
 
@@ -2249,8 +2298,10 @@ def create_blueprint(
                     "status": "success",
                     "book_id": book_id,
                     "mainline_branch": mainline_branch,
+                    "base_branch": mainline_branch,
                     "merged_branch": DRAFT_BRANCH_NAME,
                     "commit_id": repo.head.commit.hexsha,
+                    "draft_meta": draft_meta,
                     "draft_branch_deleted": draft_branch_deleted,
                     "materialized_chapters": materialized_chapters,
                     "chapter_canon_commit_id": canon_commit_id,

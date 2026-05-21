@@ -190,6 +190,53 @@ class V53GitConsoleTests(unittest.TestCase):
         self.assertIn("plot/renamed", branches)
         self.assertNotIn("plot/source", branches)
 
+    def test_branch_rename_updates_bound_draft_metadata(self):
+        book_name = "v53_branch_rename_draft_meta"
+        book_id, repo_dir = self._bootstrap_book(book_name=book_name)
+
+        status = self.client.get("/books/git_status", query_string={"book_name": book_name}).get_json()
+        create_resp = self.client.post(
+            "/books/git_branch_create",
+            json={
+                "book_name": book_name,
+                "branch_name": "plot/source",
+                "from_ref": status["head_commit"],
+                "checkout": True,
+            },
+        )
+        self.assertEqual(create_resp.status_code, 200, create_resp.get_json())
+
+        sync_resp = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "active_file": "chapter_outline.md",
+                "write_scope": "active_file_strict",
+                "message": "bind draft before rename",
+                "writes": [
+                    {
+                        "file_name": "chapter_outline.md",
+                        "op": "update",
+                        "content": "# 逐章大纲\n\nrename-bound draft\n",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(sync_resp.status_code, 200, sync_resp.get_json())
+        self.assertEqual(sync_resp.get_json()["draft_meta"]["base_branch"], "plot/source")
+
+        rename_resp = self.client.post(
+            "/books/git_branch_rename",
+            json={"book_name": book_name, "old_name": "plot/source", "new_name": "plot/renamed"},
+        )
+        self.assertEqual(rename_resp.status_code, 200, rename_resp.get_json())
+
+        self.client.post("/books/git_checkout", json={"book_name": book_name, "branch_name": "plot/renamed", "force": True})
+        confirm_resp = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(confirm_resp.status_code, 200, confirm_resp.get_json())
+        self.assertEqual(confirm_resp.get_json()["base_branch"], "plot/renamed")
+        self.assertIn("rename-bound draft", (repo_dir / "chapter_outline.md").read_text(encoding="utf-8"))
+
     def test_file_level_stage_unstage_and_diff_view(self):
         book_name = "v53_stage_unstage"
         _, repo_dir = self._bootstrap_book(book_name=book_name)

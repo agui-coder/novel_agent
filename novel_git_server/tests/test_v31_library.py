@@ -143,7 +143,7 @@ class V31LibraryTests(unittest.TestCase):
 
         repo_dir = self.temp_dir / "runtime_ignore"
         gitignore = (repo_dir / ".gitignore").read_text(encoding="utf-8")
-        for entry in ("conversations/", ".conversations/", "sessions/", ".sessions/", ".runtime/"):
+        for entry in ("conversations/", ".conversations/", "sessions/", ".sessions/", ".runtime/", ".loregit/"):
             self.assertIn(entry, gitignore)
 
         runtime_files = [
@@ -152,6 +152,7 @@ class V31LibraryTests(unittest.TestCase):
             repo_dir / "sessions" / "continuation_agent" / "turn.jsonl",
             repo_dir / ".sessions" / "review_agent" / "thread.jsonl",
             repo_dir / ".runtime" / "conversation.lock",
+            repo_dir / ".loregit" / "draft_meta.json",
         ]
         for path in runtime_files:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -204,6 +205,7 @@ class V31LibraryTests(unittest.TestCase):
 
         gitignore = (repo_dir / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("conversations/", gitignore)
+        self.assertIn(".loregit/", gitignore)
         latest_subject = subprocess.run(
             ["git", "log", "-1", "--pretty=format:%s"],
             cwd=repo_dir,

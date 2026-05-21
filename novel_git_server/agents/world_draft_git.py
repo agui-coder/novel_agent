@@ -8,6 +8,14 @@ from typing import Any
 
 from agents.archive import _compute_text_etag
 from utils.book_storage import TRACKED_LAYOUT_FILES
+from utils.draft_metadata import (
+    DRAFT_BRANCH_NAME,
+    LEGACY_DRAFT_BRANCH_NAME,
+    delete_draft_metadata,
+    refresh_draft_metadata,
+    resolve_draft_metadata,
+    write_draft_metadata,
+)
 from utils.file_lock import exclusive_file_lock
 from utils.git_utils import run_git
 
@@ -20,8 +28,6 @@ except Exception:  # pragma: no cover - dependency guard
     GITPYTHON_AVAILABLE = False
 
 
-DRAFT_BRANCH_NAME = "draft/sandbox"
-LEGACY_DRAFT_BRANCH_NAME = "draft/world_model"
 LOCKS_DIR_NAME = ".locks"
 
 
@@ -86,18 +92,31 @@ def _ensure_draft_branch(repo: Repo, mainline_branch: str, *, create_if_missing:
         repo.git.checkout(mainline_branch)
 
     if DRAFT_BRANCH_NAME in head_names:
+        resolve_draft_metadata(repo.working_tree_dir, allow_infer=True, write_inferred=True)
         repo.git.checkout(DRAFT_BRANCH_NAME)
         return True, False
 
     if LEGACY_DRAFT_BRANCH_NAME in head_names:
         repo.git.checkout(LEGACY_DRAFT_BRANCH_NAME)
         repo.git.branch("-m", DRAFT_BRANCH_NAME)
+        write_draft_metadata(
+            repo.working_tree_dir,
+            base_branch=mainline_branch,
+            draft_branch=DRAFT_BRANCH_NAME,
+            source="legacy_migrated",
+        )
         return True, True
 
     if not create_if_missing:
         return False, False
 
     repo.git.checkout("-b", DRAFT_BRANCH_NAME)
+    write_draft_metadata(
+        repo.working_tree_dir,
+        base_branch=mainline_branch,
+        draft_branch=DRAFT_BRANCH_NAME,
+        source="explicit",
+    )
     return True, False
 
 
@@ -210,13 +229,17 @@ def _draft_file_snapshot(repo_dir: str, file_name: str) -> dict[str, Any]:
 
 
 def _mainline_file_snapshot(repo_dir: str, file_name: str) -> dict[str, Any]:
-    if not GITPYTHON_AVAILABLE:
-        return _empty_draft_snapshot()
-    try:
-        repo = Repo(repo_dir)
-        mainline_branch = _resolve_mainline_branch(repo)
-    except Exception:
-        return _empty_draft_snapshot()
+    mainline_branch = _resolve_bound_draft_base_branch(repo_dir)
+    if not mainline_branch:
+        if _git_commit_ref_exists(repo_dir, DRAFT_BRANCH_NAME):
+            return _empty_draft_snapshot()
+        if not GITPYTHON_AVAILABLE:
+            return _empty_draft_snapshot()
+        try:
+            repo = Repo(repo_dir)
+            mainline_branch = _resolve_mainline_branch(repo)
+        except Exception:
+            return _empty_draft_snapshot()
 
     commit_id = _branch_head_commit(repo_dir, mainline_branch)
     if not commit_id:
@@ -264,6 +287,13 @@ def _changed_draft_files(before_snapshots: dict[str, dict[str, Any]], after_snap
 
 
 def _resolve_mainline_branch_for_diff(repo_dir: str) -> str | None:
+    if _git_commit_ref_exists(repo_dir, DRAFT_BRANCH_NAME):
+        return _resolve_bound_draft_base_branch(repo_dir)
+
+    bound_base_branch = _resolve_bound_draft_base_branch(repo_dir)
+    if bound_base_branch:
+        return bound_base_branch
+
     try:
         current_branch = run_git(repo_dir, ["branch", "--show-current"]).stdout.strip()
         branches_text = run_git(
@@ -286,6 +316,30 @@ def _resolve_mainline_branch_for_diff(repo_dir: str) -> str | None:
     return None
 
 
+def _resolve_bound_draft_base_branch(repo_dir: str) -> str | None:
+    resolved = resolve_draft_metadata(repo_dir, allow_infer=True, write_inferred=True)
+    if resolved.get("status") != "success":
+        return None
+    base_branch = resolved.get("base_branch")
+    if not isinstance(base_branch, str) or not base_branch.strip():
+        return None
+    if not _git_commit_ref_exists(repo_dir, base_branch.strip()):
+        return None
+    return base_branch.strip()
+
+
+def _draft_review_metadata(repo_dir: str) -> dict[str, Any]:
+    return resolve_draft_metadata(repo_dir, allow_infer=True, write_inferred=True)
+
+
+def _refresh_draft_review_metadata(repo_dir: str, *, source: str | None = None) -> dict[str, Any]:
+    return refresh_draft_metadata(repo_dir, source=source)
+
+
+def _delete_draft_review_metadata(repo_dir: str) -> None:
+    delete_draft_metadata(repo_dir)
+
+
 def _git_commit_ref_exists(repo_dir: str, ref_name: str) -> bool:
     try:
         run_git(repo_dir, ["rev-parse", "--verify", f"{ref_name}^{{commit}}"])
@@ -300,6 +354,8 @@ def _draft_paths_changed_against_mainline(
 ) -> set[str] | None:
     mainline_branch = _resolve_mainline_branch_for_diff(repo_dir)
     if not mainline_branch:
+        if _git_commit_ref_exists(repo_dir, DRAFT_BRANCH_NAME):
+            return set()
         return None
     if not _git_commit_ref_exists(repo_dir, mainline_branch):
         return None

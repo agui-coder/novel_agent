@@ -609,6 +609,68 @@ class V45DraftSyncAllTests(unittest.TestCase):
         self.assertEqual(rollback.status_code, 400)
         self.assertEqual(rollback.get_json()["code"], "MISSING_FIELD")
 
+    def test_confirm_is_bound_to_source_plot_branch(self):
+        book_name = "v45_branch_scoped_confirm"
+        init_resp = self.client.post("/books/init", json={"book_name": book_name})
+        self.assertEqual(init_resp.status_code, 200)
+        book_id = init_resp.get_json()["book_id"]
+        repo_dir = self.temp_dir / book_id
+        mainline = self._git(repo_dir, "branch", "--show-current")
+        base_head = self._git(repo_dir, "rev-parse", "HEAD")
+
+        self._git(repo_dir, "checkout", "-b", "plot/source")
+        world_path = repo_dir / "world_model.md"
+        world_path.write_text("# 世界模型\n\nsource-only\n", encoding="utf-8")
+        self._git(repo_dir, "add", "world_model.md")
+        self._git(repo_dir, "commit", "-m", "source branch world")
+        source_head = self._git(repo_dir, "rev-parse", "HEAD")
+        wm = self.client.get(
+            "/books/get_file",
+            query_string={"book_id": book_id, "file_name": "chapter_outline.md"},
+        )
+        self.assertEqual(wm.status_code, 200)
+
+        sync = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "active_file": "chapter_outline.md",
+                "write_scope": "active_file_strict",
+                "message": "branch scoped outline draft",
+                "writes": [
+                    {
+                        "file_name": "chapter_outline.md",
+                        "op": "update",
+                        "content": "# 逐章大纲\n\nsource draft card\n",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(sync.status_code, 200, sync.get_json())
+        sync_body = sync.get_json()
+        self.assertEqual(sync_body["base_branch"], "plot/source")
+        self.assertEqual(sync_body["draft_meta"]["base_branch"], "plot/source")
+
+        self._git(repo_dir, "checkout", mainline)
+        blocked = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(blocked.status_code, 409)
+        blocked_body = blocked.get_json()
+        self.assertEqual(blocked_body["code"], "DRAFT_BASE_BRANCH_MISMATCH")
+        self.assertEqual(blocked_body["base_branch"], "plot/source")
+        self.assertEqual(blocked_body["current_branch"], mainline)
+        self.assertEqual(self._git(repo_dir, "rev-parse", mainline), base_head)
+
+        self._git(repo_dir, "checkout", "plot/source")
+        confirm = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(confirm.status_code, 200, confirm.get_json())
+        confirm_body = confirm.get_json()
+        self.assertEqual(confirm_body["mainline_branch"], "plot/source")
+        self.assertEqual(confirm_body["base_branch"], "plot/source")
+        self.assertTrue(confirm_body["draft_branch_deleted"])
+        self.assertEqual(self._git(repo_dir, "rev-parse", mainline), base_head)
+        self.assertNotEqual(self._git(repo_dir, "rev-parse", "plot/source"), source_head)
+        self.assertIn("source draft card", (repo_dir / "chapter_outline.md").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

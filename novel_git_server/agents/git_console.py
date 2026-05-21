@@ -7,6 +7,7 @@ from typing import Any, Callable
 from flask import Blueprint, jsonify, request
 
 from utils.book_storage import get_book_paths, inspect_book_layout_integrity
+from utils.draft_metadata import update_draft_metadata_base_branch
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
 
 DEFAULT_BOOTSTRAP_COMMIT_MESSAGE = "chore: bootstrap repository baseline"
@@ -1033,6 +1034,7 @@ def create_blueprint(
 
         try:
             run_git(repo_dir, ["branch", "-m", old_name, new_name])
+            update_draft_metadata_base_branch(repo_dir, old_name=old_name, new_name=new_name)
         except subprocess.CalledProcessError as exc:
             return json_error("GIT_OPERATION_FAILED", format_git_error(exc) or "failed to rename branch", 500)
 

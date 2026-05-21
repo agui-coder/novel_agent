@@ -19,6 +19,13 @@ from utils.book_storage import (
     inspect_book_layout_integrity,
     repair_book_layout,
 )
+from utils.draft_metadata import (
+    DRAFT_BRANCH_NAME,
+    LEGACY_DRAFT_BRANCH_NAME,
+    refresh_draft_metadata,
+    resolve_draft_metadata,
+    write_draft_metadata,
+)
 from utils.file_lock import exclusive_file_lock
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
 from utils.markdown_sections import (
@@ -524,16 +531,16 @@ def _resolve_mainline_branch(repo_dir: str) -> str:
         symbolic_head = ""
 
     head_names = _list_local_heads(repo_dir)
-    if symbolic_head and symbolic_head in head_names and symbolic_head != "draft/sandbox":
+    if symbolic_head and symbolic_head in head_names and symbolic_head != DRAFT_BRANCH_NAME:
         return symbolic_head
     if "main" in head_names:
         return "main"
     if "master" in head_names:
         return "master"
-    if symbolic_head and symbolic_head != "draft/sandbox":
+    if symbolic_head and symbolic_head != DRAFT_BRANCH_NAME:
         return symbolic_head
     for candidate in sorted(head_names):
-        if candidate != "draft/sandbox":
+        if candidate != DRAFT_BRANCH_NAME:
             return candidate
     return "main"
 
@@ -543,19 +550,32 @@ def _ensure_draft_branch(repo_dir: str, mainline_branch: str, *, create_if_missi
     if mainline_branch in head_names:
         run_git(repo_dir, ["checkout", mainline_branch])
 
-    if "draft/sandbox" in head_names:
-        run_git(repo_dir, ["checkout", "draft/sandbox"])
+    if DRAFT_BRANCH_NAME in head_names:
+        resolve_draft_metadata(repo_dir, allow_infer=True, write_inferred=True)
+        run_git(repo_dir, ["checkout", DRAFT_BRANCH_NAME])
         return True, False
 
-    if "draft/world_model" in head_names:
-        run_git(repo_dir, ["checkout", "draft/world_model"])
-        run_git(repo_dir, ["branch", "-m", "draft/sandbox"])
+    if LEGACY_DRAFT_BRANCH_NAME in head_names:
+        run_git(repo_dir, ["checkout", LEGACY_DRAFT_BRANCH_NAME])
+        run_git(repo_dir, ["branch", "-m", DRAFT_BRANCH_NAME])
+        write_draft_metadata(
+            repo_dir,
+            base_branch=mainline_branch,
+            draft_branch=DRAFT_BRANCH_NAME,
+            source="legacy_migrated",
+        )
         return True, True
 
     if not create_if_missing:
         return False, False
 
-    run_git(repo_dir, ["checkout", "-b", "draft/sandbox"])
+    run_git(repo_dir, ["checkout", "-b", DRAFT_BRANCH_NAME])
+    write_draft_metadata(
+        repo_dir,
+        base_branch=mainline_branch,
+        draft_branch=DRAFT_BRANCH_NAME,
+        source="explicit",
+    )
     return True, False
 
 
@@ -800,11 +820,14 @@ def create_blueprint(
 
             changed_files = [item for item in resolved_files if item["new_content"] != item["original_content"]]
             if not changed_files:
+                draft_meta = refresh_draft_metadata(repo_dir)
                 response_body = {
                     "status": "success",
                     "book_id": book_id,
-                    "branch": "draft/sandbox",
-                    "mainline_branch": mainline_branch,
+                    "branch": DRAFT_BRANCH_NAME,
+                    "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                    "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                    "draft_meta": draft_meta,
                     "commit_id": _safe_current_head(repo_dir),
                     "updated_files": [
                         {
@@ -837,11 +860,14 @@ def create_blueprint(
                 run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
 
             commit_id = _safe_current_head(repo_dir)
+            draft_meta = refresh_draft_metadata(repo_dir)
             response_body = {
                 "status": "success",
                 "book_id": book_id,
-                "branch": "draft/sandbox",
-                "mainline_branch": mainline_branch,
+                "branch": DRAFT_BRANCH_NAME,
+                "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                "draft_meta": draft_meta,
                 "commit_id": commit_id,
                 "updated_files": [
                     {
@@ -988,13 +1014,16 @@ def create_blueprint(
             assert new_content is not None
 
             if new_content == original_content:
+                draft_meta = refresh_draft_metadata(repo_dir)
                 return (
                     jsonify(
                         {
                             "status": "success",
                             "book_id": book_id,
-                            "branch": "draft/sandbox",
-                            "mainline_branch": mainline_branch,
+                            "branch": DRAFT_BRANCH_NAME,
+                            "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                            "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                            "draft_meta": draft_meta,
                             "commit_id": _safe_current_head(repo_dir),
                             "updated_files": [{"file_name": normalized_rel_path, "etag": current_etag}],
                             "match_count": match_count,
@@ -1012,11 +1041,14 @@ def create_blueprint(
                 commit_message = _build_commit_message(origin, base_message, normalized_rel_path)
                 run_git(repo_dir, ["commit", "-m", commit_message, "--", normalized_rel_path])
 
+            draft_meta = refresh_draft_metadata(repo_dir)
             response_body = {
                 "status": "success",
                 "book_id": book_id,
-                "branch": "draft/sandbox",
-                "mainline_branch": mainline_branch,
+                "branch": DRAFT_BRANCH_NAME,
+                "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
+                "base_branch": draft_meta.get("base_branch") or mainline_branch,
+                "draft_meta": draft_meta,
                 "commit_id": _safe_current_head(repo_dir),
                 "updated_files": [{"file_name": normalized_rel_path, "etag": _compute_file_etag(file_path)}],
                 "match_count": match_count,

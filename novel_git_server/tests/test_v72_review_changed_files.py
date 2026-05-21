@@ -11,6 +11,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from agents.world_draft_git import (  # noqa: E402
     DRAFT_BRANCH_NAME,
+    _draft_review_metadata,
     _filter_changed_draft_files_by_git_diff,
 )
 
@@ -99,6 +100,47 @@ class V72ReviewChangedFilesTests(unittest.TestCase):
             _filter_changed_draft_files_by_git_diff(str(self.repo_dir), changed_files, ["world_model.md"]),
             changed_files,
         )
+
+    def test_branch_scoped_diff_uses_source_branch_after_checkout_changes(self):
+        self._write("chapter_outline.md", "# 逐章大纲\n\nmaster\n")
+        self._write("world_model.md", "# 世界模型\n\nmaster\n")
+        self._git("add", "--all")
+        self._git("commit", "-m", "baseline master")
+
+        self._git("checkout", "-b", "plot/source")
+        self._write("world_model.md", "# 世界模型\n\nsource only\n")
+        self._git("add", "world_model.md")
+        self._git("commit", "-m", "source branch world")
+
+        self._git("checkout", "-b", DRAFT_BRANCH_NAME)
+        self._write("chapter_outline.md", "# 逐章大纲\n\nsource draft card\n")
+        self._git("add", "chapter_outline.md")
+        self._git("commit", "-m", "draft updates outline only")
+
+        self._git("checkout", "master")
+
+        noisy_changed_files = [
+            {
+                "file_name": "chapter_outline.md",
+                "before": {"etag": "before-outline"},
+                "after": {"etag": "after-outline"},
+            },
+            {
+                "file_name": "world_model.md",
+                "before": {"etag": "before-world"},
+                "after": {"etag": "after-world"},
+            },
+        ]
+
+        filtered = _filter_changed_draft_files_by_git_diff(
+            str(self.repo_dir),
+            noisy_changed_files,
+            ["chapter_outline.md", "world_model.md"],
+        )
+        metadata = _draft_review_metadata(str(self.repo_dir))
+
+        self.assertEqual(metadata["base_branch"], "plot/source")
+        self.assertEqual([item["file_name"] for item in filtered], ["chapter_outline.md"])
 
 
 if __name__ == "__main__":

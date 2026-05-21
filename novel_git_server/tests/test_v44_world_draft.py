@@ -46,6 +46,8 @@ class V44WorldDraftTests(unittest.TestCase):
         return proc.stdout.strip()
 
     def _bootstrap_book(self, *, book_name: str) -> tuple[str, Path]:
+        init = self.client.post("/books/init", json={"book_name": book_name})
+        self.assertEqual(init.status_code, 200)
         resp = self.client.get(
             "/books/get_file",
             query_string={"book_name": book_name, "file_name": "world_model.md"},
@@ -154,6 +156,7 @@ class V44WorldDraftTests(unittest.TestCase):
 
         self._git(repo_dir, "config", "user.email", "v44-mainline@local")
         self._git(repo_dir, "config", "user.name", "V44 Mainline")
+        (repo_dir / "world_model.md").write_text("# mainline seed\n", encoding="utf-8")
         self._git(repo_dir, "add", "--all")
         self._git(repo_dir, "commit", "-m", "seed mainline commit")
         self._git(repo_dir, "checkout", "-b", "feature/timeline_a")
