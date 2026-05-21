@@ -147,6 +147,7 @@ type UiCopy = {
         current: string;
         emptyCommitMessage: string;
         switchSection: string;
+        viewingBranch: string;
         switchToSelected: string;
         backToMainline: (branch: string) => string;
         mergeBranch: string;
@@ -353,6 +354,7 @@ const uiCopyByLanguage: Record<UiLanguage, UiCopy> = {
             current: '当前',
             emptyCommitMessage: '（空提交信息）',
             switchSection: '切换剧情线',
+            viewingBranch: '正在查看',
             switchToSelected: '切到选中剧情分支',
             backToMainline: (branch) => `回到主剧情线 (${branch || '...'})`,
             mergeBranch: '合并剧情分支',
@@ -575,6 +577,7 @@ const uiCopyByLanguage: Record<UiLanguage, UiCopy> = {
             current: 'Current',
             emptyCommitMessage: '(empty commit message)',
             switchSection: 'Switch plot line',
+            viewingBranch: 'Viewing',
             switchToSelected: 'Switch to selected plot branch',
             backToMainline: (branch) => `Return to main plot line (${branch || '...'})`,
             mergeBranch: 'Merge Plot Branch',

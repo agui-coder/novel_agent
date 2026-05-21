@@ -684,6 +684,7 @@ export default function App() {
     const {
         loadGitWorkbench,
         handleGitCheckout,
+        handleGitSelectBranch,
         handleGitCreateBranch,
         handleGitMerge,
         handleGitHardRollback,
@@ -2262,11 +2263,15 @@ export default function App() {
                     <GitBranchPanel
                         status={store.gitStatus}
                         branches={store.gitBranches}
+                        selectedBranchName={store.selectedGitBranchName}
                         selectedCommitId={store.selectedGitCommitId}
                         chapterDraftContent={store.activeFile === 'chapter_draft.md' ? (store.draftContent || store.mainlineContent) : ''}
                         pending={store.gitActionPending}
                         onRefresh={() => {
                             void loadGitWorkbench();
+                        }}
+                        onSelectBranch={(branchName) => {
+                            void handleGitSelectBranch(branchName);
                         }}
                         onCheckout={(branchName) => {
                             void handleGitCheckout(branchName);
@@ -2494,6 +2499,7 @@ export default function App() {
     ) : (
         <GitCenterPanel
             commits={store.gitHistoryCommits}
+            selectedBranchName={store.selectedGitBranchName}
             selectedCommitId={store.selectedGitCommitId}
             loading={store.gitLoading}
             error={store.gitError}

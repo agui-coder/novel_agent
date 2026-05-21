@@ -310,16 +310,19 @@ def _refs_by_commit(repo_dir: str) -> dict[str, list[str]]:
     return refs
 
 
-def _history_rows(repo_dir: str, limit: int) -> list[dict[str, Any]]:
+def _history_rows(repo_dir: str, limit: int, ref_name: str | None = None) -> list[dict[str, Any]]:
     refs = _refs_by_commit(repo_dir)
+    log_args = [
+        "log",
+        f"--max-count={limit}",
+        "--date=iso",
+        "--pretty=format:%H\t%P\t%ad\t%an\t%ae\t%s",
+    ]
+    if ref_name:
+        log_args.append(ref_name)
     log_text = run_git(
         repo_dir,
-        [
-            "log",
-            f"--max-count={limit}",
-            "--date=iso",
-            "--pretty=format:%H\t%P\t%ad\t%an\t%ae\t%s",
-        ],
+        log_args,
     ).stdout
 
     rows: list[dict[str, Any]] = []
@@ -494,18 +497,27 @@ def create_blueprint(
         except ValueError:
             limit = 150
         limit = max(1, min(limit, 600))
+        raw_ref = request.args.get("ref")
 
         repo_dir, _, ready_err = _require_ready_repo(book_id, storage_root)
         if ready_err:
             return ready_err
         assert repo_dir is not None
-        commits = _history_rows(repo_dir, limit)
+        ref_name = None
+        if isinstance(raw_ref, str) and raw_ref.strip():
+            ref_name = raw_ref.strip()
+            try:
+                _resolve_commit(repo_dir, ref_name)
+            except subprocess.CalledProcessError as exc:
+                return json_error("REF_NOT_FOUND", format_git_error(exc) or f"ref not found: {ref_name}", 404)
+        commits = _history_rows(repo_dir, limit, ref_name)
 
         return (
             jsonify(
                 {
                     "status": "success",
                     "book_id": book_id,
+                    "ref": ref_name,
                     "total": len(commits),
                     "commits": commits,
                 }

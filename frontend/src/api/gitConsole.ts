@@ -232,9 +232,11 @@ export async function fetchGitBranches(
 
 export async function fetchGitHistoryList(
     bookRef: { kind: 'book_name' | 'book_id'; value: string },
-    limit = 150
+    limit = 150,
+    ref?: string | null
 ): Promise<GitHistoryCommit[]> {
-    const response = await fetchApi<GitHistoryApiResponse>(`/books/git_history_list?${getBookQuery(bookRef)}&limit=${limit}`);
+    const refQuery = ref ? `&ref=${encodeURIComponent(ref)}` : '';
+    const response = await fetchApi<GitHistoryApiResponse>(`/books/git_history_list?${getBookQuery(bookRef)}&limit=${limit}${refQuery}`);
     return response.commits.map((row) => ({
         commitId: row.commit_id,
         shortId: row.short_id,

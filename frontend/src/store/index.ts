@@ -64,6 +64,7 @@ const initialState: CoreSessionState = {
     gitLoading: false,
     gitActionPending: false,
     gitError: null,
+    selectedGitBranchName: null,
     selectedGitCommitId: null,
     selectedGitPath: null,
     gitCenterMode: 'commit_list',
@@ -191,6 +192,7 @@ function resetGitState(): Pick<
     | 'gitLoading'
     | 'gitActionPending'
     | 'gitError'
+    | 'selectedGitBranchName'
     | 'selectedGitCommitId'
     | 'selectedGitPath'
     | 'gitCenterMode'
@@ -207,6 +209,7 @@ function resetGitState(): Pick<
         gitLoading: false,
         gitActionPending: false,
         gitError: null,
+        selectedGitBranchName: null,
         selectedGitCommitId: null,
         selectedGitPath: null,
         gitCenterMode: 'commit_list',
@@ -873,6 +876,7 @@ export const useAppStore = create<AppStore>()((set) => ({
     setGitLoading: (gitLoading) => set({ gitLoading }),
     setGitActionPending: (gitActionPending) => set({ gitActionPending }),
     setGitError: (gitError) => set({ gitError }),
+    setSelectedGitBranchName: (selectedGitBranchName) => set({ selectedGitBranchName }),
     setSelectedGitCommit: (selectedGitCommitId) => set({ selectedGitCommitId }),
     setSelectedGitPath: (selectedGitPath) => set({ selectedGitPath }),
     setGitCenterMode: (gitCenterMode) => set({ gitCenterMode }),

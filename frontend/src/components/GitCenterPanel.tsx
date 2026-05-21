@@ -4,6 +4,7 @@ import { useUiCopy } from '../i18n/ui';
 
 interface GitCenterPanelProps {
     commits: GitHistoryCommit[];
+    selectedBranchName: string | null;
     selectedCommitId: string | null;
     loading: boolean;
     error: string | null;
@@ -28,6 +29,7 @@ function renderRefs(refs: string[]): React.ReactNode {
 
 export const GitCenterPanel: React.FC<GitCenterPanelProps> = ({
     commits,
+    selectedBranchName,
     selectedCommitId,
     loading,
     error,
@@ -74,7 +76,14 @@ export const GitCenterPanel: React.FC<GitCenterPanelProps> = ({
                 <div className="cursor-section-label">{copy.git.history}</div>
                 <div className="mt-1 flex items-center justify-between gap-3">
                     <span className="text-sm font-semibold text-[var(--color-dark-text-main)]">{copy.git.commitTimeline}</span>
-                    <span className="rounded-[8px] border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.012)] px-2 py-1 text-[10px] font-mono text-[var(--color-dark-text-faint)]">{copy.git.branchCount(commits.length)}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                        {selectedBranchName && (
+                            <span className="max-w-[240px] truncate rounded-[8px] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.014)] px-2 py-1 text-[10px] font-mono text-[var(--color-dark-text-faint)]">
+                                {copy.git.viewingBranch}: {selectedBranchName}
+                            </span>
+                        )}
+                        <span className="rounded-[8px] border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.012)] px-2 py-1 text-[10px] font-mono text-[var(--color-dark-text-faint)]">{copy.git.branchCount(commits.length)}</span>
+                    </div>
                 </div>
             </div>
             <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto bg-transparent px-4 py-4">

@@ -234,6 +234,7 @@ export interface CoreSessionState {
     gitLoading: boolean;
     gitActionPending: boolean;
     gitError: string | null;
+    selectedGitBranchName: string | null;
     selectedGitCommitId: string | null;
     selectedGitPath: string | null;
     gitCenterMode: GitCenterMode;
@@ -297,6 +298,7 @@ export interface StoreActions {
     setGitLoading: (loading: boolean) => void;
     setGitActionPending: (pending: boolean) => void;
     setGitError: (error: string | null) => void;
+    setSelectedGitBranchName: (branchName: string | null) => void;
     setSelectedGitCommit: (commitId: string | null) => void;
     setSelectedGitPath: (path: string | null) => void;
     setGitCenterMode: (mode: GitCenterMode) => void;

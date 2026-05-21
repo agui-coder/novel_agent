@@ -73,11 +73,15 @@ export function useGitWorkbench(deps: {
             const [status, branchPayload, history, workingTreePayload] = await Promise.all([
                 fetchGitStatus(bookRef),
                 fetchGitBranches(bookRef),
-                fetchGitHistoryList(bookRef, 220),
+                fetchGitHistoryList(bookRef, 220, store.selectedGitBranchName),
                 fetchGitWorkingTree(bookRef),
             ]);
             store.setGitStatus(status);
             store.setGitBranches(branchPayload.branches);
+            const currentBranchName = status.currentBranch || branchPayload.currentBranch || null;
+            if (!store.selectedGitBranchName && currentBranchName) {
+                store.setSelectedGitBranchName(currentBranchName);
+            }
             store.setGitHistoryCommits(history);
             store.setGitWorkingTree(workingTreePayload.entries);
 
@@ -106,7 +110,7 @@ export function useGitWorkbench(deps: {
         } finally {
             store.setGitLoading(false);
         }
-    }, [repoIntegrity?.needsRepair, store.bookRef.kind, store.bookRef.value, store.selectedGitCommitId]);
+    }, [repoIntegrity?.needsRepair, store.bookRef.kind, store.bookRef.value, store.selectedGitBranchName, store.selectedGitCommitId]);
 
     // ── Effects ──
 
@@ -278,6 +282,7 @@ export function useGitWorkbench(deps: {
         await runGitAction(async () => {
             try {
                 await checkoutGitBranch({ kind: store.bookRef.kind, value: store.bookRef.value }, branchName, force);
+                store.setSelectedGitBranchName(branchName);
                 await reloadAfterBranchSwitch();
                 store.setUiNotice({
                     type: 'success',
@@ -315,6 +320,39 @@ export function useGitWorkbench(deps: {
         });
     };
 
+    const handleGitSelectBranch = async (branchName: string) => {
+        if (!store.bookRef.value || !branchName) return;
+        const previousBranchName = store.selectedGitBranchName;
+        store.setSelectedGitBranchName(branchName);
+        store.setGitLoading(true);
+        store.setGitError(null);
+        try {
+            const history = await fetchGitHistoryList(
+                { kind: store.bookRef.kind, value: store.bookRef.value },
+                220,
+                branchName
+            );
+            store.setGitHistoryCommits(history);
+            const selectedCommitId = history[0]?.commitId || null;
+            store.setSelectedGitCommit(selectedCommitId);
+            store.setSelectedGitPath(null);
+            store.setGitCommitFiles([]);
+            store.setGitDiffPayload(null);
+            store.setGitFilePayload(null);
+        } catch (err) {
+            store.setSelectedGitBranchName(previousBranchName || null);
+            const message = getErrorMessage(err, '加载剧情分支历史失败');
+            store.setGitError(`剧情分支历史加载失败：${message}`);
+            store.setUiNotice({
+                type: 'error',
+                message: `剧情分支历史加载失败：${message}`,
+                ts: Date.now(),
+            });
+        } finally {
+            store.setGitLoading(false);
+        }
+    };
+
     const handleGitCreateBranch = async (payload: { branchName: string; fromRef: string | null }) => {
         if (!store.bookRef.value || !payload.branchName) return;
         if (hasPendingDraftDecision) {
@@ -336,6 +374,7 @@ export function useGitWorkbench(deps: {
                         checkout: true,
                     }
                 );
+                store.setSelectedGitBranchName(payload.branchName);
                 await reloadAfterBranchSwitch();
                 store.setUiNotice({
                     type: 'success',
@@ -428,6 +467,7 @@ export function useGitWorkbench(deps: {
                         deleteOtherBranches: false,
                     }
                 );
+                store.setSelectedGitBranchName(result.current_branch);
                 await reloadAfterBranchSwitch();
                 store.setUiNotice({
                     type: 'success',
@@ -541,6 +581,7 @@ export function useGitWorkbench(deps: {
         loadGitWorkbench,
         reloadAfterBranchSwitch,
         handleGitCheckout,
+        handleGitSelectBranch,
         handleGitCreateBranch,
         handleGitMerge,
         handleGitHardRollback,

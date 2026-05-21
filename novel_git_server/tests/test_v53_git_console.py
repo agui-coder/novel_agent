@@ -26,10 +26,7 @@ class V53GitConsoleTests(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _bootstrap_book(self, *, book_name: str) -> tuple[str, Path]:
-        resp = self.client.get(
-            "/books/get_file",
-            query_string={"book_name": book_name, "file_name": "world_model.md"},
-        )
+        resp = self.client.post("/books/init", json={"book_name": book_name})
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         book_id = body["book_id"]
@@ -189,6 +186,71 @@ class V53GitConsoleTests(unittest.TestCase):
         self.assertTrue(commit_diff["changed"])
         self.assertIn("world change", commit_diff["new_text"])
 
+    def test_history_list_can_be_filtered_by_branch_ref(self):
+        book_name = "v53_branch_history_filter"
+        _, repo_dir = self._bootstrap_book(book_name=book_name)
+
+        status_resp = self.client.get("/books/git_status", query_string={"book_name": book_name})
+        self.assertEqual(status_resp.status_code, 200)
+        status = status_resp.get_json()
+        mainline_branch = status["mainline_branch"]
+        base_head = status["head_commit"]
+
+        create_branch = self.client.post(
+            "/books/git_branch_create",
+            json={
+                "book_name": book_name,
+                "branch_name": "plot/ref-filter",
+                "from_ref": base_head,
+                "checkout": True,
+            },
+        )
+        self.assertEqual(create_branch.status_code, 200)
+
+        world_path = repo_dir / "world_model.md"
+        world_path.write_text(world_path.read_text(encoding="utf-8") + "\nbranch-only history mark\n", encoding="utf-8")
+        self.client.post("/books/git_stage_all", json={"book_name": book_name})
+        branch_commit_resp = self.client.post(
+            "/books/git_commit",
+            json={"book_name": book_name, "message": "branch only history commit"},
+        )
+        self.assertEqual(branch_commit_resp.status_code, 200)
+        branch_commit = branch_commit_resp.get_json()["commit_id"]
+
+        checkout_main = self.client.post(
+            "/books/git_checkout",
+            json={"book_name": book_name, "branch_name": mainline_branch},
+        )
+        self.assertEqual(checkout_main.status_code, 200)
+
+        summary_path = repo_dir / "summary.md"
+        summary_path.write_text(summary_path.read_text(encoding="utf-8") + "\nmainline-only history mark\n", encoding="utf-8")
+        self.client.post("/books/git_stage_all", json={"book_name": book_name})
+        mainline_commit_resp = self.client.post(
+            "/books/git_commit",
+            json={"book_name": book_name, "message": "mainline only history commit"},
+        )
+        self.assertEqual(mainline_commit_resp.status_code, 200)
+        mainline_commit = mainline_commit_resp.get_json()["commit_id"]
+
+        branch_history_resp = self.client.get(
+            "/books/git_history_list",
+            query_string={"book_name": book_name, "limit": 20, "ref": "plot/ref-filter"},
+        )
+        self.assertEqual(branch_history_resp.status_code, 200)
+        branch_history = branch_history_resp.get_json()
+        self.assertEqual(branch_history["ref"], "plot/ref-filter")
+        branch_commits = {row["commit_id"] for row in branch_history["commits"]}
+        self.assertIn(branch_commit, branch_commits)
+        self.assertNotIn(mainline_commit, branch_commits)
+
+        missing_ref_resp = self.client.get(
+            "/books/git_history_list",
+            query_string={"book_name": book_name, "ref": "plot/not-found"},
+        )
+        self.assertEqual(missing_ref_resp.status_code, 404)
+        self.assertEqual(missing_ref_resp.get_json()["code"], "REF_NOT_FOUND")
+
     def test_hard_rollback_prunes_other_branches(self):
         book_name = "v53_hard_rollback"
         _, repo_dir = self._bootstrap_book(book_name=book_name)
@@ -262,7 +324,7 @@ class V53GitConsoleTests(unittest.TestCase):
         self.assertIn("first rollback mark", final_content)
         self.assertNotIn("second rollback mark", final_content)
 
-    def test_hard_rollback_branch_read_does_not_mutate_head(self):
+    def test_hard_rollback_rejects_incomplete_layout_without_mutating_head(self):
         book_name = "v53_hard_rollback_branch_read"
         _, repo_dir = self._bootstrap_book(book_name=book_name)
 
@@ -280,6 +342,7 @@ class V53GitConsoleTests(unittest.TestCase):
         self._git(repo_dir, "commit", "-m", "future commit after rollback target")
         self.assertNotEqual(self._git(repo_dir, "rev-parse", "HEAD"), rollback_target)
 
+        head_before_rejected_rollback = self._git(repo_dir, "rev-parse", "HEAD")
         rollback_resp = self.client.post(
             "/books/git_hard_rollback",
             json={
@@ -288,14 +351,16 @@ class V53GitConsoleTests(unittest.TestCase):
                 "delete_other_branches": False,
             },
         )
-        self.assertEqual(rollback_resp.status_code, 200)
-        self.assertEqual(rollback_resp.get_json()["head_commit"], rollback_target)
+        self.assertEqual(rollback_resp.status_code, 409)
+        self.assertEqual(rollback_resp.get_json()["code"], "LAYOUT_REPAIR_REQUIRED")
+        self.assertEqual(self._git(repo_dir, "rev-parse", "HEAD"), head_before_rejected_rollback)
 
         branches_resp = self.client.get("/books/git_branches", query_string={"book_name": book_name})
-        self.assertEqual(branches_resp.status_code, 200)
+        self.assertEqual(branches_resp.status_code, 409)
+        self.assertEqual(branches_resp.get_json()["code"], "LAYOUT_REPAIR_REQUIRED")
 
-        # Loading branch list must not inject extra bootstrap commits after rollback.
-        self.assertEqual(self._git(repo_dir, "rev-parse", "HEAD"), rollback_target)
+        # Loading branch list must not inject extra bootstrap commits in the protected state.
+        self.assertEqual(self._git(repo_dir, "rev-parse", "HEAD"), head_before_rejected_rollback)
 
     def test_git_path_guard_allows_dot_git_prefix_files_but_blocks_git_dir(self):
         book_name = "v53_git_path_guard"

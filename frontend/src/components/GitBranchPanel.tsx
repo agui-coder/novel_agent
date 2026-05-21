@@ -5,10 +5,12 @@ import { useUiCopy } from '../i18n/ui';
 interface GitBranchPanelProps {
     status: GitStatusSummary | null;
     branches: GitBranchRow[];
+    selectedBranchName: string | null;
     selectedCommitId: string | null;
     chapterDraftContent?: string;
     pending: boolean;
     onRefresh: () => void;
+    onSelectBranch: (branchName: string) => void;
     onCheckout: (branchName: string) => void;
     onMerge: (payload: { sourceBranch: string; noFf: boolean }) => void;
     onCreateBranch: (payload: { branchName: string; fromRef: string | null }) => void;
@@ -18,10 +20,12 @@ interface GitBranchPanelProps {
 export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
     status,
     branches,
+    selectedBranchName,
     selectedCommitId,
     chapterDraftContent = '',
     pending,
     onRefresh,
+    onSelectBranch,
     onCheckout,
     onMerge,
     onCreateBranch,
@@ -31,7 +35,6 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
     const currentBranch = status?.currentBranch || '';
     const mainlineBranch = status?.mainlineBranch || '';
 
-    const [selectedBranch, setSelectedBranch] = useState('');
     const [newBranchName, setNewBranchName] = useState('');
     const [fromRef, setFromRef] = useState('');
     const [mergeSource, setMergeSource] = useState('');
@@ -49,17 +52,12 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
     }, [chapterDraftContent]);
 
     useEffect(() => {
-        if (currentBranch) {
-            setSelectedBranch(currentBranch);
-        }
-    }, [currentBranch]);
-
-    useEffect(() => {
         if (!fromRef && selectedCommitId) {
             setFromRef(selectedCommitId);
         }
     }, [selectedCommitId, fromRef]);
 
+    const selectedBranch = selectedBranchName || currentBranch;
     const canSwitch = Boolean(selectedBranch) && selectedBranch !== currentBranch && !pending;
     const sortedBranches = useMemo(() => {
         const rows = [...branches];
@@ -68,7 +66,7 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
     }, [branches]);
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="app-scrollbar h-full min-h-0 overflow-y-auto">
             <div className="border-b border-[var(--color-dark-border)] px-4 py-4">
                 <div className="cursor-section-label">{copy.git.console}</div>
                 <div className="mt-1 flex items-center justify-between gap-3">
@@ -120,19 +118,18 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
                 </div>
             </div>
 
-            <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            <div className="px-2 py-2">
                 <div className="space-y-1">
                     {sortedBranches.map((branch) => (
                         <button
                             key={branch.name}
                             type="button"
-                            onClick={() => setSelectedBranch(branch.name)}
-                            disabled={pending}
+                            onClick={() => onSelectBranch(branch.name)}
                             className={`w-full rounded-[10px] border px-2.5 py-2.5 text-left text-xs transition-all ${
                                 selectedBranch === branch.name
                                     ? 'git-console-card border-[rgba(255,255,255,0.14)]'
                                     : 'git-console-card-muted hover:border-[var(--color-dark-border-strong)] hover:bg-[rgba(255,255,255,0.03)]'
-                            } disabled:cursor-not-allowed disabled:opacity-70`}
+                            }`}
                         >
                             <div className="flex items-center justify-between gap-2">
                                 <span className="truncate font-mono text-[11px] text-[var(--color-dark-text-main)]">{branch.name}</span>
@@ -153,6 +150,9 @@ export const GitBranchPanel: React.FC<GitBranchPanelProps> = ({
             <div className="space-y-3 border-t border-[var(--color-dark-border)] px-3 py-3">
                 <div className="git-console-card rounded-[10px] px-3 py-3">
                     <div className="cursor-section-label">{copy.git.switchSection}</div>
+                    <div className="mt-2 truncate font-mono text-[10px] text-[var(--color-dark-text-faint)]">
+                        {copy.git.viewingBranch}: <span className="text-[var(--color-dark-text-main)]">{selectedBranch || '...'}</span>
+                    </div>
                     <div className="mt-3 space-y-2">
                         <button
                             type="button"
