@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "0.1.2",
     [string]$OutputDir
 )
 
@@ -73,33 +73,13 @@ foreach ($file in $tracked) {
     Copy-TrackedFile -RelativePath $file
 }
 
-$releaseReadme = @"
-# Novel Agent Demo Release v$Version
-
-This package is a sanitized demo bundle for the AI novel writing workbench.
-
-Deployment note: this project is maintained by an individual and uses a mixed architecture of local book workspaces, Dify Agent workflows, backend LangChain chains, the LoreGit ToolProvider layer, and per-book Git repositories. It is not yet a mature commercial one-click deployment product for every machine. If setup fails, collect the terminal error, deploy/demo/.env, Docker/WSL status, Dify runtime status, model key configuration, and ToolProvider endpoint, then use an AI assistant to help diagnose the environment. Most failures are path, port, credential, service startup order, or Dify-to-backend endpoint issues.
-
-## Start
-
-```powershell
-.\start_demo.ps1 -InitEnv
-# Fill deploy/demo/.env with Dify App keys and model provider keys for Dify and backend LangChain chains.
-.\start_demo.ps1
-```
-
-Open:
-
-```text
-http://127.0.0.1:5173/bookshelf.html
-```
-
-## Boundary
-
-This release contains source code, Dify DSL YAML snapshots, frontend/backend code, LangChain backend-chain code, and demo scripts. It does not contain Dify database backups, model API keys, Dify App API keys, private books, or runtime storage.
-
-For details, read README.md and docs/DEPLOYMENT.md.
-"@
+$releaseReadmeTemplatePath = Join-Path $RootDir "docs/RELEASE_README_TEMPLATE.md"
+if (Test-Path -LiteralPath $releaseReadmeTemplatePath -PathType Leaf) {
+    $releaseReadme = (Get-Content -LiteralPath $releaseReadmeTemplatePath -Raw -Encoding UTF8).Replace("{{VERSION}}", $Version)
+}
+else {
+    $releaseReadme = "# Novel Agent Demo Release v$Version`r`n`r`nRead README.md and docs/DEPLOYMENT.md for deployment details.`r`n"
+}
 
 Set-Content -LiteralPath (Join-Path $StageDir "RELEASE_README.md") -Value $releaseReadme -Encoding UTF8
 
