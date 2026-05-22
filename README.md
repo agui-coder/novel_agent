@@ -4,7 +4,7 @@
 
 它不是一个“让模型凭空写小说”的聊天框，而是一个类似 Cursor 的小说创作 IDE。作者可以把已有小说导入为可维护的章节资料库，再把世界观、状态卡、文风指纹、大纲、章节草稿和审查意见沉淀成可回滚、可比较、可分支实验的创作资产。
 
-技术读者可以先看 [Technical Dossier](docs/TECHNICAL_DOSSIER.md)，里面更系统地说明 Dify、后端 LangChain、LoreGit ToolProvider、每书 Git 仓库和部署边界的分工。
+技术读者可以先看 [HTML 版技术档案](docs/technical-dossier.html) 或 [Markdown 版技术档案](docs/TECHNICAL_DOSSIER.md)，里面更系统地说明 Dify、后端 LangChain、LoreGit ToolProvider、每书 Git 仓库和部署边界的分工。
 
 ![工作台主界面](docs/assets/screenshots/02-workbench-main.jpg)
 

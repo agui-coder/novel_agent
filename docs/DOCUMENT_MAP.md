@@ -25,11 +25,12 @@
 
 文件：
 
+- `docs/technical-dossier.html`
 - `docs/TECHNICAL_DOSSIER.md`
 
 用途：
 
-- 面向技术读者、面试官和未来维护者，系统说明项目的架构边界、运行时权威、关键数据对象、核心调用链、代码地图、测试证据和发布边界。
+- 面向技术读者、面试官和未来维护者，系统说明项目的架构边界、运行时权威、关键数据对象、核心调用链、代码地图、测试证据和发布边界；HTML 版用于 GitHub Pages 或浏览器舒适阅读，Markdown 版用于仓库内审阅。
 - 重点解释项目为什么不是纯 Dify 应用、不是普通聊天壳，而是 Dify + 后端 LangChain + LoreGit ToolProvider + 每书 Git 仓库的混合系统。
 
 适合谁看：
@@ -213,6 +214,8 @@
 ```text
 README.md
 docs/
+├── index.html
+├── technical-dossier.html
 ├── TECHNICAL_DOSSIER.md
 ├── DEMO_SCRIPT.md
 ├── ARCHITECTURE.md
