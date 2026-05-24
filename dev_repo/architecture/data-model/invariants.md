@@ -18,6 +18,9 @@
 - `chapter_draft.md` is virtual/defaulted until materialized.
 - `chapter_draft.md` remains a continuation review surface even after its accepted sections are canonized into `chapters/*.md`; it is not the formal long-term chapter archive.
 - After successful canonization, `chapter_draft.md` should return to the lightweight default draft placeholder and must not retain already archived chapter prose. This reset is a post-success workspace cleanup, not prose generation or rewriting.
+- `.loregit/prose_delivery_state.json` is derived control-plane state for the current `chapter_draft.md` delivery transaction. It is not source prose, not hidden canon, not a `KnowledgeFile`, and not human approval.
+- `ProseDeliveryState` must bind to `draft_branch`, `base_branch`, `base_commit`, and `draft_commit`. Any manual save or continuation rewrite that changes `draft_commit` must mark older review reports stale before archive or rewrite decisions can proceed.
+- `error_archive.md` is long-term reusable review memory. Current pass/problem status, per-finding rewrite requests, unsaved manual edits, and archive eligibility belong to `ProseDeliveryState`, not to `error_archive.md`.
 - `world_model.md`, `status_card.md`, and `domain_rules.md` are the creative constraint engine: `world_model.md` owns durable story promise and hard/soft constraints, `status_card.md` owns current run state and immediate obligations, and `domain_rules.md` owns reusable rule blocks.
 - World-model constraint lifecycle is part of `KnowledgeFile` semantics. A source-backed constraint can be current-active, historical-only, retired, overridden, disabled, conditional, inherited residue, or unresolved, and its applicability may be global or limited to a timeline, arc, stage, loop, faction, POV, location, rule system, or evidence window.
 - Historical-only, retired, overridden, disabled, inherited-residue, or unresolved constraints must not be consumed as present-tense story facts by continuation, outline, review, or rolling evidence unless `world_model.md` or `status_card.md` explicitly marks them current-active or conditional for the active scope.
@@ -50,6 +53,7 @@
 - Confirming a draft must merge into the draft source plot branch only. A checkout on another plot branch must not become the merge target by accident.
 - Diff/review baselines must come from the draft source plot branch, not from a later current checkout branch.
 - Rollback must reset or delete only the draft review branch and must not rewrite the source plot branch unless a future explicit recovery contract says so.
+- Rollback must clear active `ProseDeliveryState` for the rolled-back draft branch. Confirm/archive success must clear or archive the active state only after accepted prose has been preserved and post-confirm handoff has either completed or reported a retryable failure.
 - Per-book `.git` is not optional once a workspace is initialized.
 
 ## Conversation Runtime
@@ -87,6 +91,7 @@ Open an ER/data-model amendment before changing:
 - outline evidence-mode semantics or world-model gating for future production proposals;
 - continuation production ownership of `chapter_draft.md`, chapter-card execution semantics, or chapter length gate semantics;
 - accepted chapter canonization semantics between `chapter_draft.md` and `chapters/*.md`;
+- `ProseDeliveryState` identity, source/derived classification, state-machine semantics, stale-review invalidation, manual-edit semantics, rewrite request semantics, or cleanup semantics;
 - `chapter_draft.md` AI write-loop budget threshold/window or guard failure semantics;
 - `DraftSandbox` source-branch identity, source-commit capture, legacy source inference, confirm target, or rollback target semantics;
 - style advisory or metric-delta repair evidence semantics, protected-metric stop rules, scheduler-lock semantics, or continuation repair loop semantics;

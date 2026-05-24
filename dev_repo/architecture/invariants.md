@@ -29,6 +29,10 @@
 - Promptless direct jobs must declare that they require no natural-language prompt, must launch from a fixed button/control, must call a fixed route or handler, and must render progress from structured events or task status rather than assistant prose.
 - Agent chat may recommend or explain a workbench action, but it must not make the action look like a repeatable free-form prompt.
 - Continuation workbench controls are promptless direct jobs. They may derive and display chapter-card queue state, selected batch, progress, and review entrypoints, but they must not append hidden chat prompts or pipeline logs into `chatMessages`.
+- Prose delivery controls are promptless review/archive actions. Once `chapter_draft.md` materializes, the live prose review state must be represented by `ProseDeliveryState` under `.loregit/prose_delivery_state.json`, not by chat bubbles, generic diff UI guesses, or `error_archive.md`.
+- `ProseDeliveryState` is derived control-plane state. It must stay out of per-book Git history, must be bound to `draft_branch`, `base_branch`, `base_commit`, and `draft_commit`, and must fail closed when those bindings no longer match current draft metadata.
+- A structured review report inside `ProseDeliveryState` is current review evidence, not human approval. Archive still requires an explicit author decision and no unsaved manual edits.
+- Manual prose edits in the delivery workbench create a new draft commit and make older review reports stale. A rewrite request must be attached to a specific review finding and must hand context back to the continuation route; review or orchestration code must not rewrite prose directly.
 - `world_model.md`, `status_card.md`, and `domain_rules.md` together form the world-model creative constraint engine; agent updates to them must explain downstream writing or review impact, not only archive facts.
 - World-model constraints must preserve lifecycle and applicability scope. A source-backed constraint may be current-active, historical-only, retired, overridden, disabled, conditional, inherited residue, or unresolved, and may apply globally or only to a timeline, arc, stage, loop, faction, POV, location, rule system, or evidence window.
 - Downstream workflows must not flatten lifecycle-scoped constraints into one active hard-constraint pool. Historical/retired/disabled constraints may inform memory, debt, trauma, foreshadowing, reader irony, or review risk, but only current-active or explicitly conditional constraints may be treated as present-tense story reality.
@@ -109,6 +113,7 @@ Open an architecture amendment before changing:
 - summary archive ownership between backend pipeline and Dify reading archive workflow;
 - post-confirm archive bridge ordering, ownership, or stale-summary retry semantics;
 - file write ownership or draft/review flow, including draft source-branch binding and confirm/rollback baseline semantics;
+- prose delivery state identity, lifecycle, stale-report semantics, manual-edit semantics, or rewrite handoff semantics;
 - outline production-control evidence modes or world-model gating semantics;
 - continuation chapter-card execution, length-gate semantics, or `chapter_draft.md` production ownership;
 - `chapter_draft.md` AI write loop budget semantics or guard threshold/window;

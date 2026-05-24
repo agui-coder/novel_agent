@@ -2,6 +2,7 @@ erDiagram
     BookWorkspace ||--|| BookMetadata : owns
     BookWorkspace ||--o{ ChapterFile : contains
     BookWorkspace ||--o{ KnowledgeFile : maintains
+    BookWorkspace ||--o| ProseDeliveryState : has_active_delivery_state
     ChapterFile }o--|| KnowledgeFile : derives_summary_archive
     KnowledgeFile ||--o{ ChapterFile : canonizes_accepted_draft
     BookWorkspace ||--o| ImportReport : records_latest_import
@@ -10,6 +11,10 @@ erDiagram
     BookWorkspace ||--o{ SessionConversationIndex : has_agent_threads
 
     SessionConversationIndex ||--o{ ConversationMessageLog : indexes
+
+    ProseDeliveryState }o--|| KnowledgeFile : observes_chapter_draft
+    ProseDeliveryState }o--|| KnowledgeFile : records_review_findings
+    ProseDeliveryState }o--|| DraftSandbox : binds_draft_transaction
 
     DifyAgentRoute }o--|| DifyWorkflowDefinition : routes_to
     DifyAgentRoute ||--o{ KnowledgeFile : constrains
@@ -21,5 +26,6 @@ erDiagram
     CostObservation }o--o{ DifyNodeExecution : derives_from
     DifyWorkflowDefinition }o--o{ ToolProvider : calls
     DifyWorkflowDefinition }o--o{ DifyPluginPackage : requires
+    RollingProductionRun }o--o| ProseDeliveryState : hands_off_to
 
     RuntimeContract ||--o{ ArchitectureTruthArtifact : references_boundaries

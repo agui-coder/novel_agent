@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-05-13T14:29:14+08:00",
+  "generated_at": "2026-05-24T21:11:30+08:00",
   "relationships": [
     {
       "id": "bookworkspace-has-metadata",
@@ -41,6 +41,16 @@
       "deletion_semantics": "Deleted with the book workspace after active Tomato import work for that book_id is cancelled.",
       "source_artifacts": ["novel_git_server/agents/tomato_import.py"],
       "confidence": "confirmed"
+    },
+    {
+      "id": "bookworkspace-has-active-prose-delivery-state",
+      "from": "BookWorkspace",
+      "to": "ProseDeliveryState",
+      "cardinality": "1:0..1",
+      "kind": "active-prose-delivery-control-state",
+      "deletion_semantics": "Deleting the book workspace deletes ignored .loregit prose delivery state. Confirm/archive success or rollback clears the active state for the resolved draft.",
+      "source_artifacts": ["novel_git_server/storage/<book_id>/.loregit/prose_delivery_state.json"],
+      "confidence": "inferred"
     },
     {
       "id": "bookworkspace-has-git-state",
@@ -222,6 +232,46 @@
       "deletion_semantics": "Rolling evidence records draft/sandbox commit ids but does not replace Git history.",
       "source_artifacts": ["Git branch draft/sandbox", ".runtime/rolling_chapter_*.json"],
       "confidence": "confirmed"
+    },
+    {
+      "id": "prose-delivery-state-derives-from-draft-sandbox",
+      "from": "ProseDeliveryState",
+      "to": "DraftSandbox",
+      "cardinality": "many:1",
+      "kind": "draft-transaction-binding",
+      "deletion_semantics": "Deleting or rolling back the draft branch invalidates the active prose delivery state. A changed draft_commit makes older review reports stale before archive or rewrite actions can proceed.",
+      "source_artifacts": ["Git branch draft/sandbox", ".loregit/draft_meta.json", ".loregit/prose_delivery_state.json"],
+      "confidence": "inferred"
+    },
+    {
+      "id": "prose-delivery-state-observes-chapter-draft",
+      "from": "ProseDeliveryState",
+      "to": "KnowledgeFile",
+      "cardinality": "many:1",
+      "kind": "chapter-draft-package-state",
+      "deletion_semantics": "Deleting or replacing chapter_draft.md invalidates parsed chapter spans and review findings. The state must not replace the draft file as the prose source.",
+      "source_artifacts": ["chapter_draft.md", ".loregit/prose_delivery_state.json"],
+      "confidence": "inferred"
+    },
+    {
+      "id": "prose-delivery-state-records-review-findings",
+      "from": "ProseDeliveryState",
+      "to": "KnowledgeFile",
+      "cardinality": "many:1",
+      "kind": "current-review-state-to-reusable-error-memory",
+      "deletion_semantics": "Structured review findings may be distilled into error_archive.md for reuse, but deleting or editing error_archive.md must not by itself change current pass/problem/archive eligibility.",
+      "source_artifacts": ["error_archive.md", ".loregit/prose_delivery_state.json"],
+      "confidence": "inferred"
+    },
+    {
+      "id": "rolling-run-hands-off-to-prose-delivery-state",
+      "from": "RollingProductionRun",
+      "to": "ProseDeliveryState",
+      "cardinality": "many:0..1",
+      "kind": "continuation-draft-delivery-handoff",
+      "deletion_semantics": "Historical rolling evidence may outlive the active prose delivery state. The rolling layer may observe handoff state but must not approve, rewrite, or archive prose directly.",
+      "source_artifacts": [".runtime/rolling_chapter_*.json", ".loregit/prose_delivery_state.json"],
+      "confidence": "inferred"
     },
     {
       "id": "draft-sandbox-binds-source-branch",

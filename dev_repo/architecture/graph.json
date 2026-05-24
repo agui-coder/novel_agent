@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "repository": "novel_agent",
-  "generated_at": "2026-05-13T14:29:14+08:00",
+  "generated_at": "2026-05-24T21:11:30+08:00",
   "confidence_legend": {
     "confirmed": "Proven by code, config, scripts, runtime files, or read-only database evidence.",
     "inferred": "Reconstructed from naming, layout, imports, or observed usage.",
@@ -10,7 +10,7 @@
   "nodes": [
     {
       "id": "frontend-workbench",
-      "purpose": "Main author IDE for file view, agent chat, review, Git panels, streaming traces, FSM, and promptless workbench actions including continuation production controls.",
+      "purpose": "Main author IDE for file view, agent chat, review, Git panels, streaming traces, FSM, promptless continuation controls, and the dedicated prose delivery workbench.",
       "owned_files": [
         "frontend/src/App.tsx",
         "frontend/src/store/index.ts",
@@ -24,7 +24,8 @@
         "Browser UI on Vite dev server",
         "Flask API clients under frontend/src/api",
         "Vite dev-server host/proxy configuration",
-        "Continuation workbench action surface"
+        "Continuation workbench action surface",
+        "Prose delivery workbench surface"
       ],
       "depends_on": [
         "flask-backend-api",
@@ -40,7 +41,8 @@
         "Frontend never writes storage directly.",
         "Review UI must be backed by draft metadata and changed files.",
         "Hydration must not discard active local UI trace without cause.",
-        "Promptless continuation controls must not become hidden chat prompts or chatMessages."
+        "Promptless continuation controls must not become hidden chat prompts or chatMessages.",
+        "chapter_draft.md prose delivery state must hydrate from ProseDeliveryState instead of filename-only UI heuristics."
       ],
       "allowed_change_types": [
         "UI composition",
@@ -51,7 +53,8 @@
         "Changing source of truth for file writes",
         "Changing review or draft ownership",
         "Moving persistence into frontend",
-        "Changing continuation workbench promptless launch/progress semantics"
+        "Changing continuation workbench promptless launch/progress semantics",
+        "Changing prose delivery workbench state source, manual-edit semantics, rewrite handoff, or archive decision flow"
       ],
       "verification": [
         "npm run build",
@@ -122,7 +125,8 @@
         "/checkout",
         "/api/style/init_pipeline",
         "/api/rolling/state",
-        "/api/rolling/run_stream"
+        "/api/rolling/run_stream",
+        "planned /api/prose_delivery/*"
       ],
       "depends_on": [
         "book-storage-git",
@@ -146,9 +150,10 @@
         "Style diagnostic profile selection must use source outline-card evidence when selecting specialized tolerances such as bridge/exposition or arc-tail choice; draft prose alone must not select a more permissive profile.",
         "Style diagnostics are rolling-loop advisory evidence by default and must not lock the scheduler without a separate hard gate.",
         "Tomato summary generation is a backend batch-pipeline job, not a Dify chat turn or reading_archive_agent workflow.",
-        "Rolling workbench APIs are control-plane endpoints and must not write prose directly.",
+        "Rolling workbench APIs and prose delivery APIs are control-plane endpoints and must not write prose directly.",
         "Draft confirm may deterministically canonize accepted chapter_draft.md sections into chapters/*.md, but must preserve accepted prose and fail on ambiguous or conflicting chapter files.",
-        "After successful chapter canonization, backend post-confirm archive bridge must refresh summary.md before status_card.md projection when the bridge runs."
+        "After successful chapter canonization, backend post-confirm archive bridge must refresh summary.md before status_card.md projection when the bridge runs.",
+        "Prose delivery state APIs must bind manual edit, review report, rewrite request, archive state, and handoff state to the current draft_commit."
       ],
       "allowed_change_types": [
         "Blueprint endpoint additions",
@@ -161,6 +166,7 @@
         "Changing the error envelope contract",
         "Changing deterministic style diagnostic profile semantics, profile-selection evidence source, or scheduler-lock semantics",
         "Changing rolling workbench public route ownership or prose-write boundary",
+        "Changing prose delivery API route ownership, state lifecycle, manual-edit save semantics, or stale-review invalidation",
         "Changing accepted chapter canonization semantics"
       ],
       "verification": [
@@ -174,7 +180,7 @@
     },
     {
       "id": "book-storage-git",
-      "purpose": "Per-book filesystem layout, metadata, nested Git repository, branch/diff/review persistence.",
+      "purpose": "Per-book filesystem layout, metadata, nested Git repository, branch/diff/review persistence, and ignored prose delivery control state.",
       "owned_files": [
         "novel_git_server/utils/book_storage.py",
         "novel_git_server/utils/git_utils.py",
@@ -186,7 +192,8 @@
       "public_interfaces": [
         "storage/<book_id>/ layout",
         "Git console routes",
-        "Markdown read/write routes"
+        "Markdown read/write routes",
+        "planned prose delivery state helpers"
       ],
       "depends_on": [
         "local-filesystem",
@@ -205,7 +212,9 @@
         "Draft writes belong on draft/sandbox until confirmed.",
         "Draft review state is branch-scoped: diff, review, confirm, and rollback must use the draft source plot branch as baseline.",
         "Accepted continuation chapters become formal ChapterFile artifacts only through deterministic confirm-time canonization into chapters/*.md.",
-        "chapter_draft.md AI write loops must be bounded by recent repair-like Git history so continuation repair cannot create unbounded tiny draft commits."
+        "chapter_draft.md AI write loops must be bounded by recent repair-like Git history so continuation repair cannot create unbounded tiny draft commits.",
+        ".loregit/prose_delivery_state.json is ignored derived control-plane state and must not enter book Git history.",
+        "A changed draft_commit makes older prose delivery review reports stale before archive or rewrite actions can proceed."
       ],
       "allowed_change_types": [
         "Layout repair",
@@ -218,7 +227,8 @@
         "Changing draft source-branch binding, source inference, or cross-branch confirm behavior",
         "Changing source-versus-derived classification of book files",
         "Changing how confirmed chapter_draft.md sections become chapters/*.md",
-        "Changing AI write loop budget semantics for chapter_draft.md"
+        "Changing AI write loop budget semantics for chapter_draft.md",
+        "Changing ProseDeliveryState identity, lifecycle, stale-review semantics, manual-edit semantics, rewrite handoff, or cleanup semantics"
       ],
       "verification": [
         "backend storage/Git tests",
@@ -412,7 +422,7 @@
     },
     {
       "id": "rolling-production-orchestrator",
-      "purpose": "Coordinate three-chapter rolling production by deriving accepted chapter state from chapters/*.md, pending-review draft state from chapter_draft.md, executable card state from chapter_outline.md, selecting the next batch, exposing continuation workbench state, triggering outline or continuation routes, and recording evidence without writing prose.",
+      "purpose": "Coordinate three-chapter rolling production by deriving accepted chapter state from chapters/*.md, pending-review draft state from chapter_draft.md, executable card state from chapter_outline.md, selecting the next batch, exposing continuation workbench state, triggering outline or continuation routes, handing materialized drafts to prose delivery, and recording evidence without writing prose.",
       "owned_files": [
         "novel_git_server/pipelines/rolling_chapter.py",
         "scripts/rolling_chapter_production.py",
@@ -448,7 +458,8 @@
         "Record chapter context packs as derived current-chapter execution evidence; do not treat them as source prose, hidden canon, hidden outline state, or approval.",
         "When rolling evidence packages world/status constraints, it must preserve lifecycle labels so historical-only, retired, disabled, or unresolved constraints cannot masquerade as current-active blockers.",
         "Continuation workbench state is transient projection over outline/draft/review state and must not physically mutate chapter_outline.md.",
-        "When next_action is replenish_outline, the workbench may request an outline handoff payload but only the outline route may write reviewable outline edits. Missing structured card fields are advisory when a readable chapter number and outline text exist."
+        "When next_action is replenish_outline, the workbench may request an outline handoff payload but only the outline route may write reviewable outline edits. Missing structured card fields are advisory when a readable chapter number and outline text exist.",
+        "After continuation materializes chapter_draft.md, current review/archive transaction state belongs to ProseDeliveryState rather than rolling projection or generic review heuristics."
       ],
       "allowed_change_types": [
         "Read-only cursor derivation",
@@ -468,6 +479,7 @@
         "Changing style metric-delta advisory/repair evidence semantics or repair-regression stop conditions",
         "Changing chapter context pack derived-evidence semantics, source-reference requirements, or continuation consumption rules",
         "Changing continuation workbench state projection, launch, or review handoff semantics",
+        "Changing rolling-to-prose-delivery handoff semantics",
         "Allowing orchestration code to write book prose or source outline content directly"
       ],
       "verification": [
@@ -837,6 +849,11 @@
     {
       "from": "book-storage-git",
       "to": "book-storage-git",
+      "relation": "persists_ignored_prose_delivery_state"
+    },
+    {
+      "from": "book-storage-git",
+      "to": "book-storage-git",
       "relation": "binds_draft_sandbox_to_source_plot_branch"
     },
     {
@@ -848,6 +865,11 @@
       "from": "rolling-production-orchestrator",
       "to": "dify-bridge",
       "relation": "passes_chapter_context_pack_to_continuation_route"
+    },
+    {
+      "from": "rolling-production-orchestrator",
+      "to": "book-storage-git",
+      "relation": "hands_materialized_chapter_draft_to_prose_delivery_state"
     },
     {
       "from": "rolling-production-orchestrator",

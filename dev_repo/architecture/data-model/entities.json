@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-05-13T14:29:14+08:00",
+  "generated_at": "2026-05-24T21:11:30+08:00",
   "entities": [
     {
       "id": "BookWorkspace",
@@ -79,6 +79,19 @@
       "migration_notes": "Legacy draft/sandbox branches may be source-bound by Git inference. Branch name, source binding, metadata persistence, or confirm/rollback semantics require amendment.",
       "requires_amendment_when": ["Changing branch name", "Changing source-branch binding semantics", "Changing legacy source inference", "Changing confirm or rollback semantics"],
       "confidence": "confirmed"
+    },
+    {
+      "id": "ProseDeliveryState",
+      "purpose": "Derived control-plane state for the active chapter_draft.md prose delivery transaction: parsed chapter spans, structured review findings, per-finding rewrite requests, manual edit save state, archive state, and post-confirm handoff state.",
+      "owning_architecture_node": "book-storage-git",
+      "source_or_derived": "derived",
+      "source_artifacts": ["novel_git_server/storage/<book_id>/.loregit/prose_delivery_state.json"],
+      "identity": "BookWorkspace + draft_branch + base_branch + base_commit + draft_commit",
+      "state_fields": ["schema_version", "book_id", "draft_branch", "base_branch", "base_commit", "draft_commit", "source_agent", "created_by", "status", "draft_package.file", "draft_package.chapter_spans", "review_report.findings", "rewrite_requests", "manual_edit", "archive_state", "handoff_state", "created_at", "updated_at"],
+      "derived_from": ["DraftSandbox", "KnowledgeFile", "DifyWorkflowRun", "ConversationMessageLog", "human edits", "review Agent findings"],
+      "migration_notes": "No backfill is required for existing books. If missing, the state may be created when chapter_draft.md materializes or when the prose delivery workbench opens a compatible draft. Existing error_archive.md content remains reusable memory but not current transaction state.",
+      "requires_amendment_when": ["Changing identity fields", "Changing source/derived classification", "Changing status lifecycle", "Changing stale-review invalidation semantics", "Changing manual edit save semantics", "Changing per-finding rewrite request semantics", "Changing archive cleanup semantics"],
+      "confidence": "inferred"
     },
     {
       "id": "GitRepositoryState",

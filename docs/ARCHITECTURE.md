@@ -142,9 +142,9 @@ brainstorm
   -> arc_outline
   -> chapter_outline
   -> continuation_agent 写 chapter_draft.md
-  -> review_agent 审核
-  -> 人类三选一：修改 / 归档 / 打回重写
-  -> error_archive 与状态文件更新
+  -> 正文交付台：审核 / 人工修改 / 按问题打回重写
+  -> 作者确认归档
+  -> chapters/*.md + summary/status 接棒更新
   -> 下一轮章节
 ```
 
@@ -152,7 +152,8 @@ brainstorm
 
 - 大纲是多级萃取，不是一次性生成。
 - 续写写入草稿分支，不直接污染主线。
-- 审核意见必须回到错误档案或人工决策，而不是漂浮在聊天记录里。
+- `chapter_draft.md` 可能一次承载多章，因此需要独立的正文交付状态，而不是只靠通用 diff 审阅台猜测。
+- 审核意见可以沉淀到错误档案，但当前“通过/有问题/打回/归档”状态必须绑定草稿提交和作者决策，而不是漂浮在聊天记录里。
 
 ## 剧情分支实验室
 

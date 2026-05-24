@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "repository": "novel_agent",
-  "generated_at": "2026-05-13T14:29:14+08:00",
+  "generated_at": "2026-05-24T21:11:30+08:00",
   "source_evidence": [
     "README.md",
     "docs/ARCHITECTURE.md",
@@ -12,7 +12,8 @@
     "read-only Dify Postgres route/workflow/plugin evidence",
     "dify_workflows/*.yml as exported evidence only",
     "docs/DEPLOYMENT.md",
-    "ADR-0025-schema-locked-world-state-projection.md"
+    "ADR-0025-schema-locked-world-state-projection.md",
+    "ADR-0029-prose-delivery-state.md"
   ],
   "file_index": [
     {
@@ -33,7 +34,7 @@
     {
       "pattern": "frontend/src/components/*",
       "node": "frontend-workbench",
-      "role": "workbench UI components"
+      "role": "workbench UI components, including planned prose delivery workbench components"
     },
     {
       "pattern": "frontend/src/api/*",
@@ -64,6 +65,11 @@
       "pattern": "novel_git_server/agents/archive.py",
       "node": "book-storage-git",
       "role": "markdown archive, draft write tools, and chapter_draft.md AI write loop budget guard"
+    },
+    {
+      "pattern": "novel_git_server/utils/prose_delivery_state.py",
+      "node": "book-storage-git",
+      "role": "planned helper for ignored .loregit ProseDeliveryState persistence and stale draft_commit checks"
     },
     {
       "pattern": "novel_git_server/agents/world_draft.py",
@@ -243,7 +249,7 @@
     {
       "pattern": "novel_git_server/pipelines/rolling_chapter.py",
       "node": "rolling-production-orchestrator",
-      "role": "read-only chapter cursor derivation, continuation workbench state projection, outline repair/replenishment planner, review bridge packet builder, style advisory and metric-delta evidence builder, and chapter context pack builder"
+      "role": "read-only chapter cursor derivation, continuation workbench state projection, outline repair/replenishment planner, review bridge packet builder, style advisory and metric-delta evidence builder, chapter context pack builder, and planned prose delivery handoff"
     },
     {
       "pattern": "scripts/rolling_chapter_production.py",
@@ -386,6 +392,11 @@
       "route": "/api/rolling/run_stream",
       "node": "rolling-production-orchestrator",
       "entity_focus": "DifyWorkflowRun"
+    },
+    {
+      "route": "planned /api/prose_delivery/*",
+      "node": "flask-backend-api",
+      "entity_focus": "ProseDeliveryState"
     }
   ],
   "amendment_triggers": {
@@ -408,6 +419,7 @@
       "deployment reproducibility topology, sanitized Dify restore authority, or secret/demo-data boundary changes",
       "review/draft runtime flow changes",
       "draft source-branch binding, source inference, diff baseline, confirm target, or rollback target changes",
+      "prose delivery state identity, lifecycle, stale-review semantics, manual-edit semantics, rewrite handoff, or archive handoff semantics",
       "batch pipeline execution model or section schema changes",
       "style initialization ownership between backend pipeline and Dify workflow",
       "summary archive ownership between backend pipeline and Dify reading archive workflow",
@@ -427,6 +439,7 @@
       "outline quartet creative role, evidence-mode semantics, ideation-versus-landing semantics, or write ownership changes",
       "continuation chapter_draft.md production semantics or length validation requirements",
       "accepted chapter canonization semantics between chapter_draft.md and chapters/*.md",
+      "ProseDeliveryState source/derived semantics, identity, state-machine semantics, stale-review invalidation, manual-edit semantics, rewrite request semantics, or cleanup semantics",
       "style advisory or metric-delta repair evidence semantics",
       "chapter context pack derived-evidence semantics",
       "RollingProductionRun source/derived semantics, cursor derivation, continuation workbench projection, replenishment, review bridge, human unlock, or review gate semantics",

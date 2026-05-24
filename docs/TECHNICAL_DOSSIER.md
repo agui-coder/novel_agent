@@ -106,6 +106,7 @@ novel_git_server/storage/<book_id>/
 - 四个大纲文件不是同义重复：`brainstorm.md` 管灵感池，`master_outline.md` 管长线读者承诺，`arc_outline.md` 管篇章留存单元，`chapter_outline.md` 管可执行章节卡。
 - `chapter_draft.md` 是续写 Agent 的草稿目标，不是正式章节；只有作者确认后才会正文化归档进 `chapters/*.md`。
 - `error_archive.md` 存放可复用审查问题和风险沉淀，不是普通聊天记录。
+- `.loregit/prose_delivery_state.json` 是被忽略的正文交付控制态，用来记录当前草稿包的审核、人工编辑、打回重写和归档接棒；它不是正文，不进入书库 Git 历史。
 
 ## 主要运行流
 
@@ -133,13 +134,16 @@ flowchart LR
   A --> C["chapter_outline.md"]
   C --> P["续写 Agent"]
   P --> D["chapter_draft.md"]
-  D --> R["审核 Agent / 审阅台"]
-  R --> H["作者确认"]
+  D --> R["正文交付台"]
+  R --> A["审核 Agent"]
+  R --> E["作者手动修改"]
+  A --> W["按问题打回续写 Agent"]
+  R --> H["作者确认归档"]
   H --> CH["chapters/*.md"]
   CH --> S["summary.md / status_card.md 更新"]
 ```
 
-续写的关键设计不是“让模型自由写”，而是让它消费可执行章节卡，在世界观、状态卡、摘要、文风提示和错误档案约束下写入草稿。审查和归档发生在草稿之后，作者仍是最终裁决者。
+续写的关键设计不是“让模型自由写”，而是让它消费可执行章节卡，在世界观、状态卡、摘要、文风提示和错误档案约束下写入草稿。草稿生成之后进入独立的正文交付台：`chapter_draft.md` 被视为一个可能包含多章的草稿包，系统用 `.loregit/prose_delivery_state.json` 记录章节切片、审核结论、人工保存、按问题打回重写、归档和接棒状态。审核 Agent 可以给出问题和沉淀 `error_archive.md`，但作者仍是最终裁决者。
 
 ### 滚动三章生产
 
@@ -196,6 +200,7 @@ flowchart LR
 | 路径 | 负责什么 | 不要误解成 |
 | --- | --- | --- |
 | `frontend/src/App.tsx` | 主工作台装配：文件视图、Agent 面板、审阅台、Git 工作台、动作入口 | 不是业务规则权威 |
+| `frontend/src/components/ProseDelivery*` | 规划中的正文交付台：展示草稿包章节切片、审核卡、人工编辑、打回重写和归档接棒 | 不是续写 Agent，也不直接写正式章节 |
 | `frontend/src/bookshelf/BookshelfApp.tsx` | 书架、导入、配置入口和书籍管理 | 不是章节解析器 |
 | `frontend/src/store/index.ts` | 前端会话状态、选中文件、Git 工作台状态、运行中任务状态 | 不是持久化数据库 |
 | `frontend/src/api/*.ts` | 前端到 Flask 的 API 客户端 | 不是直接文件 IO |
@@ -204,6 +209,7 @@ flowchart LR
 | `novel_git_server/agents/tomato_import.py` | 番茄/本地章节导入 API 和导入状态 | 不负责续写 |
 | `novel_git_server/agents/world_draft.py` | Dify Agent 流式桥接、文件路由和草稿写入流程 | 不直接拥有所有世界模型初始化 |
 | `novel_git_server/agents/tools.py` | 暴露给 Dify 的 LoreGit 工具接口 | 不做自由文本生成 |
+| `novel_git_server/utils/prose_delivery_state.py` | 规划中的正文交付状态持久化和草稿提交绑定 | 不是正文来源，不进入书库 Git |
 | `novel_git_server/agents/git_console.py` | 每书 Git 状态、分支、历史、diff、提交、回退 | 不判断剧情好坏 |
 | `novel_git_server/agents/rolling.py` | 滚动生产 API 控制层 | 不写章节正文 |
 | `novel_git_server/pipelines/summary_archive.py` | 摘要归档批处理与确定性渲染 | 不是聊天式读书 Agent |
@@ -254,7 +260,9 @@ Workbench action
 ### 正文化归档
 
 ```text
-Review acceptance
+Prose delivery acceptance
+  -> read .loregit/prose_delivery_state.json
+  -> no stale review report / no unsaved manual edit
   -> /api/draft/confirm
   -> split accepted chapter_draft.md sections
   -> chapters/*.md
