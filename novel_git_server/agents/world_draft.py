@@ -314,8 +314,12 @@ def _plan_chapter_draft_canonization(
                 continue
             return [], {
                 "code": "CHAPTER_CANON_CONFLICT",
-                "message": f"chapter {number} already exists with different content: {', '.join(existing_names)}",
+                "message": f"第 {number} 章已经存在正式正文，且当前草稿内容不同。请改章节号、放弃本轮草稿，或先在版本控制台创建剧情分支后再处理。已有文件：{', '.join(existing_names)}",
                 "status": 409,
+                "chapter_number": number,
+                "existing_files": [f"chapters/{name}" for name in existing_names],
+                "target_file": CHAPTER_DRAFT_FILE,
+                "recovery_hint": "这不是合并冲突，而是正文归档保护：系统不会覆盖已经存在的章节正文。",
             }
 
         planned.append(
@@ -2342,9 +2346,13 @@ def create_blueprint(
                     )
                     if canon_error:
                         repo.git.checkout(mainline_branch)
-                        return json_error(
-                            canon_error["code"],
-                            canon_error["message"],
+                        return (
+                            jsonify(
+                                {
+                                    "status": "error",
+                                    **canon_error,
+                                }
+                            ),
                             int(canon_error["status"]),
                         )
                     materialized_chapters, canon_commit_id = _write_planned_chapter_files(

@@ -442,6 +442,11 @@ class V45DraftSyncAllTests(unittest.TestCase):
             },
         )
         self.assertEqual(sync.status_code, 200)
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={"book_id": book_id, "summary": "测试用：正文草稿审核通过。", "findings": []},
+        )
+        self.assertEqual(review.status_code, 200, review.get_json())
 
         confirm = self.client.post("/api/draft/confirm", json={"book_id": book_id})
 
@@ -540,12 +545,21 @@ class V45DraftSyncAllTests(unittest.TestCase):
             },
         )
         self.assertEqual(sync.status_code, 200)
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={"book_id": book_id, "summary": "测试用：允许进入正文归档保护检查。", "findings": []},
+        )
+        self.assertEqual(review.status_code, 200, review.get_json())
 
         confirm = self.client.post("/api/draft/confirm", json={"book_id": book_id})
 
         self.assertEqual(confirm.status_code, 409)
         body = confirm.get_json()
         self.assertEqual(body["code"], "CHAPTER_CANON_CONFLICT")
+        self.assertEqual(body["chapter_number"], 153)
+        self.assertEqual(body["existing_files"], ["chapters/0153_第153章_旧章.md"])
+        self.assertIn("正文归档保护", body["recovery_hint"])
+        self.assertIn("第 153 章已经存在正式正文", body["message"])
         self.assertEqual(self._git(repo_dir, "branch", "--show-current"), "master")
         self.assertIn("draft/sandbox", self._git(repo_dir, "branch", "--list", "draft/sandbox"))
         self.assertIn("既有正文", existing_path.read_text(encoding="utf-8"))

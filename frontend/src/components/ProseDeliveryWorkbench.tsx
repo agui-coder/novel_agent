@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     attachProseReviewReport,
     fetchProseDeliveryState,
@@ -122,6 +122,9 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const [manualFinding, setManualFinding] = useState('');
     const [selectedChapter, setSelectedChapter] = useState<number | 'all'>('all');
     const [error, setError] = useState('');
+    const editorScrollRef = useRef<HTMLTextAreaElement | null>(null);
+    const previewScrollRef = useRef<HTMLDivElement | null>(null);
+    const syncScrollLockRef = useRef(false);
 
     const state = payload?.state ?? null;
     const draftEtag = payload?.draft.etag ?? '';
@@ -144,6 +147,18 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         if (!span) return editorDraft;
         return lineSlice(editorDraft, span.heading_line, span.end_line);
     }, [editorDraft, selectedChapter, spans]);
+
+    const syncScroll = (source: HTMLElement, target: HTMLElement | null) => {
+        if (!target || syncScrollLockRef.current) return;
+        const sourceMax = source.scrollHeight - source.clientHeight;
+        const targetMax = target.scrollHeight - target.clientHeight;
+        if (sourceMax <= 0 || targetMax <= 0) return;
+        syncScrollLockRef.current = true;
+        target.scrollTop = (source.scrollTop / sourceMax) * targetMax;
+        window.requestAnimationFrame(() => {
+            syncScrollLockRef.current = false;
+        });
+    };
 
     const loadState = async (mode: 'fetch' | 'refresh' = 'fetch') => {
         if (!bookRef.value) return;
@@ -435,8 +450,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                 可直接修改的草稿
                             </div>
                             <textarea
+                                ref={editorScrollRef}
                                 value={editorDraft}
                                 onChange={(event) => setEditorDraft(event.target.value)}
+                                onScroll={(event) => syncScroll(event.currentTarget, previewScrollRef.current)}
                                 spellCheck={false}
                                 className="app-scrollbar h-[calc(100%-34px)] w-full resize-none bg-[rgba(7,10,14,0.72)] px-4 py-3 font-mono text-[13px] leading-6 text-[var(--color-dark-text-main)] outline-none"
                             />
@@ -445,7 +462,11 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             <div className="border-b border-[rgba(255,255,255,0.035)] px-3 py-2 text-[11px] font-semibold text-[var(--color-dark-text-muted)]">
                                 当前预览
                             </div>
-                            <div className="app-scrollbar h-[calc(100%-34px)] overflow-y-auto px-5 py-4">
+                            <div
+                                ref={previewScrollRef}
+                                onScroll={(event) => syncScroll(event.currentTarget, editorScrollRef.current)}
+                                className="app-scrollbar h-[calc(100%-34px)] overflow-y-auto px-5 py-4"
+                            >
                                 <MarkdownRender content={selectedPreview} />
                             </div>
                         </section>

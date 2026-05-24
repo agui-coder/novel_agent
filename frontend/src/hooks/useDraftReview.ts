@@ -248,7 +248,13 @@ export function useDraftReview(deps: {
             const recovered = await recoverResolvedConfirmFailure();
             if (recovered) return;
             if (err instanceof ApiError) {
-                if (err.status === 409 || err.code === 'MERGE_CONFLICT') {
+                if (err.code === 'CHAPTER_CANON_CONFLICT') {
+                    store.setUiNotice({
+                        type: 'error',
+                        message: `正文归档被保护：${err.message}`,
+                        ts: Date.now(),
+                    });
+                } else if (err.status === 409 || err.code === 'MERGE_CONFLICT') {
                     store.setFsmState('CONFLICT');
                     store.setUiNotice({
                         type: 'error',

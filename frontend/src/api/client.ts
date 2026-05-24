@@ -61,6 +61,9 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
 
     if (!response.ok || data.status === 'error') {
         // Non-conflict 409s must pass through with their own code before the generic WRITE_CONFLICT trap.
+        if (response.status === 409 && data.code === 'CHAPTER_CANON_CONFLICT') {
+            throw new ApiError(409, 'CHAPTER_CANON_CONFLICT', data.message || '章节归档保护：目标章节已存在。', data);
+        }
         if (response.status === 409 && data.code === 'MERGE_CONFLICT') {
             const err = new ApiError(409, 'MERGE_CONFLICT', data.message || 'Merge conflict detected.', data) as ApiError & { conflictedFiles?: string[] };
             err.conflictedFiles = Array.isArray(data.conflicted_files) ? data.conflicted_files : [];
