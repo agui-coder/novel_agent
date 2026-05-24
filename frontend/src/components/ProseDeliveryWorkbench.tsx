@@ -129,7 +129,14 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const findings = state?.review_report.findings ?? [];
     const stale = Boolean(payload?.staleness.stale || state?.review_report.stale);
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
-    const canArchive = Boolean(state && !stale && !hasUnsavedEdit && draftActionPending === 'none');
+    const canArchive = Boolean(
+        state
+        && state.review_report.status === 'passed'
+        && state.archive_state.eligible
+        && !stale
+        && !hasUnsavedEdit
+        && draftActionPending === 'none',
+    );
 
     const selectedPreview = useMemo(() => {
         if (selectedChapter === 'all') return editorDraft;
@@ -360,9 +367,12 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         <div className="mt-2 space-y-1.5 text-[11px] text-[var(--color-dark-text-muted)]">
                             <div>阶段：{deliveryStatusLabel(state?.status)}</div>
                             <div>审核：{reviewStatusLabel(state?.review_report.status)}</div>
-                            <div>归档：{state?.archive_state.eligible ? '可由作者确认' : '等待处理'}</div>
+                            <div>归档：{canArchive ? '可由作者确认' : '需先审核通过'}</div>
                             {stale ? <div className="text-[var(--tone-warning-text)]">状态需要刷新或重审</div> : null}
                             {hasUnsavedEdit ? <div className="text-[var(--tone-warning-text)]">有未保存修改</div> : null}
+                            {state?.archive_state.blocked_reason === 'review_findings_require_rewrite_or_author_approval' ? (
+                                <div className="text-[var(--tone-warning-text)]">有审核问题，需打回重写或人工修改后再确认通过</div>
+                            ) : null}
                         </div>
                     </div>
 

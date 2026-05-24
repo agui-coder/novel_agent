@@ -30,7 +30,12 @@ from utils.chapter_length import split_chapter_spans
 from utils.dify_client import DifyClientError, chat_messages, chat_messages_stream, stop_chat_message
 from utils.dify_registry import DifyAgentRoute
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
-from utils.prose_delivery_state import create_or_refresh_prose_delivery_state, delete_prose_delivery_state
+from utils.prose_delivery_state import (
+    create_or_refresh_prose_delivery_state,
+    delete_prose_delivery_state,
+    read_prose_delivery_state,
+    state_staleness,
+)
 from utils.session_runtime import get_agent_context, persist_turn, route_agent_to_session_agent
 
 from agents.world_draft_dify import (  # noqa: F401
@@ -151,6 +156,43 @@ def _reset_canonized_chapter_draft(
     _ensure_repo_identity(repo)
     repo.index.commit("reset canonized chapter draft")
     return repo.head.commit.hexsha
+
+
+def _prose_delivery_confirm_blocker(repo_dir: str, changed_files: list[str]) -> dict[str, Any] | None:
+    if CHAPTER_DRAFT_FILE not in changed_files:
+        return None
+    state = read_prose_delivery_state(repo_dir)
+    if not state:
+        return {
+            "code": "PROSE_DELIVERY_REVIEW_REQUIRED",
+            "message": "chapter_draft.md must be reviewed in the prose delivery workbench before archiving",
+            "review_status": "missing",
+            "archive_eligible": False,
+        }
+    stale = state_staleness(repo_dir, state)
+    if stale.get("stale"):
+        return {
+            "code": "PROSE_DELIVERY_STATE_STALE",
+            "message": "prose delivery state is stale; refresh and review chapter_draft.md before archiving",
+            "review_status": str((state.get("review_report") or {}).get("status") or "unknown")
+            if isinstance(state.get("review_report"), dict)
+            else "unknown",
+            "archive_eligible": False,
+            "staleness": stale,
+        }
+    review_report = state.get("review_report") if isinstance(state.get("review_report"), dict) else {}
+    archive_state = state.get("archive_state") if isinstance(state.get("archive_state"), dict) else {}
+    review_status = str(review_report.get("status") or "not_started")
+    archive_eligible = bool(archive_state.get("eligible"))
+    if review_status != "passed" or not archive_eligible:
+        return {
+            "code": "PROSE_DELIVERY_REVIEW_NOT_PASSED",
+            "message": "chapter_draft.md still has review findings or has not been approved for archiving",
+            "review_status": review_status,
+            "archive_eligible": archive_eligible,
+            "blocked_reason": archive_state.get("blocked_reason"),
+        }
+    return None
 
 
 CHAPTER_CANON_NUMBER_RE = re.compile(r"第\s*([0-9０-９]+)\s*章")
@@ -2276,6 +2318,18 @@ def create_blueprint(
                     )
                 ]
                 should_canonize_chapter_draft = CHAPTER_DRAFT_FILE in changed_files
+                prose_blocker = _prose_delivery_confirm_blocker(repo_dir, changed_files)
+                if prose_blocker:
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "book_id": book_id,
+                                **prose_blocker,
+                            }
+                        ),
+                        409,
+                    )
                 materialized_chapters: list[dict[str, Any]] = []
                 canon_commit_id = ""
                 draft_reset_commit_id = ""

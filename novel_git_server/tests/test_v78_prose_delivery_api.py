@@ -144,7 +144,8 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         spans = {span["number"]: span for span in state["draft_package"]["chapter_spans"]}
         self.assertEqual(spans[1]["review_status"], "passed")
         self.assertEqual(spans[2]["review_status"], "problem")
-        self.assertTrue(state["archive_state"]["eligible"])
+        self.assertFalse(state["archive_state"]["eligible"])
+        self.assertEqual(state["archive_state"]["blocked_reason"], "review_findings_require_rewrite_or_author_approval")
 
         rewrite = self.client.post(
             "/api/prose_delivery/rewrite_request",
@@ -161,6 +162,48 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertIn("人物动机", request_entry["handoff_context"]["review_finding"]["message"])
         self.assertEqual(rewritten_state["status"], "rewrite_requested")
         self.assertEqual(rewritten_state["draft_package"]["chapter_spans"][1]["author_status"], "rewrite_requested")
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+    def test_confirm_blocks_chapter_draft_until_prose_review_passes(self):
+        book_id, repo_dir = self._bootstrap_draft()
+
+        unreviewed = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(unreviewed.status_code, 409, unreviewed.get_json())
+        self.assertEqual(unreviewed.get_json()["code"], "PROSE_DELIVERY_REVIEW_NOT_PASSED")
+
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "summary": "有真实问题，需要先打回。",
+                "findings": [
+                    {
+                        "id": "logic-001",
+                        "chapter_number": 2,
+                        "severity": "blocking",
+                        "message": "人物动机缺少承接。",
+                        "suggestion": "补足因果链。",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(review.status_code, 200, review.get_json())
+
+        problem = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(problem.status_code, 409, problem.get_json())
+        self.assertEqual(problem.get_json()["code"], "PROSE_DELIVERY_REVIEW_NOT_PASSED")
+        self.assertFalse(problem.get_json()["archive_eligible"])
+
+        passed = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={"book_id": book_id, "summary": "作者确认本轮可归档。", "findings": []},
+        )
+        self.assertEqual(passed.status_code, 200, passed.get_json())
+        self.assertTrue(passed.get_json()["state"]["archive_state"]["eligible"])
+
+        confirm = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+        self.assertEqual(confirm.status_code, 200, confirm.get_json())
+        self.assertTrue(confirm.get_json()["prose_delivery_state_cleared"])
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
     def test_clear_removes_ignored_state(self):

@@ -366,9 +366,12 @@ def create_blueprint(
                 }
                 _apply_review_status_to_spans(state, findings)
                 archive_state = state.get("archive_state") if isinstance(state.get("archive_state"), dict) else {}
-                archive_state["eligible"] = True
+                archive_state["eligible"] = review_status == "passed"
                 archive_state["review_gate"] = review_status
-                archive_state.pop("blocked_reason", None)
+                if review_status == "passed":
+                    archive_state.pop("blocked_reason", None)
+                else:
+                    archive_state["blocked_reason"] = "review_findings_require_rewrite_or_author_approval"
                 state["archive_state"] = archive_state
                 state = write_prose_delivery_state(repo_dir, state)
         return jsonify(_public_state_payload(repo_dir, book_id, state)), 200
