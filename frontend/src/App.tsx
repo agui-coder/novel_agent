@@ -1189,8 +1189,6 @@ export default function App() {
                     draftTargetFile = typeof draftPayload?.file_name === 'string' ? draftPayload.file_name : 'chapter_draft.md';
                     draftCommitId = typeof draftPayload?.commit_id === 'string' ? draftPayload.commit_id : '';
                     const draftContent = typeof draftPayload?.content === 'string' ? draftPayload.content : '';
-                    const branch = typeof draftPayload?.branch === 'string' ? draftPayload.branch : store.draftBranch;
-                    const diffPreview = typeof draftPayload?.diff_preview === 'string' ? draftPayload.diff_preview : '';
                     changedFiles = normalizeChangedFilesPayload(draftPayload?.changed_files);
                     const reviewChangedFiles = changedFiles.includes(draftTargetFile)
                         ? changedFiles
@@ -1202,14 +1200,7 @@ export default function App() {
                     } else {
                         void loadReviewTargetMainline(draftTargetFile);
                     }
-                    store.setReviewReadyNotice({
-                        fileName: draftTargetFile,
-                        branch,
-                        commitId: draftCommitId || null,
-                        diffPreview,
-                        changedFiles: reviewChangedFiles,
-                        ts: Date.now(),
-                    });
+                    store.clearReviewReadyNotice();
                     store.setFsmState('REVIEW');
                     store.setWorkbenchMode('review');
                     lines.push(`草稿已写入：${draftTargetFile}${draftCommitId ? ` @ ${draftCommitId.slice(0, 8)}` : ''}`);
@@ -1589,6 +1580,7 @@ export default function App() {
         const routeAgentKey = options?.routeAgentKey;
         const scopedAgent = routeAgentKey || store.activeAgent;
         const scopedActiveFile = options?.activeFile || store.activeFile;
+        const suppressReviewReadyNotice = scopedAgent === 'continuation_agent' && scopedActiveFile === 'chapter_draft.md';
         const scopedConversationId = store.conversationByAgent[scopedAgent] || (
             scopedAgent === store.activeAgent ? store.conversationId : null
         );
@@ -1841,14 +1833,18 @@ export default function App() {
                         content: draftContent,
                         diffPreview,
                     }, messageScope);
-                    store.setReviewReadyNotice({
-                        fileName: reviewSurfaceFile,
-                        branch,
-                        commitId: commitId || null,
-                        diffPreview,
-                        changedFiles: reviewChangedFiles,
-                        ts: Date.now(),
-                    });
+                    if (suppressReviewReadyNotice) {
+                        store.clearReviewReadyNotice();
+                    } else {
+                        store.setReviewReadyNotice({
+                            fileName: reviewSurfaceFile,
+                            branch,
+                            commitId: commitId || null,
+                            diffPreview,
+                            changedFiles: reviewChangedFiles,
+                            ts: Date.now(),
+                        });
+                    }
                     store.setFsmState('REVIEW');
                     store.setWorkbenchMode('review');
                 },
@@ -1914,7 +1910,9 @@ export default function App() {
                         } else {
                             void loadReviewTargetMainline(reviewTargetFile);
                         }
-                        if (!hadDraftReadyEvent) {
+                        if (suppressReviewReadyNotice) {
+                            store.clearReviewReadyNotice();
+                        } else if (!hadDraftReadyEvent) {
                             store.setReviewReadyNotice({
                                 fileName: reviewTargetFile,
                                 branch: store.draftBranch,
