@@ -68,6 +68,7 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(sync.status_code, 200, sync.get_json())
+        self.assertEqual(sync.get_json()["prose_delivery_state"]["status"], "draft_ready")
         return book_id, repo_dir
 
     def test_refresh_and_state_endpoint_expose_draft_package(self):
@@ -165,6 +166,57 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         clear = self.client.post("/api/prose_delivery/clear", json={"book_id": book_id})
 
         self.assertEqual(clear.status_code, 200)
+        self.assertFalse((repo_dir / ".loregit" / "prose_delivery_state.json").exists())
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+    def test_draft_rollback_clears_delivery_state(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        state = self.client.get("/api/prose_delivery/state", query_string={"book_id": book_id}).get_json()["state"]
+        self.assertIsNotNone(state)
+
+        rollback = self.client.post(
+            "/api/draft/rollback",
+            json={"book_id": book_id, "commit_hash": state["base_commit"]},
+        )
+
+        self.assertEqual(rollback.status_code, 200, rollback.get_json())
+        self.assertTrue(rollback.get_json()["prose_delivery_state_cleared"])
+        self.assertFalse((repo_dir / ".loregit" / "prose_delivery_state.json").exists())
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+    def test_draft_confirm_clears_delivery_state_after_success(self):
+        init = self.client.post("/books/init", json={"book_name": f"v78_confirm_{uuid.uuid4().hex}"})
+        self.assertEqual(init.status_code, 200)
+        book_id = init.get_json()["book_id"]
+        repo_dir = self.temp_dir / book_id
+        world = self.client.get(
+            "/books/get_file",
+            query_string={"book_id": book_id, "file_name": "world_model.md"},
+        ).get_json()
+        sync = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "message": "world only with stale prose state",
+                "writes": [
+                    {
+                        "file_name": "world_model.md",
+                        "op": "update",
+                        "content": "# 世界模型\n\n确认清理交付状态。",
+                        "base_etag": world["etag"],
+                    }
+                ],
+            },
+        )
+        self.assertEqual(sync.status_code, 200, sync.get_json())
+        refresh = self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id})
+        self.assertEqual(refresh.status_code, 200, refresh.get_json())
+        self.assertTrue((repo_dir / ".loregit" / "prose_delivery_state.json").exists())
+
+        confirm = self.client.post("/api/draft/confirm", json={"book_id": book_id})
+
+        self.assertEqual(confirm.status_code, 200, confirm.get_json())
+        self.assertTrue(confirm.get_json()["prose_delivery_state_cleared"])
         self.assertFalse((repo_dir / ".loregit" / "prose_delivery_state.json").exists())
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 

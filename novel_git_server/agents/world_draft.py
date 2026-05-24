@@ -30,6 +30,7 @@ from utils.chapter_length import split_chapter_spans
 from utils.dify_client import DifyClientError, chat_messages, chat_messages_stream, stop_chat_message
 from utils.dify_registry import DifyAgentRoute
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
+from utils.prose_delivery_state import create_or_refresh_prose_delivery_state, delete_prose_delivery_state
 from utils.session_runtime import get_agent_context, persist_turn, route_agent_to_session_agent
 
 from agents.world_draft_dify import (  # noqa: F401
@@ -926,6 +927,19 @@ def create_blueprint(
                     for entry in resolved_entries
                     if entry.get("status_card_truncated")
                 ]
+                prose_delivery_state = None
+                if any(entry["normalized_rel_path"] == CHAPTER_DRAFT_FILE for entry in changed_entries):
+                    prose_delivery_state = create_or_refresh_prose_delivery_state(
+                        repo_dir,
+                        book_id,
+                        draft_markdown=next(
+                            entry["new_content"]
+                            for entry in changed_entries
+                            if entry["normalized_rel_path"] == CHAPTER_DRAFT_FILE
+                        ),
+                        source_agent="continuation",
+                        created_by="dify_sync_all",
+                    )
                 response_body = {
                     "status": "success",
                     "book_id": book_id,
@@ -943,6 +957,8 @@ def create_blueprint(
                         for entry in resolved_entries
                     ],
                 }
+                if prose_delivery_state is not None:
+                    response_body["prose_delivery_state"] = prose_delivery_state
                 warnings: list[str] = []
                 if truncated_files:
                     warnings.append(
@@ -2165,6 +2181,7 @@ def create_blueprint(
                 repo.git.checkout(DRAFT_BRANCH_NAME)
                 repo.git.reset("--hard", target_hash.strip())
                 draft_meta = _refresh_draft_review_metadata(repo_dir)
+                delete_prose_delivery_state(repo_dir)
 
                 response_body = {
                     "status": "success",
@@ -2174,6 +2191,7 @@ def create_blueprint(
                     "draft_meta": draft_meta,
                     "commit_id": repo.head.commit.hexsha,
                     "content": _read_file_text(paths["world_model_path"]),
+                    "prose_delivery_state_cleared": True,
                 }
                 if migrated_from_legacy:
                     response_body["warning"] = (
@@ -2360,6 +2378,8 @@ def create_blueprint(
                             "required": True,
                         },
                     ]
+            delete_prose_delivery_state(repo_dir)
+            response_body["prose_delivery_state_cleared"] = True
             return jsonify(response_body), 200
         except GitCommandError as exc:
             message = str(exc)
