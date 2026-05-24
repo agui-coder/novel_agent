@@ -102,6 +102,23 @@ class V77ProseDeliveryStateTests(unittest.TestCase):
         self.assertEqual(spans[1]["review_status"], "pending")
         self.assertEqual(spans[1]["author_status"], "pending")
 
+    def test_parse_chapter_spans_does_not_treat_rounds_as_chapters(self):
+        spans = parse_chapter_spans(
+            "# 续写草稿\n\n"
+            "## 第511章 核子危机的延续\n"
+            "第二回合，NAVI全员半起。\n"
+            "第三回合开始。\n\n"
+            "## 第512章 信息差\n"
+            "第十回合结束。\n"
+            "第十回 风雪夜\n"
+            "正文里的旧式回目如果不带标题标记，也不能打断当前章节。\n"
+        )
+
+        self.assertEqual([span["number"] for span in spans], [511, 512, 10])
+        self.assertEqual(spans[0]["end_line"], 6)
+        self.assertEqual(spans[1]["end_line"], 8)
+        self.assertEqual(spans[2]["title"], "风雪夜")
+
     def test_create_state_binds_draft_commit_and_keeps_book_repo_clean(self):
         state = create_or_refresh_prose_delivery_state(str(self.repo_dir), "book")
 

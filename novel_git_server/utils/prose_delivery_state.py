@@ -17,8 +17,8 @@ PROSE_DELIVERY_TARGET_FILE = "chapter_draft.md"
 
 FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 ZH_CHAPTER_HEADING_RE = re.compile(
-    r"^[ \t]*(?:#{1,6}[ \t]+)?第[ \t]*([0-9０-９一二两三四五六七八九十百千万零〇]+)[ \t]*[章节回卷篇]"
-    r"[ \t]*(?:[：:—\-、.．]?[ \t]*)?(.*?)[ \t]*#*[ \t]*$"
+    r"^[ \t]*(?:#{1,6}[ \t]+)?第[ \t]*(?P<number>[0-9０-９一二两三四五六七八九十百千万零〇]+)"
+    r"[ \t]*(?P<unit>[章节回卷篇])(?P<suffix>[ \t]*(?:[：:—\-、.．]?[ \t]*)?(?P<title>.*?))[ \t]*#*[ \t]*$"
 )
 LATIN_CHAPTER_HEADING_RE = re.compile(
     r"^[ \t]*(?:#{1,6}[ \t]+)?(?:CH|Chapter)[ \t]*([0-9０-９]+)[ \t]*(?:[：:—\-、.．]?[ \t]*)?(.*?)[ \t]*#*[ \t]*$",
@@ -110,13 +110,26 @@ def parse_chapter_number(raw: str) -> int | None:
 
 
 def _match_chapter_heading(line: str) -> tuple[int, str] | None:
-    match = ZH_CHAPTER_HEADING_RE.match(line) or LATIN_CHAPTER_HEADING_RE.match(line)
-    if not match:
+    zh_match = ZH_CHAPTER_HEADING_RE.match(line)
+    if zh_match:
+        unit = zh_match.group("unit")
+        suffix_start = zh_match.start("suffix")
+        next_char = line[suffix_start : suffix_start + 1]
+        if unit == "回" and next_char and next_char not in {" ", "\t", "\u3000", "：", ":", "—", "-", "、", ".", "．", "#"}:
+            return None
+        number = parse_chapter_number(zh_match.group("number"))
+        if number is None:
+            return None
+        title = str(zh_match.group("title") or "").strip(" \t#：:—-、.．")
+        return number, title
+
+    latin_match = LATIN_CHAPTER_HEADING_RE.match(line)
+    if not latin_match:
         return None
-    number = parse_chapter_number(match.group(1))
+    number = parse_chapter_number(latin_match.group(1))
     if number is None:
         return None
-    title = str(match.group(2) or "").strip(" \t#：:—-、.．")
+    title = str(latin_match.group(2) or "").strip(" \t#：:—-、.．")
     return number, title
 
 
