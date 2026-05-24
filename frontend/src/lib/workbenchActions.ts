@@ -1,6 +1,7 @@
 import { WorkbenchActionItem, WorkbenchActionRunState } from '../components/WorkbenchActionDock';
 import { RollingWorkbenchState } from '../api/orchestration';
 import { FileType, FsmState, WorkbenchMode } from '../types/store';
+import { formatChapterArchiveSummary, formatChapterList } from './chapterListFormat';
 
 export interface WorkbenchActionContext {
     activeFile: string;
@@ -48,11 +49,6 @@ export interface WorkbenchActionHandlers {
     onRunRollingContinuation: () => void;
     onRunRollingOutlineHandoff: () => void;
     onRunPostConfirmHandoff: () => void;
-}
-
-function formatChapterList(values: number[], empty = '无'): string {
-    if (!values.length) return empty;
-    return values.join(', ');
 }
 
 function rollingNextActionLabel(nextAction?: string): string {
@@ -127,7 +123,7 @@ export function buildWorkbenchActions(
             : '查看滚动三章队列。';
     const rollingGuidance = rollingState
         ? [
-            `已写章节：${formatChapterList(rollingState.written_chapter_numbers)}`,
+            `已写章节：${formatChapterArchiveSummary(rollingState.written_chapter_numbers)}`,
             `待写章节卡：${formatChapterList(rollingState.pending_card_numbers)}`,
             `本轮选中：${formatChapterList(rollingState.selected_card_numbers)}`,
             ...rollingCardGuidance(rollingState),

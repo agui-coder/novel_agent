@@ -17,10 +17,19 @@ export function useDraftReview(deps: {
     setRepoIntegrity: (v: RepoIntegrity | null) => void;
     loadMainline: (file?: string, opts?: { preserveDraftReview?: boolean }) => Promise<void>;
     onPostConfirm?: (result: DraftConfirmResponse) => Promise<void> | void;
+    onAfterRollback?: () => Promise<void> | void;
 }) {
-    const { store, loadMainline, onPostConfirm } = deps;
+    const { store, loadMainline, onPostConfirm, onAfterRollback } = deps;
 
     const [reviewDiffFullscreenOpen, setReviewDiffFullscreenOpen] = useState(false);
+
+    const refreshAfterRollback = async () => {
+        try {
+            await onAfterRollback?.();
+        } catch (err) {
+            console.warn('Failed to refresh rolling state after rollback:', err);
+        }
+    };
 
     const recoverResolvedConfirmFailure = useCallback(async () => {
         const runtimeState = useAppStore.getState();
@@ -298,6 +307,7 @@ export function useDraftReview(deps: {
             console.warn('Rollback skipped: draftCommitId is missing, fallback to mainline refresh.');
             store.resetSandbox();
             await loadMainline();
+            await refreshAfterRollback();
             store.setUiNotice({
                 type: 'info',
                 message: '未检测到草稿提交，已刷新主线内容。',
@@ -319,6 +329,7 @@ export function useDraftReview(deps: {
             store.clearReviewReadyNotice();
             store.setWorkbenchMode('editor');
             await loadMainline();
+            await refreshAfterRollback();
             store.setUiNotice({
                 type: 'success',
                 message: `草稿已回滚：${draftCommit.slice(0, 8)} → ${targetCommit.slice(0, 8)}`,
@@ -332,6 +343,7 @@ export function useDraftReview(deps: {
                     store.clearReviewReadyNotice();
                     store.setWorkbenchMode('editor');
                     await loadMainline();
+                    await refreshAfterRollback();
                     store.setUiNotice({
                         type: 'info',
                         message: '草稿分支不存在，已回到主线最新版本。',
@@ -361,6 +373,7 @@ export function useDraftReview(deps: {
         store.clearReviewReadyNotice();
         store.setWorkbenchMode('editor');
         await loadMainline();
+        await refreshAfterRollback();
     };
 
     const pendingReviewTargetFile = useCallback(() => {

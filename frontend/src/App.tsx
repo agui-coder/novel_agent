@@ -47,6 +47,7 @@ import { mapConversationMessages, normalizeChangedFilesPayload } from './lib/con
 import { MAX_SUPPRESSED_DEBUG_LOGS, shouldSuppressBackendError, type SuppressedBackendErrorLog } from './lib/errorSuppression';
 import { buildWorkbenchActions } from './lib/workbenchActions';
 import { isSameConversationScope } from './lib/conversationScope';
+import { formatChapterArchiveSummary, formatChapterList } from './lib/chapterListFormat';
 
 const REASONING_FLUSH_DELAY_MS = 100;
 const OUTLINE_LANDING_TARGET_LABELS = new Map(
@@ -54,8 +55,7 @@ const OUTLINE_LANDING_TARGET_LABELS = new Map(
 );
 
 function compactList(values: number[] | undefined, empty = '无'): string {
-    if (!values || values.length === 0) return empty;
-    return values.join(', ');
+    return formatChapterList(values, empty);
 }
 
 function compactBriefText(value: unknown, limit = 56): string {
@@ -233,6 +233,7 @@ export default function App() {
     const streamAbortControllerRef = useRef<AbortController | null>(null);
     const streamStableUpstreamConversationIdRef = useRef<string | null>(null);
     const streamTaskIdRef = useRef<string | null>(null);
+    const refreshRollingStateRef = useRef<() => Promise<void> | void>(() => undefined);
 
     useEffect(() => {
         document.documentElement.dataset.workbenchTheme = DEFAULT_WORKBENCH_THEME_ID;
@@ -646,6 +647,7 @@ export default function App() {
         setRepoIntegrity,
         loadMainline,
         onPostConfirm: runPostConfirmWorldDistillFromResult,
+        onAfterRollback: () => refreshRollingStateRef.current(),
     });
 
     const reviewChangedFiles = useMemo(() => {
@@ -1024,8 +1026,8 @@ export default function App() {
             const response = await fetchRollingWorkbenchState(store.bookRef, { batchSize: 3 });
             const next = response.workbench_state;
             lines.push(`下一步：${next.next_action}`);
-            lines.push(`已写：${next.written_chapter_numbers.length ? next.written_chapter_numbers.join(', ') : '无'}`);
-            lines.push(`本轮：${next.selected_card_numbers.length ? next.selected_card_numbers.join(', ') : '无'}`);
+            lines.push(`已写：${formatChapterArchiveSummary(next.written_chapter_numbers)}`);
+            lines.push(`本轮：${formatChapterList(next.selected_card_numbers)}`);
             if (next.next_action === 'replenish_outline') {
                 lines.push('章节卡已消耗完，需要先补纲。');
             }
@@ -1053,6 +1055,10 @@ export default function App() {
             }));
         }
     }, [rollingActionState.runState, store]);
+
+    useEffect(() => {
+        refreshRollingStateRef.current = handleRefreshRollingState;
+    }, [handleRefreshRollingState]);
 
     const handleRunRollingContinuation = useCallback(async () => {
         if (rollingActionState.runState === 'running') return;
@@ -1100,7 +1106,7 @@ export default function App() {
         try {
             const payload = await buildRollingContinuationPayload(store.bookRef, { batchSize: 3 });
             const nextState = payload.workbench_state;
-            lines.push(`本轮章节：${nextState.selected_card_numbers.length ? nextState.selected_card_numbers.join(', ') : '无'}`);
+            lines.push(`本轮章节：${formatChapterList(nextState.selected_card_numbers)}`);
             lines.push(...buildRollingBriefLines(payload.author_writing_brief));
             lines.push('已生成章节执行包，交给 continuation Agent。');
             setRunningProgress(1, 4, '调用续写 Agent');
