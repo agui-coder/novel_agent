@@ -25,6 +25,7 @@ import { GitDiffFullscreen } from './components/GitDiffFullscreen';
 import { ReviewCanvasPanel } from './components/ReviewCanvasPanel';
 import { ReviewDiffFullscreen } from './components/ReviewDiffFullscreen';
 import { ReviewInspectorPanel } from './components/ReviewInspectorPanel';
+import { ProseDeliveryWorkbench } from './components/ProseDeliveryWorkbench';
 import { ReviewReadyNotice } from './components/ReviewReadyNotice';
 import { WorkbenchActionDock } from './components/WorkbenchActionDock';
 
@@ -32,6 +33,7 @@ import { fetchHotFiles, fetchMainlineFile, fetchRepoIntegrity, repairBookLayout,
 
 import { buildRollingContinuationPayload, buildRollingOutlineHandoffPayload, fetchRollingWorkbenchState, runDeductionStream, stopDeductionStream, runBatchInit, runStyleInit, type RollingAuthorWritingBrief, type RollingWorkbenchState } from './api/orchestration';
 import { type DraftConfirmResponse, type MaterializedChapter, type PostConfirmWorldPayload } from './api/draft';
+import { type ProseReviewFinding } from './api/proseDelivery';
 import { createConversation } from './api/session';
 import { ApiError } from './api/client';
 import { DEFAULT_HOT_FILES } from './config/hotFiles';
@@ -2634,11 +2636,14 @@ export default function App() {
             { routeAgentKey: 'review_agent', activeFile: 'chapter_draft.md', fileType: 'chapter', baseEtag: '' },
         );
     };
-    const handleRewriteWithReview = () => {
+    const handleRewriteWithReview = (finding?: ProseReviewFinding) => {
         const targetFile = pendingReviewTargetFile();
         if (targetFile !== 'chapter_draft.md') return;
+        const findingAdvice = finding
+            ? `\n\n本次打回问题：${finding.message || finding.suggestion}\n修复建议：${finding.suggestion || finding.message}`
+            : '';
         void handleIntentSubmit(
-            `请根据 error_archive.md、最近审核意见和当前上下文，修复 ${targetFile} 中所有被审核命中的真实问题；如果问题跨越当前三章，也必须一并修复，不要只处理最新三章。必须遵守 chapter_outline.md 的本章边界、summary.md 与 status_card.md 的最新事实、world_model.md 的设定、style_guide.md 的文风，以及 error_archive.md 的硬性禁令。请直接更新 chapter_draft.md，不要修改其他文件。`,
+            `请根据 error_archive.md、最近审核意见和当前上下文，修复 ${targetFile} 中所有被审核命中的真实问题；如果问题跨越当前三章，也必须一并修复，不要只处理最新三章。必须遵守 chapter_outline.md 的本章边界、summary.md 与 status_card.md 的最新事实、world_model.md 的设定、style_guide.md 的文风，以及 error_archive.md 的硬性禁令。请直接更新 chapter_draft.md，不要修改其他文件。${findingAdvice}`,
             { routeAgentKey: 'continuation_agent', activeFile: 'chapter_draft.md', fileType: 'chapter', baseEtag: '' },
         );
     };
@@ -2755,17 +2760,36 @@ export default function App() {
                 <ConflictBanner isVisible={true} onRefreshLock={handleRefreshLock} />
             )}
             <div className={store.fsmState === 'CONFLICT' ? 'min-h-0 flex-1 pt-16' : 'min-h-0 flex-1'}>
-                <ReviewCanvasPanel
-                    fileName={reviewTargetFile}
-                    changedFiles={reviewChangedFiles}
-                    mainlineContent={reviewMainlineContent}
-                    draftContent={store.draftContent}
-                    draftCommitId={store.draftCommitId}
-                    fsmState={store.fsmState}
-                    isLoadingTarget={reviewTargetLoading}
-                    onSelectFile={handleSelectReviewTargetFile}
-                    onOpenFullscreen={() => setReviewDiffFullscreenOpen(true)}
-                />
+                {isProseReviewSurface ? (
+                    <ProseDeliveryWorkbench
+                        bookRef={store.bookRef}
+                        draftContent={store.draftContent}
+                        draftCommitId={store.draftCommitId}
+                        draftActionPending={store.draftActionPending}
+                        onDraftLoaded={(content, commitId, etag) => {
+                            store.setSandboxDraft(content, commitId);
+                            store.setReviewMainlineFact(store.mainlineContent, etag);
+                            store.setReviewTarget('chapter_draft.md', reviewChangedFiles.includes('chapter_draft.md') ? reviewChangedFiles : ['chapter_draft.md', ...reviewChangedFiles]);
+                        }}
+                        onConfirm={handleConfirm}
+                        onRollback={handleRollback}
+                        onRunReviewAgent={handleRunReviewAgent}
+                        onRewriteWithReview={handleRewriteWithReview}
+                        onNotice={store.setUiNotice}
+                    />
+                ) : (
+                    <ReviewCanvasPanel
+                        fileName={reviewTargetFile}
+                        changedFiles={reviewChangedFiles}
+                        mainlineContent={reviewMainlineContent}
+                        draftContent={store.draftContent}
+                        draftCommitId={store.draftCommitId}
+                        fsmState={store.fsmState}
+                        isLoadingTarget={reviewTargetLoading}
+                        onSelectFile={handleSelectReviewTargetFile}
+                        onOpenFullscreen={() => setReviewDiffFullscreenOpen(true)}
+                    />
+                )}
             </div>
         </div>
     );
@@ -2806,7 +2830,9 @@ export default function App() {
             }}
         />
     );
-    const reviewRightPanel = (
+    const reviewRightPanel = isProseReviewSurface ? (
+        editorRightPanel
+    ) : (
         <div className="flex h-full min-h-0 flex-col">
             <div className="min-h-[220px] flex-[0_0_42%] border-b border-[rgba(255,255,255,0.04)]">
                 <ReviewInspectorPanel
@@ -2823,8 +2849,8 @@ export default function App() {
                     onSelectFile={handleSelectReviewTargetFile}
                     onConfirm={handleConfirm}
                     onRollback={handleRollback}
-                    onRunReviewAgent={reviewTargetFile === 'chapter_draft.md' ? handleRunReviewAgent : undefined}
-                    onRewriteWithReview={reviewTargetFile === 'chapter_draft.md' ? handleRewriteWithReview : undefined}
+                    onRunReviewAgent={undefined}
+                    onRewriteWithReview={undefined}
                     onOpenFullscreen={() => setReviewDiffFullscreenOpen(true)}
                     onBackToEditor={() => store.setWorkbenchMode('editor')}
                     onRefreshLock={handleRefreshLock}
