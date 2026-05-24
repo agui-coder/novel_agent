@@ -131,7 +131,13 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const spans = state?.draft_package.chapter_spans ?? [];
     const findings = state?.review_report.findings ?? [];
     const stale = Boolean(payload?.staleness.stale || state?.review_report.stale);
+    const latestReviewText = latestReviewMessageText.trim();
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
+    const hasRewriteInput = findings.length > 0 || Boolean(manualFinding.trim()) || Boolean(latestReviewText);
+    const canRequestRewrite = !hasUnsavedEdit
+        && reviewState !== 'saving'
+        && draftActionPending === 'none'
+        && hasRewriteInput;
     const canArchive = Boolean(
         state
         && state.review_report.status === 'passed'
@@ -298,16 +304,100 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         }
     };
 
+    const requestRewriteForFinding = async (finding: ProseReviewFinding) => {
+        const next = await requestProseRewrite(bookRef, {
+            finding_id: finding.id,
+            instruction: finding.suggestion || finding.message,
+        });
+        setPayload(next);
+        const nextFinding = next.state?.review_report.findings.find((item) => item.id === finding.id) || finding;
+        onRewriteWithReview(nextFinding);
+        return next;
+    };
+
     const handleRewriteFinding = async (finding: ProseReviewFinding) => {
+        setReviewState('saving');
+        setError('');
         try {
-            const next = await requestProseRewrite(bookRef, {
-                finding_id: finding.id,
-                instruction: finding.suggestion || finding.message,
-            });
-            setPayload(next);
-            onRewriteWithReview(finding);
+            await requestRewriteForFinding(finding);
+            setReviewState('idle');
+            onNotice({ type: 'success', message: '已登记打回请求，并交给续写 Agent 重写。', ts: Date.now() });
         } catch (err) {
             const message = formatApiError(err, '登记重写请求失败');
+            setReviewState('error');
+            setError(message);
+            onNotice({ type: 'error', message, ts: Date.now() });
+        }
+    };
+
+    const handleRewriteFromCurrentReview = async () => {
+        if (hasUnsavedEdit) {
+            onNotice({ type: 'info', message: '当前草稿有未保存修改，请先保存后再打回重写。', ts: Date.now() });
+            return;
+        }
+        if (!hasRewriteInput) {
+            onNotice({ type: 'info', message: '还没有审核意见。可以先启动审核 Agent，或手动写下需要打回的问题。', ts: Date.now() });
+            return;
+        }
+        setReviewState('saving');
+        setError('');
+        try {
+            let targetFinding = findings.find((finding) => finding.status !== 'rewrite_requested') || findings[0];
+            if (!targetFinding) {
+                const chapterNumber = selectedChapter === 'all' ? null : selectedChapter;
+                const manualText = manualFinding.trim();
+                const extracted = manualText
+                    ? {
+                        summary: reviewSummary || '作者手动打回重写。',
+                        findings: [{
+                            id: `human-${Date.now()}`,
+                            chapter_number: chapterNumber,
+                            severity: 'blocking',
+                            status: 'open',
+                            message: manualText,
+                            suggestion: manualText,
+                        } as ProseReviewFinding],
+                        passed: false,
+                    }
+                    : extractProseReviewReport(latestReviewText, spans);
+                let nextFindings = extracted.findings;
+                if (nextFindings.length === 0) {
+                    if (extracted.passed) {
+                        setReviewState('idle');
+                        onNotice({ type: 'info', message: '最近审核回复判断为通过，没有生成打回问题。', ts: Date.now() });
+                        return;
+                    }
+                    const fallbackText = extracted.summary || latestReviewText;
+                    nextFindings = [{
+                        id: `review-${Date.now()}-fallback`,
+                        chapter_number: chapterNumber,
+                        severity: 'blocking',
+                        status: 'open',
+                        message: fallbackText,
+                        suggestion: fallbackText,
+                    }];
+                }
+                const next = await attachProseReviewReport(bookRef, {
+                    summary: extracted.summary || reviewSummary || '按审核意见打回重写。',
+                    findings: nextFindings,
+                });
+                setPayload(next);
+                setReviewSummary(extracted.summary || reviewSummary);
+                setManualFinding('');
+                targetFinding = next.state?.review_report.findings.find((item) => item.status !== 'rewrite_requested')
+                    || next.state?.review_report.findings[0]
+                    || nextFindings[0];
+            }
+            if (targetFinding.status === 'rewrite_requested') {
+                onRewriteWithReview(targetFinding);
+            } else {
+                await requestRewriteForFinding(targetFinding);
+            }
+            setReviewState('idle');
+            onNotice({ type: 'success', message: '已按审核意见打回，并交给续写 Agent 重写。', ts: Date.now() });
+        } catch (err) {
+            const message = formatApiError(err, '打回重写失败');
+            setReviewState('error');
             setError(message);
             onNotice({ type: 'error', message, ts: Date.now() });
         }
@@ -419,10 +509,19 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         <button
                             type="button"
                             onClick={handleSyncLatestReview}
-                            disabled={!latestReviewMessageText.trim() || reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                            disabled={!latestReviewText || reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
                             className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             同步最近审核回复
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { void handleRewriteFromCurrentReview(); }}
+                            disabled={!canRequestRewrite}
+                            title="把最近审核回复或作者标记的问题登记为打回请求，然后交给续写 Agent 重写 chapter_draft.md。"
+                            className="w-full rounded-[8px] border border-[var(--tone-warning-border)] bg-[rgba(245,158,11,0.1)] px-3 py-2 text-[12px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.16)] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                            {reviewState === 'saving' ? '打回处理中' : '按审核意见打回重写'}
                         </button>
                         <button
                             type="button"
@@ -495,7 +594,8 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleRewriteFinding(finding); }}
-                                                    className="shrink-0 rounded-[8px] border border-[var(--tone-warning-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.08)]"
+                                                    disabled={reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                                                    className="shrink-0 rounded-[8px] border border-[var(--tone-warning-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                                 >
                                                     打回重写
                                                 </button>
