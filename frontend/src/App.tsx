@@ -2618,6 +2618,23 @@ export default function App() {
             );
         })
     ), [rightPanelActiveFile, rightPanelAgent, rightPanelFileType, rightPanelMessages]);
+    const latestProseReviewMessageText = useMemo(() => {
+        if (!isProseReviewSurface) return '';
+        const reviewMessages = store.chatMessagesByAgent.review_agent ?? [];
+        const latest = [...reviewMessages].reverse().find((message) => (
+            message.role === 'assistant'
+            && message.status === 'done'
+            && (!message.activeFile || isSameConversationScope(
+                message.activeFile,
+                resolveFileType(message.activeFile),
+                'chapter_draft.md',
+                'chapter',
+                'review_agent',
+            ))
+            && message.text.trim()
+        ));
+        return latest?.text.trim() ?? '';
+    }, [isProseReviewSurface, store.chatMessagesByAgent]);
     const rightPanelLatestUserMessageId = getLatestUserMessage(rightPanelAgent, rightPanelActiveFile)?.id ?? null;
     useEffect(() => {
         if (isProseReviewSurface) {
@@ -2640,10 +2657,25 @@ export default function App() {
         const targetFile = pendingReviewTargetFile();
         if (targetFile !== 'chapter_draft.md') return;
         const findingAdvice = finding
-            ? `\n\n本次打回问题：${finding.message || finding.suggestion}\n修复建议：${finding.suggestion || finding.message}`
+            ? `\n\n【本次打回问题】\n${finding.message || finding.suggestion}\n\n【修复建议】\n${finding.suggestion || finding.message}`
             : '';
         void handleIntentSubmit(
-            `请根据 error_archive.md、最近审核意见和当前上下文，修复 ${targetFile} 中所有被审核命中的真实问题；如果问题跨越当前三章，也必须一并修复，不要只处理最新三章。必须遵守 chapter_outline.md 的本章边界、summary.md 与 status_card.md 的最新事实、world_model.md 的设定、style_guide.md 的文风，以及 error_archive.md 的硬性禁令。请直接更新 chapter_draft.md，不要修改其他文件。${findingAdvice}`,
+            `【正文草稿打回重写请求】
+
+请由续写 Agent 接手修复 ${targetFile}。这不是让后端或前端改正文，必须由你读取事实源并重写草稿。
+
+必须读取：
+1. chapter_draft.md：上一版草稿全文，保留可用内容，只修复审核命中的真实问题。
+2. error_archive.md：长期错误档案，本轮新增问题也要作为写作禁令参考。
+3. chapter_outline.md：本轮章节边界，不要越过逐章大纲。
+4. summary.md、status_card.md、world_model.md：最新剧情事实、角色状态和设定约束。
+5. style_guide.md：只作为文风模仿提示，不要为了格式牺牲剧情推进。
+
+输出要求：
+1. 直接更新 chapter_draft.md，不要写入正式正文，不要修改其他文件。
+2. 如果问题跨越当前三章，允许一起修复；如果只命中单章，只重写必要片段。
+3. 先保证剧情逻辑、状态连续、章节边界和错误档案约束，再考虑语言润色。
+4. 不要在回复里长篇解释正文内容，完成后简短说明修复了哪些问题。${findingAdvice}`,
             { routeAgentKey: 'continuation_agent', activeFile: 'chapter_draft.md', fileType: 'chapter', baseEtag: '' },
         );
     };
@@ -2776,6 +2808,7 @@ export default function App() {
                         onRunReviewAgent={handleRunReviewAgent}
                         onRewriteWithReview={handleRewriteWithReview}
                         onNotice={store.setUiNotice}
+                        latestReviewMessageText={latestProseReviewMessageText}
                     />
                 ) : (
                     <ReviewCanvasPanel

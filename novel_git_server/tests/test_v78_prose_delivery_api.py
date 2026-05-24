@@ -155,6 +155,10 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         rewritten_state = rewrite.get_json()["state"]
         self.assertEqual(request_entry["route_agent_key"], "continuation_agent")
         self.assertTrue(request_entry["no_prose_written_by_backend"])
+        self.assertEqual(request_entry["handoff_context"]["previous_draft_file"], "chapter_draft.md")
+        self.assertIn("error_archive.md", request_entry["handoff_context"]["must_read_files"])
+        self.assertEqual(request_entry["handoff_context"]["review_finding"]["id"], "logic-001")
+        self.assertIn("人物动机", request_entry["handoff_context"]["review_finding"]["message"])
         self.assertEqual(rewritten_state["status"], "rewrite_requested")
         self.assertEqual(rewritten_state["draft_package"]["chapter_spans"][1]["author_status"], "rewrite_requested")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")

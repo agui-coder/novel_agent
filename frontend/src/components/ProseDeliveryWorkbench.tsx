@@ -10,6 +10,7 @@ import {
 } from '../api/proseDelivery';
 import { ApiError } from '../api/client';
 import { DraftActionPending } from '../types/store';
+import { extractProseReviewReport } from '../lib/proseReviewExtraction';
 import { MarkdownRender } from './MarkdownRender';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -26,6 +27,7 @@ interface ProseDeliveryWorkbenchProps {
     onRunReviewAgent: () => void;
     onRewriteWithReview: (finding?: ProseReviewFinding) => void;
     onNotice: (notice: { type: 'success' | 'error' | 'info'; message: string; ts: number }) => void;
+    latestReviewMessageText?: string;
 }
 
 function lineSlice(text: string, startLine: number, endLine: number): string {
@@ -109,6 +111,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     onRunReviewAgent,
     onRewriteWithReview,
     onNotice,
+    latestReviewMessageText = '',
 }) => {
     const [payload, setPayload] = useState<ProseDeliveryPayload | null>(null);
     const [loading, setLoading] = useState(false);
@@ -241,6 +244,38 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         }
     };
 
+    const handleSyncLatestReview = async () => {
+        const reviewText = latestReviewMessageText.trim();
+        if (!reviewText) {
+            onNotice({ type: 'info', message: '还没有可同步的审核 Agent 回复。', ts: Date.now() });
+            return;
+        }
+        setReviewState('saving');
+        setError('');
+        try {
+            const extracted = extractProseReviewReport(reviewText, spans);
+            const next = await attachProseReviewReport(bookRef, {
+                summary: extracted.summary || '已同步审核 Agent 最近一次回复。',
+                findings: extracted.findings,
+            });
+            setPayload(next);
+            setReviewSummary(extracted.summary);
+            setReviewState('idle');
+            onNotice({
+                type: extracted.findings.length > 0 ? 'success' : 'info',
+                message: extracted.findings.length > 0
+                    ? `已同步 ${extracted.findings.length} 条审核问题。`
+                    : '审核回复未识别到阻塞问题，已按通过记录；归档仍需作者确认。',
+                ts: Date.now(),
+            });
+        } catch (err) {
+            const message = formatApiError(err, '同步审核回复失败');
+            setReviewState('error');
+            setError(message);
+            onNotice({ type: 'error', message, ts: Date.now() });
+        }
+    };
+
     const handleRewriteFinding = async (finding: ProseReviewFinding) => {
         try {
             const next = await requestProseRewrite(bookRef, {
@@ -355,6 +390,14 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             启动审核 Agent
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSyncLatestReview}
+                            disabled={!latestReviewMessageText.trim() || reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                            className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                            同步最近审核回复
                         </button>
                         <button
                             type="button"

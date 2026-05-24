@@ -426,6 +426,29 @@ def create_blueprint(
                     "created_at": _now_utc(),
                     "route_agent_key": "continuation_agent",
                     "no_prose_written_by_backend": True,
+                    "handoff_context": {
+                        "previous_draft_file": PROSE_DELIVERY_TARGET_FILE,
+                        "previous_draft_commit": state.get("draft_commit") or "",
+                        "review_summary": str((state.get("review_report") or {}).get("summary") or "").strip()
+                        if isinstance(state.get("review_report"), dict)
+                        else "",
+                        "review_finding": {
+                            "id": finding_id,
+                            "chapter_number": chapter_number,
+                            "message": str(finding.get("message") or "").strip(),
+                            "suggestion": str(finding.get("suggestion") or "").strip(),
+                        },
+                        "error_archive_file": "error_archive.md",
+                        "must_read_files": [
+                            PROSE_DELIVERY_TARGET_FILE,
+                            "error_archive.md",
+                            "chapter_outline.md",
+                            "summary.md",
+                            "status_card.md",
+                            "world_model.md",
+                            "style_guide.md",
+                        ],
+                    },
                 }
                 state.setdefault("rewrite_requests", [])
                 if not isinstance(state["rewrite_requests"], list):
