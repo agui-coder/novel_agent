@@ -4,7 +4,7 @@ from typing import Any
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from agents import archive, chapter, checkout, git_console, history, library, rolling, runtime_config, session, style_init, summary, tomato_import, tools, world_draft, world_state
+from agents import archive, chapter, checkout, git_console, history, library, prose_delivery, rolling, runtime_config, session, style_init, summary, tomato_import, tools, world_draft, world_state
 from utils.book_storage import get_book_paths, get_storage_root, inspect_book_layout_integrity, resolve_book_id, resolve_book_locators
 from utils.dify_registry import build_dify_agent_registry
 
@@ -224,6 +224,14 @@ def create_app(
     app.register_blueprint(
         rolling.create_blueprint(
             storage_root=app.config["STORAGE_ROOT"],
+            require_book_id=require_book_id,
+            json_error=json_error,
+        )
+    )
+    app.register_blueprint(
+        prose_delivery.create_blueprint(
+            storage_root=app.config["STORAGE_ROOT"],
+            parse_json_payload=parse_json_payload,
             require_book_id=require_book_id,
             json_error=json_error,
         )
