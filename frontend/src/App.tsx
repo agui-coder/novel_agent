@@ -50,6 +50,8 @@ import { isSameConversationScope } from './lib/conversationScope';
 import { formatChapterArchiveSummary, formatChapterList } from './lib/chapterListFormat';
 
 const REASONING_FLUSH_DELAY_MS = 100;
+const ROLLING_STREAM_PREVIEW_LIMIT = 260;
+const ROLLING_STREAM_REASONING_LIMIT = 160;
 const OUTLINE_LANDING_TARGET_LABELS = new Map(
     OUTLINE_LANDING_TARGETS.map((target) => [target.fileName, target.label])
 );
@@ -63,6 +65,24 @@ function compactBriefText(value: unknown, limit = 56): string {
     if (!text) return '未填写';
     if (text.length <= limit) return text;
     return `${text.slice(0, limit - 1).trim()}…`;
+}
+
+function compactProgressText(value: unknown, limit = 120): string {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    if (text.length <= limit) return text;
+    return `${text.slice(0, limit - 1).trim()}…`;
+}
+
+function upsertProgressLine(lines: string[], prefix: string, value: string): void {
+    if (!value) return;
+    const nextLine = `${prefix}${value}`;
+    const existingIndex = lines.findIndex((line) => line.startsWith(prefix));
+    if (existingIndex >= 0) {
+        lines[existingIndex] = nextLine;
+    } else {
+        lines.push(nextLine);
+    }
 }
 
 function buildRollingBriefLines(brief?: RollingAuthorWritingBrief): string[] {
@@ -1115,19 +1135,54 @@ export default function App() {
             let draftCommitId = '';
             let draftTargetFile = 'chapter_draft.md';
             let changedFiles: string[] = [];
+            let streamPreviewBuffer = '';
             const abortController = new AbortController();
             await runDeductionStream(payload.intent, useAppStore.getState(), {
                 onAck: (ack) => {
                     const routed = typeof ack?.routed_agent === 'string' ? ack.routed_agent : 'continuation_agent';
                     lines.push(`续写 Agent 已接单：${routed}`);
+                    const taskId = typeof ack?.task_id === 'string' ? ack.task_id : '';
+                    if (taskId) {
+                        lines.push(`执行编号：${taskId.slice(0, 8)}`);
+                    }
                     setRunningProgress(2, 4, '续写中');
                 },
                 onStage: (stage) => {
                     const text = typeof stage?.stage_text === 'string' ? stage.stage_text : '';
                     if (text) {
-                        lines.push(`执行阶段：${text}`);
+                        const nodeTitle = typeof stage?.node_title === 'string' ? stage.node_title : '';
+                        const nodeLabel = nodeTitle ? `（${nodeTitle}）` : '';
+                        lines.push(`执行阶段：${compactProgressText(text, 96)}${nodeLabel}`);
                         setRunningProgress(2, 4, '续写中');
                     }
+                },
+                onReasoning: (reasoningPayload) => {
+                    const text = compactProgressText(reasoningPayload?.text, ROLLING_STREAM_REASONING_LIMIT);
+                    if (!text) return;
+                    const label = typeof reasoningPayload?.label === 'string' && reasoningPayload.label
+                        ? reasoningPayload.label
+                        : '模型过程';
+                    upsertProgressLine(lines, `${label}：`, text);
+                    setRunningProgress(2, 4, '续写中');
+                },
+                onPreview: (previewPayload) => {
+                    const text = compactProgressText(previewPayload?.text, ROLLING_STREAM_PREVIEW_LIMIT);
+                    if (!text) return;
+                    const label = typeof previewPayload?.label === 'string' && previewPayload.label
+                        ? previewPayload.label
+                        : '模型输出预览';
+                    upsertProgressLine(lines, `${label}：`, text);
+                    setRunningProgress(2, 4, '续写中');
+                },
+                onDelta: (delta) => {
+                    if (!delta) return;
+                    streamPreviewBuffer = `${streamPreviewBuffer}${delta}`;
+                    if (streamPreviewBuffer.length > ROLLING_STREAM_PREVIEW_LIMIT * 2) {
+                        streamPreviewBuffer = streamPreviewBuffer.slice(-ROLLING_STREAM_PREVIEW_LIMIT * 2);
+                    }
+                    const preview = compactProgressText(streamPreviewBuffer, ROLLING_STREAM_PREVIEW_LIMIT);
+                    upsertProgressLine(lines, '模型输出预览：', preview);
+                    setRunningProgress(2, 4, '模型生成中');
                 },
                 onDraftReady: (draftPayload) => {
                     draftReady = true;
@@ -1158,7 +1213,20 @@ export default function App() {
                     store.setFsmState('REVIEW');
                     store.setWorkbenchMode('review');
                     lines.push(`草稿已写入：${draftTargetFile}${draftCommitId ? ` @ ${draftCommitId.slice(0, 8)}` : ''}`);
+                    if (reviewChangedFiles.length > 0) {
+                        lines.push(`变更文件：${reviewChangedFiles.join(', ')}`);
+                    }
                     setRunningProgress(3, 4, '进入审阅');
+                },
+                onGitSyncSuccess: (syncPayload) => {
+                    const commitId = typeof syncPayload?.commit_id === 'string'
+                        ? syncPayload.commit_id
+                        : typeof syncPayload?.sync_commit_id === 'string'
+                            ? syncPayload.sync_commit_id
+                            : '';
+                    const fileName = typeof syncPayload?.file_name === 'string' ? syncPayload.file_name : 'chapter_draft.md';
+                    lines.push(`草稿同步成功：${fileName}${commitId ? ` @ ${commitId.slice(0, 8)}` : ''}`);
+                    setRunningProgress(3, 4, '草稿已同步');
                 },
                 onDone: (donePayload) => {
                     const doneChangedFiles = normalizeChangedFilesPayload(donePayload?.changed_files);
@@ -1167,6 +1235,11 @@ export default function App() {
                     }
                     if (!draftCommitId && typeof donePayload?.sync_commit_id === 'string') {
                         draftCommitId = donePayload.sync_commit_id;
+                    }
+                    if (doneChangedFiles.length > 0) {
+                        lines.push(`流式任务结束：${doneChangedFiles.join(', ')}`);
+                    } else {
+                        lines.push('流式任务结束：等待草稿检测。');
                     }
                 },
                 onError: (errorPayload) => {

@@ -415,8 +415,8 @@ export const WorkbenchActionDock: React.FC<WorkbenchActionDockProps> = ({
                                         </div>
                                     )}
                                     {progressLines.length > 0 && (
-                                        <div className="app-scrollbar mt-2 max-h-28 overflow-y-auto rounded-[8px] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.18)] px-2 py-1.5 font-mono text-[9px] leading-4 text-[var(--color-dark-text-muted)]">
-                                            {progressLines.slice(-8).map((line, index) => (
+                                        <div className="app-scrollbar mt-2 max-h-40 overflow-y-auto rounded-[8px] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.18)] px-2 py-1.5 font-mono text-[9px] leading-4 text-[var(--color-dark-text-muted)]">
+                                            {progressLines.slice(-12).map((line, index) => (
                                                 <div key={`${action.id}-progress-${index}`}>{line}</div>
                                             ))}
                                         </div>
