@@ -28,6 +28,7 @@ from utils.draft_metadata import (
 )
 from utils.file_lock import exclusive_file_lock
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
+from utils.prose_delivery_state import read_prose_delivery_state, write_prose_delivery_state
 from utils.markdown_sections import (
     MarkdownPatchApplyError,
     MarkdownSectionAmbiguousError,
@@ -52,6 +53,8 @@ CORE_ARCHIVE_FILES = {
     "error_archive.md",
     "domain_rules.md",
 }
+DIRECT_CONTROL_COMMIT_FILES = {"error_archive.md"}
+DIRECT_CONTROL_COMMIT_SOURCE = "control_direct_commit"
 CORE_HOT_FILE_LABELS = {
     "world_model.md": "世界观底座",
     "status_card.md": "状态卡",
@@ -579,6 +582,129 @@ def _ensure_draft_branch(repo_dir: str, mainline_branch: str, *, create_if_missi
     return True, False
 
 
+def _active_draft_base_branch(repo_dir: str, fallback_branch: str) -> str:
+    resolved = resolve_draft_metadata(repo_dir, allow_infer=True, write_inferred=True)
+    if resolved.get("status") == "success":
+        base_branch = resolved.get("base_branch")
+        if isinstance(base_branch, str) and base_branch.strip() and base_branch.strip() in _list_local_heads(repo_dir):
+            return base_branch.strip()
+    return fallback_branch
+
+
+def _is_direct_control_commit_payload(
+    payload: dict[str, Any],
+    rel_paths: list[str],
+) -> bool:
+    return bool(rel_paths) and not (set(rel_paths) - DIRECT_CONTROL_COMMIT_FILES)
+
+
+def _rebase_prose_delivery_state_for_control_commit(
+    repo_dir: str,
+    *,
+    old_base_commit: str,
+    new_base_commit: str,
+    old_draft_commit: str = "",
+    new_draft_commit: str = "",
+) -> None:
+    if (
+        (not old_base_commit or not new_base_commit or old_base_commit == new_base_commit)
+        and (not old_draft_commit or not new_draft_commit or old_draft_commit == new_draft_commit)
+    ):
+        return
+    state = read_prose_delivery_state(repo_dir)
+    if not state:
+        return
+    next_state = dict(state)
+    if old_base_commit and new_base_commit and str(next_state.get("base_commit") or "") == old_base_commit:
+        next_state["base_commit"] = new_base_commit
+    if old_draft_commit and new_draft_commit and str(next_state.get("draft_commit") or "") == old_draft_commit:
+        next_state["draft_commit"] = new_draft_commit
+        review_report = next_state.get("review_report")
+        if isinstance(review_report, dict) and str(review_report.get("draft_commit") or "") == old_draft_commit:
+            next_state["review_report"] = {**review_report, "draft_commit": new_draft_commit}
+        manual_edit = next_state.get("manual_edit")
+        if isinstance(manual_edit, dict):
+            next_manual_edit = dict(manual_edit)
+            if str(next_manual_edit.get("edit_base_commit") or "") == old_draft_commit:
+                next_manual_edit["edit_base_commit"] = new_draft_commit
+            if str(next_manual_edit.get("saved_draft_commit") or "") == old_draft_commit:
+                next_manual_edit["saved_draft_commit"] = new_draft_commit
+            next_state["manual_edit"] = next_manual_edit
+    if next_state != state:
+        write_prose_delivery_state(repo_dir, next_state)
+
+
+def _commit_direct_control_files(
+    repo_dir: str,
+    *,
+    base_branch: str,
+    rel_paths: list[str],
+    commit_message: str,
+    changed_contents: dict[str, str],
+    restore_branch: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    if base_branch not in _list_local_heads(repo_dir):
+        raise RuntimeError(f"base branch does not exist: {base_branch}")
+    old_draft_commit = ""
+    if restore_branch == DRAFT_BRANCH_NAME:
+        try:
+            old_draft_commit = run_git(repo_dir, ["rev-parse", DRAFT_BRANCH_NAME]).stdout.strip()
+        except subprocess.CalledProcessError:
+            old_draft_commit = ""
+    old_base_commit = _safe_current_head(repo_dir) or ""
+    run_git(repo_dir, ["checkout", base_branch])
+    old_base_commit = _safe_current_head(repo_dir) or old_base_commit
+
+    for rel_path in rel_paths:
+        file_path = os.path.join(repo_dir, rel_path.replace("/", os.sep))
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write(changed_contents[rel_path])
+
+    run_git(repo_dir, ["add", "--", *rel_paths])
+    if _has_pending_changes_for_paths(repo_dir, rel_paths):
+        _ensure_repo_identity(repo_dir)
+        run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
+    commit_id = _safe_current_head(repo_dir) or ""
+
+    # Keep an active prose draft branch able to read the fresh control memory,
+    # without creating a reviewable draft diff for the control file itself.
+    if restore_branch == DRAFT_BRANCH_NAME and DRAFT_BRANCH_NAME in _list_local_heads(repo_dir):
+        run_git(repo_dir, ["checkout", DRAFT_BRANCH_NAME])
+        run_git(repo_dir, ["checkout", base_branch, "--", *rel_paths])
+        run_git(repo_dir, ["add", "--", *rel_paths])
+        if _has_pending_changes_for_paths(repo_dir, rel_paths):
+            _ensure_repo_identity(repo_dir)
+            run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
+        new_draft_commit = _safe_current_head(repo_dir) or ""
+        write_draft_metadata(
+            repo_dir,
+            base_branch=base_branch,
+            draft_branch=DRAFT_BRANCH_NAME,
+            source=DIRECT_CONTROL_COMMIT_SOURCE,
+            base_commit=commit_id,
+            draft_commit=new_draft_commit,
+        )
+        _rebase_prose_delivery_state_for_control_commit(
+            repo_dir,
+            old_base_commit=old_base_commit,
+            new_base_commit=commit_id,
+            old_draft_commit=old_draft_commit or "",
+            new_draft_commit=new_draft_commit,
+        )
+    elif restore_branch and restore_branch in _list_local_heads(repo_dir):
+        run_git(repo_dir, ["checkout", restore_branch])
+
+    updated_files = [
+        {
+            "file_name": rel_path,
+            "etag": _compute_file_etag(os.path.join(repo_dir, rel_path.replace("/", os.sep))),
+        }
+        for rel_path in rel_paths
+    ]
+    return commit_id, updated_files
+
+
 def _has_pending_changes_for_paths(repo_dir: str, rel_paths: list[str]) -> bool:
     if not rel_paths:
         return False
@@ -761,8 +887,19 @@ def create_blueprint(
         with _repo_lock(repo_dir):
             _ensure_baseline_commit(repo_dir)
             _ensure_layout_files_tracked(repo_dir)
+            current_branch_before = ""
+            try:
+                current_branch_before = run_git(repo_dir, ["branch", "--show-current"]).stdout.strip()
+            except subprocess.CalledProcessError:
+                current_branch_before = ""
             mainline_branch = _resolve_mainline_branch(repo_dir)
-            _, migrated_from_legacy = _ensure_draft_branch(repo_dir, mainline_branch, create_if_missing=True)
+            rel_path_candidates = sorted(grouped_writes.keys())
+            direct_control_commit = _is_direct_control_commit_payload(payload, rel_path_candidates)
+            migrated_from_legacy = False
+            if direct_control_commit:
+                mainline_branch = _active_draft_base_branch(repo_dir, mainline_branch)
+            else:
+                _, migrated_from_legacy = _ensure_draft_branch(repo_dir, mainline_branch, create_if_missing=True)
 
             resolved_files: list[dict[str, Any]] = []
             for normalized_rel_path, file_writes in grouped_writes.items():
@@ -820,6 +957,30 @@ def create_blueprint(
 
             changed_files = [item for item in resolved_files if item["new_content"] != item["original_content"]]
             if not changed_files:
+                if direct_control_commit:
+                    head_for_response = _safe_current_head(repo_dir)
+                    if current_branch_before and current_branch_before in _list_local_heads(repo_dir):
+                        run_git(repo_dir, ["checkout", current_branch_before])
+                    response_body = {
+                        "status": "success",
+                        "book_id": book_id,
+                        "branch": mainline_branch,
+                        "mainline_branch": mainline_branch,
+                        "base_branch": mainline_branch,
+                        "commit_id": head_for_response,
+                        "updated_files": [
+                            {
+                                "file_name": item["normalized_rel_path"],
+                                "etag": _compute_text_etag(item["original_content"]),
+                            }
+                            for item in resolved_files
+                        ],
+                        "message": "No control-file changes detected.",
+                        "direct_commit": True,
+                        "review_required": False,
+                    }
+                    return jsonify(response_body), 200
+
                 draft_meta = refresh_draft_metadata(repo_dir)
                 response_body = {
                     "status": "success",
@@ -846,6 +1007,33 @@ def create_blueprint(
                 guard_message = _ai_write_loop_guard_message(repo_dir, item["normalized_rel_path"])
                 if guard_message is not None:
                     return json_error("AI_WRITE_LOOP_GUARD", guard_message, 429)
+
+            if direct_control_commit:
+                rel_paths = [item["normalized_rel_path"] for item in changed_files]
+                base_message = raw_message.strip() if isinstance(raw_message, str) and raw_message.strip() else "update control archive"
+                commit_message = _build_commit_message(origin, base_message, rel_paths[0] if len(rel_paths) == 1 else "control files")
+                commit_id, updated_files = _commit_direct_control_files(
+                    repo_dir,
+                    base_branch=mainline_branch,
+                    rel_paths=rel_paths,
+                    commit_message=commit_message,
+                    changed_contents={item["normalized_rel_path"]: item["new_content"] for item in changed_files},
+                    restore_branch=current_branch_before or mainline_branch,
+                )
+                response_body = {
+                    "status": "success",
+                    "book_id": book_id,
+                    "branch": mainline_branch,
+                    "mainline_branch": mainline_branch,
+                    "base_branch": mainline_branch,
+                    "commit_id": commit_id,
+                    "updated_files": updated_files,
+                    "direct_commit": True,
+                    "review_required": False,
+                }
+                if current_branch_before == DRAFT_BRANCH_NAME:
+                    response_body["draft_branch_synced"] = True
+                return jsonify(response_body), 200
 
             for item in changed_files:
                 with open(item["file_path"], "w", encoding="utf-8") as handle:

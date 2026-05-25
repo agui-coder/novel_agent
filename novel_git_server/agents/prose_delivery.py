@@ -107,6 +107,19 @@ def _public_state_payload(repo_dir: str, book_id: str, state: dict[str, Any] | N
     }
 
 
+def _ensure_prose_delivery_state(repo_dir: str, book_id: str, *, source_agent: str, created_by: str) -> dict[str, Any]:
+    state = read_prose_delivery_state(repo_dir)
+    if state:
+        return state
+    return create_or_refresh_prose_delivery_state(
+        repo_dir,
+        book_id,
+        draft_markdown=_read_draft_from_branch(repo_dir),
+        source_agent=source_agent,
+        created_by=created_by,
+    )
+
+
 def _normalize_findings(raw_findings: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_findings, list):
         return []
@@ -336,9 +349,12 @@ def create_blueprint(
 
         with _repo_lock(repo_dir) as lock_file:
             with _with_lock(lock_file):
-                state = read_prose_delivery_state(repo_dir)
-                if not state:
-                    return json_error("PROSE_DELIVERY_STATE_NOT_FOUND", "refresh prose delivery state first", 404)
+                state = _ensure_prose_delivery_state(
+                    repo_dir,
+                    book_id,
+                    source_agent=str(payload.get("source_agent") or "continuation"),
+                    created_by="review_report",
+                )
                 stale = state_staleness(repo_dir, state)
                 if stale.get("stale"):
                     return (
@@ -397,9 +413,12 @@ def create_blueprint(
 
         with _repo_lock(repo_dir) as lock_file:
             with _with_lock(lock_file):
-                state = read_prose_delivery_state(repo_dir)
-                if not state:
-                    return json_error("PROSE_DELIVERY_STATE_NOT_FOUND", "refresh prose delivery state first", 404)
+                state = _ensure_prose_delivery_state(
+                    repo_dir,
+                    book_id,
+                    source_agent=str(payload.get("source_agent") or "continuation"),
+                    created_by="rewrite_request",
+                )
                 stale = state_staleness(repo_dir, state)
                 if stale.get("stale"):
                     return (

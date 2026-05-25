@@ -11,9 +11,13 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from agents.archive import (
     CORE_ARCHIVE_FILES,
+    DIRECT_CONTROL_COMMIT_FILES,
+    _active_draft_base_branch,
     _build_commit_message,
+    _commit_direct_control_files,
     _compute_file_etag,
     _compute_text_etag,
+    _is_direct_control_commit_payload,
     _normalize_base_etag,
     _normalize_file_name,
     _resolve_target_file,
@@ -709,6 +713,15 @@ def create_blueprint(
                 f"write_scope must be one of {sorted(SYNC_ALL_WRITE_SCOPES)}",
                 400,
             )
+        raw_rel_path_candidates = [
+            _normalize_file_name(item.get("file_name"))
+            for item in raw_writes
+            if isinstance(item, dict)
+        ]
+        pre_direct_control_commit = _is_direct_control_commit_payload(
+            payload,
+            [path for path in raw_rel_path_candidates if path],
+        )
 
         normalized_active_file = _normalize_file_name(payload.get("active_file"))
         normalized_active_target: str | None = None
@@ -725,14 +738,18 @@ def create_blueprint(
                 _, normalized_active_target = _resolve_target_file(repo_dir, normalized_active_file)
             except ValueError as exc:
                 return json_error("INVALID_PAYLOAD", f"active_file: {exc}", 400)
-            active_route = _resolve_dify_route(normalized_active_target)
+            active_route = _resolve_dify_route_for_payload(normalized_active_target, payload) or _resolve_dify_route(
+                normalized_active_target
+            )
             if active_route is None:
                 return json_error(
                     "TARGET_PATH_FORBIDDEN",
                     f"active_file is not routed by any registered Dify agent: {normalized_active_target}",
                     400,
                 )
-            if not active_route.can_write(normalized_active_target):
+            if not active_route.can_write(normalized_active_target) and not (
+                pre_direct_control_commit and active_route.can_read(normalized_active_target)
+            ):
                 return json_error(
                     "TARGET_PATH_FORBIDDEN",
                     (
@@ -787,8 +804,21 @@ def create_blueprint(
                 repo = Repo(repo_dir)
                 _ensure_baseline_commit(repo)
                 _ensure_layout_files_tracked(repo, repo_dir)
+                current_branch_before = repo.git.branch("--show-current").strip()
                 mainline_branch = _resolve_mainline_branch(repo)
-                _, migrated_from_legacy = _ensure_draft_branch(repo, mainline_branch, create_if_missing=True)
+                rel_path_candidates = sorted(
+                    {
+                        _normalize_file_name(item["file_name"])
+                        for item in normalized_writes
+                        if _normalize_file_name(item["file_name"])
+                    }
+                )
+                direct_control_commit = _is_direct_control_commit_payload(payload, rel_path_candidates)
+                migrated_from_legacy = False
+                if direct_control_commit:
+                    mainline_branch = _active_draft_base_branch(repo_dir, mainline_branch)
+                else:
+                    _, migrated_from_legacy = _ensure_draft_branch(repo, mainline_branch, create_if_missing=True)
                 resolved_entries: list[dict[str, Any]] = []
                 seen_paths: set[str] = set()
                 resolved_route = active_route
@@ -881,6 +911,32 @@ def create_blueprint(
 
                 changed_entries = [entry for entry in resolved_entries if entry["new_content"] != entry["original_content"]]
                 if not changed_entries:
+                    if direct_control_commit:
+                        head_for_response = _safe_current_head(repo_dir)
+                        if current_branch_before and current_branch_before in {head.name for head in Repo(repo_dir).heads}:
+                            run_git(repo_dir, ["checkout", current_branch_before])
+                        response_body = {
+                            "status": "success",
+                            "book_id": book_id,
+                            "branch": mainline_branch,
+                            "mainline_branch": mainline_branch,
+                            "base_branch": mainline_branch,
+                            "commit_id": head_for_response,
+                            "updated_files": [
+                                {
+                                    "file_name": entry["normalized_rel_path"],
+                                    "etag": _compute_file_etag(entry["file_path"]),
+                                }
+                                for entry in resolved_entries
+                            ],
+                            "message": "No control-file changes detected.",
+                            "direct_commit": True,
+                            "review_required": False,
+                        }
+                        if legacy_route:
+                            response_body["warning"] = "deprecated route: use /api/draft/sync_all"
+                        return jsonify(response_body), 200
+
                     draft_meta = _refresh_draft_review_metadata(repo_dir)
                     response_body = {
                         "status": "success",
@@ -912,34 +968,51 @@ def create_blueprint(
                 written_entries: list[dict[str, Any]] = []
                 temp_paths: list[str] = []
                 try:
-                    for entry in changed_entries:
-                        os.makedirs(os.path.dirname(entry["file_path"]), exist_ok=True)
-                        fd, temp_path = tempfile.mkstemp(
-                            prefix=".tmp_sync_all_",
-                            suffix=".tmp",
-                            dir=os.path.dirname(entry["file_path"]),
-                        )
-                        temp_paths.append(temp_path)
-                        with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
-                            temp_file.write(entry["new_content"])
-                        os.replace(temp_path, entry["file_path"])
-                        written_entries.append(entry)
-
                     ensure_repo(repo_dir)
-                    rel_paths = [entry["normalized_rel_path"] for entry in resolved_entries]
-                    for rel_path in rel_paths:
-                        run_git(repo_dir, ["add", "--", rel_path])
 
-                    if not _has_pending_changes_for_paths(repo_dir, rel_paths):
-                        commit_id = _safe_current_head(repo_dir)
+                    if direct_control_commit:
+                        commit_id, updated_files = _commit_direct_control_files(
+                            repo_dir,
+                            base_branch=mainline_branch,
+                            rel_paths=[entry["normalized_rel_path"] for entry in changed_entries],
+                            commit_message=_build_commit_message(payload.get("origin"), base_message, "control files"),
+                            changed_contents={
+                                entry["normalized_rel_path"]: entry["new_content"]
+                                for entry in changed_entries
+                            },
+                            restore_branch=current_branch_before or mainline_branch,
+                        )
+                        draft_meta = {}
+                        written_entries = []
+                        rel_paths = [entry["normalized_rel_path"] for entry in changed_entries]
                     else:
-                        try:
-                            run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
-                        except subprocess.CalledProcessError as exc:
-                            if not is_nothing_to_commit_error(exc):
-                                raise
-                        commit_id = run_git(repo_dir, ["rev-parse", "HEAD"]).stdout.strip()
-                    draft_meta = _refresh_draft_review_metadata(repo_dir)
+                        for entry in changed_entries:
+                            os.makedirs(os.path.dirname(entry["file_path"]), exist_ok=True)
+                            fd, temp_path = tempfile.mkstemp(
+                                prefix=".tmp_sync_all_",
+                                suffix=".tmp",
+                                dir=os.path.dirname(entry["file_path"]),
+                            )
+                            temp_paths.append(temp_path)
+                            with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                                temp_file.write(entry["new_content"])
+                            os.replace(temp_path, entry["file_path"])
+                            written_entries.append(entry)
+
+                        rel_paths = [entry["normalized_rel_path"] for entry in resolved_entries]
+                        for rel_path in rel_paths:
+                            run_git(repo_dir, ["add", "--", rel_path])
+
+                        if not _has_pending_changes_for_paths(repo_dir, rel_paths):
+                            commit_id = _safe_current_head(repo_dir)
+                        else:
+                            try:
+                                run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
+                            except subprocess.CalledProcessError as exc:
+                                if not is_nothing_to_commit_error(exc):
+                                    raise
+                            commit_id = run_git(repo_dir, ["rev-parse", "HEAD"]).stdout.strip()
+                        draft_meta = _refresh_draft_review_metadata(repo_dir)
                 except Exception as exc:
                     rollback_warning = None
                     try:
@@ -989,10 +1062,9 @@ def create_blueprint(
                 response_body = {
                     "status": "success",
                     "book_id": book_id,
-                    "branch": DRAFT_BRANCH_NAME,
-                    "mainline_branch": draft_meta.get("base_branch") or mainline_branch,
-                    "base_branch": draft_meta.get("base_branch") or mainline_branch,
-                    "draft_meta": draft_meta,
+                    "branch": mainline_branch if direct_control_commit else DRAFT_BRANCH_NAME,
+                    "mainline_branch": mainline_branch if direct_control_commit else draft_meta.get("base_branch") or mainline_branch,
+                    "base_branch": mainline_branch if direct_control_commit else draft_meta.get("base_branch") or mainline_branch,
                     "commit_id": commit_id,
                     "updated_files": [
                         {
@@ -1003,6 +1075,14 @@ def create_blueprint(
                         for entry in resolved_entries
                     ],
                 }
+                if not direct_control_commit:
+                    response_body["draft_meta"] = draft_meta
+                if direct_control_commit:
+                    response_body["updated_files"] = updated_files
+                    response_body["direct_commit"] = True
+                    response_body["review_required"] = False
+                    if current_branch_before == DRAFT_BRANCH_NAME:
+                        response_body["draft_branch_synced"] = True
                 if prose_delivery_state is not None:
                     response_body["prose_delivery_state"] = prose_delivery_state
                 warnings: list[str] = []

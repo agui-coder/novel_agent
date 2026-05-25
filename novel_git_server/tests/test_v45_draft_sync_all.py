@@ -685,6 +685,65 @@ class V45DraftSyncAllTests(unittest.TestCase):
         self.assertNotEqual(self._git(repo_dir, "rev-parse", "plot/source"), source_head)
         self.assertIn("source draft card", (repo_dir / "chapter_outline.md").read_text(encoding="utf-8"))
 
+    def test_review_agent_sync_all_error_archive_direct_commit_does_not_create_review_diff(self):
+        book_name = "v45_review_archive_direct"
+        init_resp = self.client.post("/books/init", json={"book_name": book_name})
+        self.assertEqual(init_resp.status_code, 200)
+        book_id = init_resp.get_json()["book_id"]
+        repo_dir = self.temp_dir / book_id
+        draft = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "active_file": "chapter_draft.md",
+                "write_scope": "active_file_strict",
+                "message": "seed chapter draft",
+                "writes": [
+                    {
+                        "file_name": "chapter_draft.md",
+                        "op": "update",
+                        "content": "# 续写草稿\n\n## 第1章 测试\n正文。\n",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(draft.status_code, 200, draft.get_json())
+        archive = self.client.get(
+            "/books/get_file",
+            query_string={"book_id": book_id, "file_name": "error_archive.md"},
+        )
+        self.assertEqual(archive.status_code, 200)
+
+        direct = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "route_agent_key": "review_agent",
+                "active_file": "chapter_draft.md",
+                "write_scope": "generic",
+                "message": "review archive direct sync",
+                "writes": [
+                    {
+                        "file_name": "error_archive.md",
+                        "op": "append",
+                        "content": "\n\n### 未标定日期 / 审核 / chapter_draft.md\n\n- 来源：REVIEW_AGENT\n- 约束：同步入口测试。\n",
+                        "base_etag": archive.get_json()["etag"],
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(direct.status_code, 200, direct.get_json())
+        body = direct.get_json()
+        self.assertTrue(body["direct_commit"])
+        self.assertFalse(body["review_required"])
+        self.assertEqual(body["branch"], "master")
+        self.assertEqual(self._git(repo_dir, "branch", "--show-current"), "draft/sandbox")
+        self.assertIn("同步入口测试", self._git(repo_dir, "show", "master:error_archive.md"))
+        self.assertIn("同步入口测试", self._git(repo_dir, "show", "draft/sandbox:error_archive.md"))
+        self.assertEqual(self._git(repo_dir, "diff", "--name-only", "master", "draft/sandbox"), "chapter_draft.md")
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
 
 if __name__ == "__main__":
     unittest.main()

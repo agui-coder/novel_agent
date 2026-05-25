@@ -9,12 +9,20 @@ import {
     type ProseReviewFinding,
 } from '../api/proseDelivery';
 import { ApiError } from '../api/client';
-import { DraftActionPending } from '../types/store';
+import { ChatMessage, DraftActionPending } from '../types/store';
 import { extractProseReviewReport } from '../lib/proseReviewExtraction';
 import { MarkdownRender } from './MarkdownRender';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type ReviewState = 'idle' | 'saving' | 'error';
+type ReviewState = 'idle' | 'saving' | 'rewriting' | 'error';
+type RewriteProgressStatus = 'idle' | 'registering' | 'running' | 'refreshing' | 'ready' | 'error';
+
+interface RewriteProgress {
+    status: RewriteProgressStatus;
+    message: string;
+    priorCommit: string | null;
+    nextCommit: string | null;
+}
 
 interface ProseDeliveryWorkbenchProps {
     bookRef: { kind: 'book_name' | 'book_id'; value: string };
@@ -25,9 +33,10 @@ interface ProseDeliveryWorkbenchProps {
     onConfirm: () => void;
     onRollback: () => void;
     onRunReviewAgent: () => void;
-    onRewriteWithReview: (finding?: ProseReviewFinding) => void;
+    onRewriteWithReview: (finding?: ProseReviewFinding) => Promise<void> | void;
     onNotice: (notice: { type: 'success' | 'error' | 'info'; message: string; ts: number }) => void;
     latestReviewMessageText?: string;
+    latestRewriteMessage?: ChatMessage | null;
 }
 
 function lineSlice(text: string, startLine: number, endLine: number): string {
@@ -112,6 +121,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     onRewriteWithReview,
     onNotice,
     latestReviewMessageText = '',
+    latestRewriteMessage = null,
 }) => {
     const [payload, setPayload] = useState<ProseDeliveryPayload | null>(null);
     const [loading, setLoading] = useState(false);
@@ -122,6 +132,13 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const [manualFinding, setManualFinding] = useState('');
     const [selectedChapter, setSelectedChapter] = useState<number | 'all'>('all');
     const [error, setError] = useState('');
+    const [rewriteProgress, setRewriteProgress] = useState<RewriteProgress>({
+        status: 'idle',
+        message: '',
+        priorCommit: null,
+        nextCommit: null,
+    });
+    const rewriteInFlightRef = useRef(false);
     const editorScrollRef = useRef<HTMLTextAreaElement | null>(null);
     const previewScrollRef = useRef<HTMLDivElement | null>(null);
     const syncScrollLockRef = useRef(false);
@@ -133,9 +150,57 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const stale = Boolean(payload?.staleness.stale || state?.review_report.stale);
     const latestReviewText = latestReviewMessageText.trim();
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
+    const pendingRewrite = state?.status === 'rewrite_requested'
+        || findings.some((finding) => finding.status === 'rewrite_requested');
+    const rewriteBusy = reviewState === 'saving'
+        || reviewState === 'rewriting'
+        || rewriteProgress.status === 'registering'
+        || rewriteProgress.status === 'running'
+        || rewriteProgress.status === 'refreshing';
+    const rewriteTelemetryLines = useMemo(() => {
+        const lines: Array<{ label: string; text: string; tone?: 'warning' | 'success' | 'danger' }> = [];
+        if (rewriteProgress.status !== 'idle' && rewriteProgress.message) {
+            lines.push({
+                label: '进度',
+                text: rewriteProgress.message,
+                tone: rewriteProgress.status === 'error'
+                    ? 'danger'
+                    : rewriteProgress.status === 'ready'
+                        ? 'success'
+                        : 'warning',
+            });
+        }
+        if (rewriteProgress.priorCommit || rewriteProgress.nextCommit) {
+            lines.push({
+                label: '草稿版本',
+                text: `${rewriteProgress.priorCommit ? rewriteProgress.priorCommit.slice(0, 8) : '未知'} -> ${rewriteProgress.nextCommit ? rewriteProgress.nextCommit.slice(0, 8) : '等待写入'}`,
+            });
+        }
+        if (!latestRewriteMessage) {
+            return lines;
+        }
+        const currentStage = latestRewriteMessage.stageProgress
+            || [...latestRewriteMessage.stageEvents].reverse().find((item) => item.stageText);
+        const currentReasoning = [...latestRewriteMessage.reasoningEvents].reverse().find((item) => item.text);
+        const currentPreview = [...latestRewriteMessage.previewEvents].reverse().find((item) => item.text);
+        if (currentStage?.stageText) lines.push({ label: '当前节点', text: currentStage.stageText });
+        if (currentReasoning?.text) lines.push({ label: currentReasoning.label || '思考片段', text: currentReasoning.text });
+        if (currentPreview?.text) lines.push({ label: currentPreview.label || '草稿预览', text: currentPreview.text });
+        if (latestRewriteMessage.text.trim()) lines.push({ label: 'Agent 回复', text: latestRewriteMessage.text.trim() });
+        if (latestRewriteMessage.status === 'streaming') lines.push({ label: '状态', text: '续写 Agent 正在输出或写入草稿。', tone: 'warning' });
+        if (latestRewriteMessage.status === 'done') lines.push({ label: '状态', text: '续写 Agent 已结束，等待草稿审阅。', tone: 'success' });
+        if (latestRewriteMessage.status === 'error') lines.push({ label: '状态', text: '续写 Agent 返回错误，请查看右侧会话详情。', tone: 'danger' });
+        return lines.slice(-5);
+    }, [latestRewriteMessage, rewriteProgress]);
+    const showRewriteTelemetry = reviewState === 'rewriting'
+        || pendingRewrite
+        || rewriteProgress.status !== 'idle'
+        || latestRewriteMessage?.status === 'streaming'
+        || rewriteTelemetryLines.length > 0;
     const hasRewriteInput = findings.length > 0 || Boolean(manualFinding.trim()) || Boolean(latestReviewText);
     const canRequestRewrite = !hasUnsavedEdit
-        && reviewState !== 'saving'
+        && !rewriteBusy
+        && !pendingRewrite
         && draftActionPending === 'none'
         && hasRewriteInput;
     const canArchive = Boolean(
@@ -166,21 +231,27 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         });
     };
 
-    const loadState = async (mode: 'fetch' | 'refresh' = 'fetch') => {
-        if (!bookRef.value) return;
+    const applyLoadedPayload = (next: ProseDeliveryPayload) => {
+        setPayload(next);
+        setEditorDraft(next.draft.content);
+        onDraftLoaded(next.draft.content, next.draft.commit_id, next.draft.etag);
+    };
+
+    const loadState = async (mode: 'fetch' | 'refresh' = 'fetch'): Promise<ProseDeliveryPayload | null> => {
+        if (!bookRef.value) return null;
         setLoading(true);
         setError('');
         try {
             const next = mode === 'refresh'
                 ? await refreshProseDeliveryState(bookRef)
                 : await fetchProseDeliveryState(bookRef);
-            setPayload(next);
-            setEditorDraft(next.draft.content);
-            onDraftLoaded(next.draft.content, next.draft.commit_id, next.draft.etag);
+            applyLoadedPayload(next);
+            return next;
         } catch (err) {
             const message = formatApiError(err, '正文交付状态加载失败');
             setError(message);
             onNotice({ type: 'error', message, ts: Date.now() });
+            return null;
         } finally {
             setLoading(false);
         }
@@ -197,6 +268,40 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
 
     const handleRefresh = async () => {
         await loadState('refresh');
+    };
+
+    const ensureDeliveryState = async (): Promise<ProseDeliveryPayload> => {
+        if (payload?.state && !payload.staleness.stale && !payload.state.review_report.stale) return payload;
+        const next = await refreshProseDeliveryState(bookRef);
+        applyLoadedPayload(next);
+        return next;
+    };
+
+    const refreshAfterRewrite = async (priorCommit: string | null): Promise<ProseDeliveryPayload> => {
+        setRewriteProgress((current) => ({
+            ...current,
+            status: 'refreshing',
+            message: '续写 Agent 已结束，正在接收新的 chapter_draft.md。',
+        }));
+        const fetched = await fetchProseDeliveryState(bookRef);
+        const nextCommit = fetched.draft.commit_id;
+        const draftCommitChanged = Boolean(nextCommit && nextCommit !== priorCommit);
+        const stateIsStaleFromDraft = fetched.staleness.stale && fetched.staleness.reasons.includes('draft_commit');
+        if (!draftCommitChanged && !stateIsStaleFromDraft) {
+            applyLoadedPayload(fetched);
+            throw new Error('续写 Agent 已结束，但没有检测到新的 chapter_draft.md。请查看右侧续写会话的错误或输出。');
+        }
+        const refreshed = await refreshProseDeliveryState(bookRef);
+        applyLoadedPayload(refreshed);
+        setReviewSummary('');
+        setManualFinding('');
+        setRewriteProgress({
+            status: 'ready',
+            message: '新草稿已接收，已回到审阅台，下一步请重新审核或人工修改。',
+            priorCommit,
+            nextCommit: refreshed.draft.commit_id,
+        });
+        return refreshed;
     };
 
     const handleSave = async () => {
@@ -305,14 +410,45 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     };
 
     const requestRewriteForFinding = async (finding: ProseReviewFinding) => {
-        const next = await requestProseRewrite(bookRef, {
-            finding_id: finding.id,
-            instruction: finding.suggestion || finding.message,
+        if (rewriteInFlightRef.current) {
+            throw new Error('已经有一轮打回重写正在执行，请等待续写 Agent 返回新草稿。');
+        }
+        rewriteInFlightRef.current = true;
+        const priorCommit = payload?.draft.commit_id ?? draftCommitId ?? null;
+        setRewriteProgress({
+            status: 'registering',
+            message: '正在登记审核打回请求。',
+            priorCommit,
+            nextCommit: null,
         });
-        setPayload(next);
-        const nextFinding = next.state?.review_report.findings.find((item) => item.id === finding.id) || finding;
-        onRewriteWithReview(nextFinding);
-        return next;
+        try {
+            const next = await requestProseRewrite(bookRef, {
+                finding_id: finding.id,
+                instruction: finding.suggestion || finding.message,
+            });
+            applyLoadedPayload(next);
+            const nextFinding = next.state?.review_report.findings.find((item) => item.id === finding.id) || finding;
+            setReviewState('rewriting');
+            setRewriteProgress({
+                status: 'running',
+                message: '已交给续写 Agent，正在按审核意见重写 chapter_draft.md。',
+                priorCommit,
+                nextCommit: null,
+            });
+            await onRewriteWithReview(nextFinding);
+            return await refreshAfterRewrite(priorCommit);
+        } catch (err) {
+            const message = formatApiError(err, '续写 Agent 重写失败');
+            setRewriteProgress({
+                status: 'error',
+                message,
+                priorCommit,
+                nextCommit: null,
+            });
+            throw err;
+        } finally {
+            rewriteInFlightRef.current = false;
+        }
     };
 
     const handleRewriteFinding = async (finding: ProseReviewFinding) => {
@@ -342,7 +478,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         setReviewState('saving');
         setError('');
         try {
-            let targetFinding = findings.find((finding) => finding.status !== 'rewrite_requested') || findings[0];
+            const currentPayload = await ensureDeliveryState();
+            const currentSpans = currentPayload.state?.draft_package.chapter_spans ?? spans;
+            const currentFindings = currentPayload.state?.review_report.findings ?? findings;
+            let targetFinding = currentFindings.find((finding) => finding.status !== 'rewrite_requested') || currentFindings[0];
             if (!targetFinding) {
                 const chapterNumber = selectedChapter === 'all' ? null : selectedChapter;
                 const manualText = manualFinding.trim();
@@ -359,7 +498,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         } as ProseReviewFinding],
                         passed: false,
                     }
-                    : extractProseReviewReport(latestReviewText, spans);
+                    : extractProseReviewReport(latestReviewText, currentSpans);
                 let nextFindings = extracted.findings;
                 if (nextFindings.length === 0) {
                     if (extracted.passed) {
@@ -389,7 +528,33 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                     || nextFindings[0];
             }
             if (targetFinding.status === 'rewrite_requested') {
-                onRewriteWithReview(targetFinding);
+                if (rewriteInFlightRef.current) {
+                    throw new Error('已经有一轮打回重写正在执行，请等待续写 Agent 返回新草稿。');
+                }
+                rewriteInFlightRef.current = true;
+                const priorCommit = payload?.draft.commit_id ?? draftCommitId ?? null;
+                setReviewState('rewriting');
+                setRewriteProgress({
+                    status: 'running',
+                    message: '已有打回请求，正在重新交给续写 Agent。',
+                    priorCommit,
+                    nextCommit: null,
+                });
+                try {
+                    await onRewriteWithReview(targetFinding);
+                    await refreshAfterRewrite(priorCommit);
+                } catch (err) {
+                    const message = formatApiError(err, '续写 Agent 重写失败');
+                    setRewriteProgress({
+                        status: 'error',
+                        message,
+                        priorCommit,
+                        nextCommit: null,
+                    });
+                    throw err;
+                } finally {
+                    rewriteInFlightRef.current = false;
+                }
             } else {
                 await requestRewriteForFinding(targetFinding);
             }
@@ -473,6 +638,9 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             <div>阶段：{deliveryStatusLabel(state?.status)}</div>
                             <div>审核：{reviewStatusLabel(state?.review_report.status)}</div>
                             <div>归档：{canArchive ? '可由作者确认' : '需先审核通过'}</div>
+                            {reviewState === 'rewriting' || pendingRewrite ? (
+                                <div className="text-[var(--tone-warning-text)]">续写 Agent 正在按审核意见重写，请等待新草稿返回</div>
+                            ) : null}
                             {stale ? <div className="text-[var(--tone-warning-text)]">状态需要刷新或重审</div> : null}
                             {hasUnsavedEdit ? <div className="text-[var(--tone-warning-text)]">有未保存修改</div> : null}
                             {state?.archive_state.blocked_reason === 'review_findings_require_rewrite_or_author_approval' ? (
@@ -493,7 +661,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         <button
                             type="button"
                             onClick={handleMarkPassed}
-                            disabled={reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                            disabled={reviewState === 'saving' || reviewState === 'rewriting' || hasUnsavedEdit || draftActionPending !== 'none'}
                             className="w-full rounded-[8px] border border-[var(--tone-success-border)] bg-[var(--tone-success-bg)] px-3 py-2 text-[12px] font-semibold text-[var(--tone-success-text)] hover:bg-[rgba(255,255,255,0.1)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             标记审核通过
@@ -501,7 +669,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         <button
                             type="button"
                             onClick={onRunReviewAgent}
-                            disabled={hasUnsavedEdit || draftActionPending !== 'none'}
+                            disabled={reviewState === 'rewriting' || hasUnsavedEdit || draftActionPending !== 'none'}
                             className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             启动审核 Agent
@@ -509,7 +677,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         <button
                             type="button"
                             onClick={handleSyncLatestReview}
-                            disabled={!latestReviewText || reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                            disabled={!latestReviewText || reviewState === 'saving' || reviewState === 'rewriting' || hasUnsavedEdit || draftActionPending !== 'none'}
                             className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             同步最近审核回复
@@ -521,7 +689,11 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             title="把最近审核回复或作者标记的问题登记为打回请求，然后交给续写 Agent 重写 chapter_draft.md。"
                             className="w-full rounded-[8px] border border-[var(--tone-warning-border)] bg-[rgba(245,158,11,0.1)] px-3 py-2 text-[12px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.16)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                            {reviewState === 'saving' ? '打回处理中' : '按审核意见打回重写'}
+                            {reviewState === 'saving'
+                                ? '打回处理中'
+                                : reviewState === 'rewriting' || pendingRewrite
+                                    ? '等待续写 Agent 重写'
+                                    : '按审核意见打回重写'}
                         </button>
                         <button
                             type="button"
@@ -574,6 +746,38 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                     <section className="min-h-0 border-t border-[rgba(255,255,255,0.04)] p-3">
                         <div className="grid h-full grid-cols-[minmax(0,1fr)_260px] gap-3">
                             <div className="min-h-0">
+                                {showRewriteTelemetry ? (
+                                    <div className="mb-3 rounded-[8px] border border-[rgba(245,158,11,0.22)] bg-[rgba(245,158,11,0.055)] p-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="cursor-section-label">重写过程</div>
+                                            <div className="text-[10px] text-[var(--tone-warning-text)]">
+                                                {latestRewriteMessage?.status === 'streaming' ? '进行中' : pendingRewrite ? '等待新草稿' : '最近一次'}
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 space-y-1.5">
+                                            {rewriteTelemetryLines.length > 0 ? rewriteTelemetryLines.map((line, index) => (
+                                                <div key={`${line.label}-${index}`} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[11px] leading-5">
+                                                    <div className="text-[var(--color-dark-text-faint)]">{line.label}</div>
+                                                    <div className={
+                                                        line.tone === 'danger'
+                                                            ? 'text-[var(--tone-danger-text)]'
+                                                            : line.tone === 'success'
+                                                                ? 'text-[var(--tone-success-text)]'
+                                                                : line.tone === 'warning'
+                                                                    ? 'text-[var(--tone-warning-text)]'
+                                                                    : 'text-[var(--color-dark-text-muted)]'
+                                                    }>
+                                                        {line.text}
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div className="text-[11px] leading-5 text-[var(--color-dark-text-muted)]">
+                                                    已登记打回请求，正在等待续写 Agent 开始返回流式进度。
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <div className="cursor-section-label">审核问题</div>
                                 <div className="app-scrollbar mt-2 max-h-[160px] space-y-2 overflow-y-auto">
                                     {findings.length === 0 ? (
@@ -594,10 +798,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleRewriteFinding(finding); }}
-                                                    disabled={reviewState === 'saving' || hasUnsavedEdit || draftActionPending !== 'none'}
+                                                    disabled={reviewState === 'saving' || reviewState === 'rewriting' || pendingRewrite || hasUnsavedEdit || draftActionPending !== 'none'}
                                                     className="shrink-0 rounded-[8px] border border-[var(--tone-warning-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                                 >
-                                                    打回重写
+                                                    {finding.status === 'rewrite_requested' ? '已打回' : '打回重写'}
                                                 </button>
                                             </div>
                                         </div>

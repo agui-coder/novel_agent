@@ -164,6 +164,83 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertEqual(rewritten_state["draft_package"]["chapter_spans"][1]["author_status"], "rewrite_requested")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
+    def test_review_report_rebuilds_missing_delivery_state(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        clear = self.client.post("/api/prose_delivery/clear", json={"book_id": book_id})
+        self.assertEqual(clear.status_code, 200, clear.get_json())
+
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "summary": "状态文件缺失时仍然可以记录审核问题。",
+                "findings": [
+                    {
+                        "id": "logic-001",
+                        "chapter_number": 2,
+                        "severity": "blocking",
+                        "message": "人物动机缺少承接。",
+                        "suggestion": "补足因果链。",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(review.status_code, 200, review.get_json())
+        state = review.get_json()["state"]
+        self.assertEqual(state["review_report"]["status"], "problem")
+        self.assertEqual(state["draft_package"]["chapter_count"], 2)
+        self.assertTrue((repo_dir / ".loregit" / "prose_delivery_state.json").exists())
+
+        rewrite = self.client.post(
+            "/api/prose_delivery/rewrite_request",
+            json={"book_id": book_id, "finding_id": "logic-001"},
+        )
+        self.assertEqual(rewrite.status_code, 200, rewrite.get_json())
+        self.assertEqual(rewrite.get_json()["state"]["status"], "rewrite_requested")
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+    def test_review_error_archive_append_commits_as_control_file_without_staling_delivery_state(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        state_before = self.client.get("/api/prose_delivery/state", query_string={"book_id": book_id}).get_json()["state"]
+        base_branch = state_before["base_branch"]
+        old_base_commit = state_before["base_commit"]
+        old_draft_commit = state_before["draft_commit"]
+        archive = self.client.get(
+            "/books/get_markdown_outline",
+            query_string={"book_id": book_id, "file_name": "error_archive.md"},
+        )
+        self.assertEqual(archive.status_code, 200, archive.get_json())
+
+        append = self.client.post(
+            "/api/draft/append_markdown_section",
+            json={
+                "book_id": book_id,
+                "file_name": "error_archive.md",
+                "section_path": ["错误档案"],
+                "content": "\n### 未标定日期 / 审核 / chapter_draft.md\n\n- 来源：REVIEW_AGENT\n- 约束：测试约束。\n",
+                "base_etag": archive.get_json()["etag"],
+                "origin": "explicit_user_write",
+                "message": "review archive direct commit",
+            },
+        )
+
+        self.assertEqual(append.status_code, 200, append.get_json())
+        body = append.get_json()
+        self.assertTrue(body["direct_commit"])
+        self.assertFalse(body["review_required"])
+        self.assertEqual(body["branch"], base_branch)
+        self.assertTrue(body.get("draft_branch_synced"))
+        self.assertIn("测试约束", self._git(repo_dir, "show", f"{base_branch}:error_archive.md"))
+        self.assertIn("测试约束", self._git(repo_dir, "show", "draft/sandbox:error_archive.md"))
+        self.assertNotEqual(self._git(repo_dir, "rev-parse", base_branch), old_base_commit)
+        self.assertNotEqual(self._git(repo_dir, "rev-parse", "draft/sandbox"), old_draft_commit)
+        self.assertEqual(self._git(repo_dir, "diff", "--name-only", base_branch, "draft/sandbox"), "chapter_draft.md")
+
+        refreshed_state = self.client.get("/api/prose_delivery/state", query_string={"book_id": book_id}).get_json()
+        self.assertFalse(refreshed_state["staleness"]["stale"], refreshed_state)
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
     def test_confirm_blocks_chapter_draft_until_prose_review_passes(self):
         book_id, repo_dir = self._bootstrap_draft()
 

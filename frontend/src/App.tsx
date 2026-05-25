@@ -1580,7 +1580,8 @@ export default function App() {
         const routeAgentKey = options?.routeAgentKey;
         const scopedAgent = routeAgentKey || store.activeAgent;
         const scopedActiveFile = options?.activeFile || store.activeFile;
-        const suppressReviewReadyNotice = scopedAgent === 'continuation_agent' && scopedActiveFile === 'chapter_draft.md';
+        const suppressReviewReadyNotice = scopedActiveFile === 'chapter_draft.md'
+            && (scopedAgent === 'continuation_agent' || scopedAgent === 'review_agent');
         const scopedConversationId = store.conversationByAgent[scopedAgent] || (
             scopedAgent === store.activeAgent ? store.conversationId : null
         );
@@ -2712,6 +2713,20 @@ export default function App() {
         ));
         return latest?.text.trim() ?? '';
     }, [isProseReviewSurface, store.chatMessagesByAgent]);
+    const latestProseRewriteMessage = useMemo(() => {
+        if (!isProseReviewSurface) return null;
+        const rewriteMessages = store.chatMessagesByAgent.continuation_agent ?? [];
+        return [...rewriteMessages].reverse().find((message) => (
+            message.role === 'assistant'
+            && (!message.activeFile || isSameConversationScope(
+                message.activeFile,
+                resolveFileType(message.activeFile),
+                'chapter_draft.md',
+                'chapter',
+                'continuation_agent',
+            ))
+        )) ?? null;
+    }, [isProseReviewSurface, store.chatMessagesByAgent]);
     const rightPanelLatestUserMessageId = getLatestUserMessage(rightPanelAgent, rightPanelActiveFile)?.id ?? null;
     useEffect(() => {
         if (isProseReviewSurface) {
@@ -2730,13 +2745,13 @@ export default function App() {
             { routeAgentKey: 'review_agent', activeFile: 'chapter_draft.md', fileType: 'chapter', baseEtag: '' },
         );
     };
-    const handleRewriteWithReview = (finding?: ProseReviewFinding) => {
+    const handleRewriteWithReview = async (finding?: ProseReviewFinding) => {
         const targetFile = pendingReviewTargetFile();
         if (targetFile !== 'chapter_draft.md') return;
         const findingAdvice = finding
             ? `\n\n【本次打回问题】\n${finding.message || finding.suggestion}\n\n【修复建议】\n${finding.suggestion || finding.message}`
             : '';
-        void handleIntentSubmit(
+        await handleIntentSubmit(
             `【正文草稿打回重写请求】
 
 请由续写 Agent 接手修复 ${targetFile}。这不是让后端或前端改正文，必须由你读取事实源并重写草稿。
@@ -2886,6 +2901,7 @@ export default function App() {
                         onRewriteWithReview={handleRewriteWithReview}
                         onNotice={store.setUiNotice}
                         latestReviewMessageText={latestProseReviewMessageText}
+                        latestRewriteMessage={latestProseRewriteMessage}
                     />
                 ) : (
                     <ReviewCanvasPanel
