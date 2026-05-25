@@ -15,6 +15,7 @@ export interface MessageScope {
     activeFile?: string;
     conversationId?: string | null;
     upstreamConversationId?: string | null;
+    targetDraftCommit?: string | null;
 }
 
 export interface RepoIntegrity {
@@ -178,6 +179,7 @@ export interface ChatMessage {
     conversationId: string | null;
     upstreamConversationId?: string | null;
     activeFile?: string;
+    targetDraftCommit?: string | null;
     diffAttachment: DiffAttachment | null;
     stageProgress: StageProgress | null;
     stageEvents: StageProgress[];

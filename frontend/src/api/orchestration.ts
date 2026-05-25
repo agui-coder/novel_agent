@@ -14,6 +14,7 @@ export interface DeductionPayload {
     conversation_id?: string;
     upstream_conversation_id?: string;
     rewrite_user_message_id?: string;
+    target_draft_commit?: string;
     route_agent_key?: string;
     detached_job?: boolean;
     dify_user?: string;
@@ -120,6 +121,7 @@ export async function runDeductionStream(
         baseEtag?: string;
         detachedJob?: boolean;
         difyUser?: string;
+        targetDraftCommit?: string | null;
     }
 ): Promise<void> {
     const routedAgent = options?.routeAgentKey || state.activeAgent;
@@ -171,6 +173,9 @@ export async function runDeductionStream(
     }
     if (options?.rewriteUserMessageId) {
         payload.rewrite_user_message_id = options.rewriteUserMessageId;
+    }
+    if (options?.targetDraftCommit) {
+        payload.target_draft_commit = options.targetDraftCommit;
     }
 
     const queryParam = state.bookRef.kind === 'book_name'

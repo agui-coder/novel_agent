@@ -430,6 +430,7 @@ def persist_turn(
     assistant_text: str,
     status: str = "done",
     rewrite_user_message_id: str | None = None,
+    target_draft_commit: str | None = None,
 ) -> None:
     if not conversation_id or not conversation_id.strip():
         return
@@ -464,6 +465,7 @@ def persist_turn(
             "conversation_id": conversation_id,
             "upstream_conversation_id": upstream_conversation_id,
             "active_file": active_file,
+            "target_draft_commit": target_draft_commit,
             "status": "done",
         },
         {
@@ -474,6 +476,7 @@ def persist_turn(
             "conversation_id": conversation_id,
             "upstream_conversation_id": upstream_conversation_id,
             "active_file": active_file,
+            "target_draft_commit": target_draft_commit,
             "status": status,
         },
     ]

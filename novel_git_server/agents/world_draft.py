@@ -1243,6 +1243,7 @@ def create_blueprint(
                 user_text=str(payload.get("intent") or ""),
                 assistant_text=str(response_body.get("answer") or ""),
                 rewrite_user_message_id=payload.get("rewrite_user_message_id"),
+                target_draft_commit=payload.get("target_draft_commit") if isinstance(payload.get("target_draft_commit"), str) else None,
             )
         except Exception as exc:  # pragma: no cover - session persistence must not break core flow
             LOGGER.warning("failed to persist blocking conversation turn: %s", exc)
@@ -1519,6 +1520,7 @@ def create_blueprint(
                             user_text=str(payload.get("intent") or ""),
                             assistant_text=merged_answer,
                             rewrite_user_message_id=payload.get("rewrite_user_message_id"),
+                            target_draft_commit=payload.get("target_draft_commit") if isinstance(payload.get("target_draft_commit"), str) else None,
                         )
                     except Exception as exc:  # pragma: no cover - session persistence must not break core flow
                         LOGGER.warning("failed to persist streamed conversation turn: %s", exc)

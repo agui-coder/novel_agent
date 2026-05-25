@@ -1545,6 +1545,7 @@ export default function App() {
             fileType?: HotFileItem['fileType'];
             baseEtag?: string;
             onAccepted?: () => void;
+            targetDraftCommit?: string | null;
         }
     ) => {
         const batchInitKeywords = ['初始化', '批量初始化', '全量初始化', '重建', '重跑', '完整重跑', 'batch init', 'rebuild'];
@@ -1593,6 +1594,7 @@ export default function App() {
             activeFile: scopedActiveFile,
             conversationId: scopedConversationId,
             upstreamConversationId: scopedUpstreamConversationId,
+            targetDraftCommit: options?.targetDraftCommit ?? null,
         };
         const shouldBindConversationToActiveAgent = scopedAgent === store.activeAgent;
         if (!scopedConversationId) {
@@ -1959,6 +1961,7 @@ export default function App() {
                 activeFile: options?.activeFile,
                 fileType: options?.fileType,
                 baseEtag: options?.baseEtag,
+                targetDraftCommit: options?.targetDraftCommit,
             });
             if (draftWriteState.writeConfirmed) {
                 const bookRef = { kind: store.bookRef.kind, value: store.bookRef.value };
@@ -2696,8 +2699,8 @@ export default function App() {
             );
         })
     ), [rightPanelActiveFile, rightPanelAgent, rightPanelFileType, rightPanelMessages]);
-    const latestProseReviewMessageText = useMemo(() => {
-        if (!isProseReviewSurface) return '';
+    const latestProseReviewMessage = useMemo(() => {
+        if (!isProseReviewSurface) return null;
         const reviewMessages = store.chatMessagesByAgent.review_agent ?? [];
         const latest = [...reviewMessages].reverse().find((message) => (
             message.role === 'assistant'
@@ -2711,7 +2714,7 @@ export default function App() {
             ))
             && message.text.trim()
         ));
-        return latest?.text.trim() ?? '';
+        return latest ?? null;
     }, [isProseReviewSurface, store.chatMessagesByAgent]);
     const latestProseRewriteMessage = useMemo(() => {
         if (!isProseReviewSurface) return null;
@@ -2742,7 +2745,13 @@ export default function App() {
         if (targetFile !== 'chapter_draft.md') return;
         void handleIntentSubmit(
             `请审核当前续写草稿 ${targetFile}。你必须读取 chapter_draft.md，并结合 chapter_outline.md、summary.md、status_card.md、world_model.md、style_guide.md、error_archive.md 判断：1）是否越过本章大纲边界；2）是否违反世界观、状态卡、文风或错误档案；3）是否存在情节水位、占比、手法失衡。若发现真实问题，请只把可复用的硬约束写入 error_archive.md；若没有问题，请用一句话说明通过，不要写文件。`,
-            { routeAgentKey: 'review_agent', activeFile: 'chapter_draft.md', fileType: 'chapter', baseEtag: '' },
+            {
+                routeAgentKey: 'review_agent',
+                activeFile: 'chapter_draft.md',
+                fileType: 'chapter',
+                baseEtag: '',
+                targetDraftCommit: store.draftCommitId,
+            },
         );
     };
     const handleRewriteWithReview = async (finding?: ProseReviewFinding) => {
@@ -2900,7 +2909,8 @@ export default function App() {
                         onRunReviewAgent={handleRunReviewAgent}
                         onRewriteWithReview={handleRewriteWithReview}
                         onNotice={store.setUiNotice}
-                        latestReviewMessageText={latestProseReviewMessageText}
+                        latestReviewMessageText={latestProseReviewMessage?.text.trim() ?? ''}
+                        latestReviewTargetDraftCommit={latestProseReviewMessage?.targetDraftCommit ?? null}
                         latestRewriteMessage={latestProseRewriteMessage}
                     />
                 ) : (

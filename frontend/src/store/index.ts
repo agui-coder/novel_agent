@@ -197,6 +197,7 @@ function resolveMessageScope(state: CoreSessionState, scope?: MessageScope) {
                 ? state.upstreamConversationId
                 : (state.upstreamConversationByAgent[agent] ?? null)
         ),
+        targetDraftCommit: scope?.targetDraftCommit ?? null,
     };
 }
 
@@ -402,6 +403,7 @@ export const useAppStore = create<AppStore>()((set) => ({
                     conversationId: resolvedScope.conversationId,
                     upstreamConversationId: resolvedScope.upstreamConversationId,
                     activeFile: resolvedScope.activeFile,
+                    targetDraftCommit: resolvedScope.targetDraftCommit,
                     diffAttachment: null,
                     stageProgress: null,
                     stageEvents: [],
@@ -437,6 +439,7 @@ export const useAppStore = create<AppStore>()((set) => ({
                     conversationId: resolvedScope.conversationId,
                     upstreamConversationId: resolvedScope.upstreamConversationId,
                     activeFile: resolvedScope.activeFile,
+                    targetDraftCommit: resolvedScope.targetDraftCommit,
                     diffAttachment: null,
                     stageProgress: null,
                     stageEvents: [],

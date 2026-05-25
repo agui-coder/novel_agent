@@ -270,8 +270,10 @@ def build_initial_state(
         },
         "review_report": {
             "status": "not_started",
+            "decision": "not_started",
             "stale": False,
             "draft_commit": draft_commit,
+            "source_draft_commit": draft_commit,
             "findings": [],
             "updated_at": None,
         },
@@ -347,9 +349,15 @@ def _archive_blocked_reason(review_status: str, has_chapters: bool, review_stale
 
 def normalize_prose_delivery_state(state: dict[str, Any]) -> dict[str, Any]:
     next_state = dict(state)
-    review_report = next_state.get("review_report") if isinstance(next_state.get("review_report"), dict) else {}
+    raw_review_report = next_state.get("review_report") if isinstance(next_state.get("review_report"), dict) else {}
+    review_report = dict(raw_review_report)
     review_status = str(review_report.get("status") or "not_started")
+    if not review_report.get("decision"):
+        review_report["decision"] = review_status if review_status in {"passed", "author_fix", "rewrite_required"} else "not_started"
+    if not review_report.get("source_draft_commit"):
+        review_report["source_draft_commit"] = str(review_report.get("draft_commit") or next_state.get("draft_commit") or "")
     review_stale = bool(review_report.get("stale"))
+    next_state["review_report"] = review_report
     spans = ((next_state.get("draft_package") or {}).get("chapter_spans") or [])
     has_chapters = bool(spans)
     archive_state = dict(next_state.get("archive_state")) if isinstance(next_state.get("archive_state"), dict) else {}

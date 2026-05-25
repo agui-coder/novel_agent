@@ -39,8 +39,10 @@ export interface ProseDeliveryState {
     };
     review_report: {
         status: string;
+        decision?: string;
         stale: boolean;
         draft_commit: string;
+        source_draft_commit?: string;
         findings: ProseReviewFinding[];
         summary?: string;
         updated_at?: string | null;
@@ -106,6 +108,8 @@ export interface ProseDeliveryPayload {
 
 export interface ProseReviewReportPayload {
     summary?: string;
+    decision?: 'passed' | 'author_fix' | 'rewrite_required';
+    source_draft_commit?: string;
     findings?: Array<Partial<ProseReviewFinding>>;
 }
 

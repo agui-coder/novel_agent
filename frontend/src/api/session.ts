@@ -14,6 +14,7 @@ export interface ConversationRecordPayload {
     conversation_id: string;
     upstream_conversation_id?: string | null;
     active_file: string;
+    target_draft_commit?: string | null;
     status: 'streaming' | 'done' | 'error' | 'interrupted';
 }
 

@@ -43,6 +43,7 @@ interface ProseDeliveryWorkbenchProps {
     onRewriteWithReview: (finding?: ProseReviewFinding) => Promise<void> | void;
     onNotice: (notice: { type: 'success' | 'error' | 'info'; message: string; ts: number }) => void;
     latestReviewMessageText?: string;
+    latestReviewTargetDraftCommit?: string | null;
     latestRewriteMessage?: ChatMessage | null;
 }
 
@@ -132,6 +133,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     onRewriteWithReview,
     onNotice,
     latestReviewMessageText = '',
+    latestReviewTargetDraftCommit = null,
     latestRewriteMessage = null,
 }) => {
     const [payload, setPayload] = useState<ProseDeliveryPayload | null>(null);
@@ -164,6 +166,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const latestRewriteRequest = [...rewriteRequests].reverse()[0] ?? null;
     const latestCompletedRewriteRequest = [...rewriteRequests].reverse().find((item) => item.status === 'completed') ?? null;
     const latestReviewText = latestReviewMessageText.trim();
+    const currentDraftCommit = payload?.draft.commit_id ?? state?.draft_commit ?? draftCommitId ?? null;
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
     const pendingRewrite = state?.status === 'rewrite_requested'
         || findings.some((finding) => finding.status === 'rewrite_requested');
@@ -413,6 +416,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
             const chapterNumber = selectedChapter === 'all' ? null : selectedChapter;
             const next = await attachProseReviewReport(bookRef, {
                 summary: reviewSummary || '作者手动标记审核问题。',
+                source_draft_commit: currentDraftCommit || undefined,
                 findings: [
                     ...findings,
                     {
@@ -443,6 +447,8 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         try {
             const next = await attachProseReviewReport(bookRef, {
                 summary: reviewSummary || '作者确认本轮审核未发现阻塞问题。',
+                decision: 'passed',
+                source_draft_commit: currentDraftCommit || undefined,
                 findings: [],
             });
             setPayload(next);
@@ -462,12 +468,30 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
             onNotice({ type: 'info', message: '还没有可同步的审核 Agent 回复。', ts: Date.now() });
             return;
         }
+        if (currentDraftCommit && !latestReviewTargetDraftCommit) {
+            onNotice({
+                type: 'error',
+                message: '最近审核回复没有绑定草稿版本。为避免旧审核污染当前草稿，请重新启动审核 Agent。',
+                ts: Date.now(),
+            });
+            return;
+        }
+        if (currentDraftCommit && latestReviewTargetDraftCommit && latestReviewTargetDraftCommit !== currentDraftCommit) {
+            onNotice({
+                type: 'error',
+                message: `最近审核回复对应旧草稿 ${latestReviewTargetDraftCommit.slice(0, 8)}，当前草稿是 ${currentDraftCommit.slice(0, 8)}。请重新启动审核 Agent。`,
+                ts: Date.now(),
+            });
+            return;
+        }
         setReviewState('saving');
         setError('');
         try {
             const extracted = extractProseReviewReport(reviewText, spans);
             const next = await attachProseReviewReport(bookRef, {
                 summary: extracted.summary || '已同步审核 Agent 最近一次回复。',
+                decision: extracted.decision,
+                source_draft_commit: latestReviewTargetDraftCommit || currentDraftCommit || undefined,
                 findings: extracted.findings,
             });
             setPayload(next);
@@ -597,6 +621,8 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                 }
                 const next = await attachProseReviewReport(bookRef, {
                     summary: extracted.summary || reviewSummary || '按审核意见打回重写。',
+                    decision: 'rewrite_required',
+                    source_draft_commit: currentDraftCommit || undefined,
                     findings: nextFindings,
                 });
                 setPayload(next);

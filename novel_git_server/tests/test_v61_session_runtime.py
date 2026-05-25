@@ -98,6 +98,34 @@ class V61SessionRuntimeTests(unittest.TestCase):
         self.assertEqual(body["messages"][1]["text"], "master answer")
         self.assertEqual(body["messages"][0]["upstream_conversation_id"], "conv-outline-2")
 
+    def test_conversation_runtime_preserves_target_draft_commit(self):
+        self.client.post(
+            "/api/world/deduce",
+            json={
+                "book_name": "v61_target_draft_commit",
+                "intent": "审核正文草稿",
+                "active_file": "chapter_draft.md",
+                "file_type": "chapter",
+                "route_agent_key": "review_agent",
+                "mock_ai_markdown": "未发现阻塞问题，可以归档。",
+                "conversation_id": "conv-review-commit",
+                "target_draft_commit": "abc123def456",
+            },
+        )
+
+        resp = self.client.get(
+            "/api/conversations/context",
+            query_string={
+                "book_name": "v61_target_draft_commit",
+                "agent": "review_agent",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(len(body["messages"]), 2)
+        self.assertEqual(body["messages"][0]["target_draft_commit"], "abc123def456")
+        self.assertEqual(body["messages"][1]["target_draft_commit"], "abc123def456")
+
     def test_tail_rewrite_replaces_last_turn_instead_of_appending_duplicate(self):
         book_name = "v61_tail_rewrite"
         conversation_id = "conv-outline-tail-rewrite"

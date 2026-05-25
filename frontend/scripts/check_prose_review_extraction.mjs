@@ -30,13 +30,21 @@ const problem = extractProseReviewReport(
 if (problem.findings.length !== 2) {
     throw new Error(`expected 2 findings, got ${problem.findings.length}`);
 }
+if (problem.decision !== 'rewrite_required') {
+    throw new Error(`expected rewrite_required decision, got ${problem.decision}`);
+}
 if (problem.findings[0].chapter_number !== 512 || problem.findings[1].chapter_number !== 513) {
     throw new Error(`unexpected chapter extraction: ${JSON.stringify(problem.findings)}`);
 }
 
 const passed = extractProseReviewReport('未发现阻塞问题，可以归档。', spans);
-if (passed.findings.length !== 0 || !passed.passed) {
+if (passed.findings.length !== 0 || !passed.passed || passed.decision !== 'passed') {
     throw new Error(`pass-like review was misclassified: ${JSON.stringify(passed)}`);
+}
+
+const authorFix = extractProseReviewReport('整体可以归档。第512章建议作者小修一句衔接，不影响归档。', spans);
+if (authorFix.findings.length !== 0 || !authorFix.passed || authorFix.decision !== 'author_fix') {
+    throw new Error(`author-fix review was misclassified: ${JSON.stringify(authorFix)}`);
 }
 
 console.log(`prose review extraction ok in ${tmpdir()}`);

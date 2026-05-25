@@ -120,14 +120,50 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertFalse(saved["archive_state"]["eligible"])
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
+    def test_review_report_rejects_stale_source_draft_commit(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        state = self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id}).get_json()
+        original_commit = state["state"]["draft_commit"]
+        etag = state["draft"]["etag"]
+
+        save = self.client.post(
+            "/api/prose_delivery/manual_save",
+            json={
+                "book_id": book_id,
+                "base_etag": etag,
+                "content": state["draft"]["content"] + "\n作者手动补了一句。\n",
+            },
+        )
+        self.assertEqual(save.status_code, 200, save.get_json())
+        current_commit = save.get_json()["state"]["draft_commit"]
+        self.assertNotEqual(current_commit, original_commit)
+
+        stale_review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "source_draft_commit": original_commit,
+                "summary": "这是一条旧草稿审核。",
+                "findings": [],
+            },
+        )
+
+        self.assertEqual(stale_review.status_code, 409, stale_review.get_json())
+        self.assertEqual(stale_review.get_json()["code"], "REVIEW_SOURCE_DRAFT_MISMATCH")
+        self.assertEqual(stale_review.get_json()["source_draft_commit"], original_commit)
+        self.assertEqual(stale_review.get_json()["current_draft_commit"], current_commit)
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
     def test_review_report_and_rewrite_request_are_control_state_only(self):
         book_id, repo_dir = self._bootstrap_draft()
-        self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id})
+        refreshed = self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id}).get_json()
+        source_draft_commit = refreshed["state"]["draft_commit"]
 
         review = self.client.post(
             "/api/prose_delivery/review_report",
             json={
                 "book_id": book_id,
+                "source_draft_commit": source_draft_commit,
                 "summary": "第2章逻辑需要回看。",
                 "findings": [
                     {
@@ -143,6 +179,8 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertEqual(review.status_code, 200, review.get_json())
         state = review.get_json()["state"]
         self.assertEqual(state["review_report"]["status"], "problem")
+        self.assertEqual(state["review_report"]["decision"], "rewrite_required")
+        self.assertEqual(state["review_report"]["source_draft_commit"], source_draft_commit)
         self.assertFalse(state["review_report"]["review_is_author_approval"])
         spans = {span["number"]: span for span in state["draft_package"]["chapter_spans"]}
         self.assertEqual(spans[1]["review_status"], "passed")
@@ -165,6 +203,39 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertIn("人物动机", request_entry["handoff_context"]["review_finding"]["message"])
         self.assertEqual(rewritten_state["status"], "rewrite_requested")
         self.assertEqual(rewritten_state["draft_package"]["chapter_spans"][1]["author_status"], "rewrite_requested")
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
+    def test_minor_review_findings_do_not_block_author_archive(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        refreshed = self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id}).get_json()
+        source_draft_commit = refreshed["state"]["draft_commit"]
+
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "source_draft_commit": source_draft_commit,
+                "decision": "author_fix",
+                "summary": "整体可归档，作者可小修一句衔接。",
+                "findings": [
+                    {
+                        "id": "minor-001",
+                        "chapter_number": 1,
+                        "severity": "minor",
+                        "status": "open",
+                        "message": "第一章有一句衔接可以更顺。",
+                        "suggestion": "作者归档前可自行小修。",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(review.status_code, 200, review.get_json())
+        state = review.get_json()["state"]
+        self.assertEqual(state["review_report"]["status"], "passed")
+        self.assertEqual(state["review_report"]["decision"], "author_fix")
+        self.assertTrue(state["archive_state"]["eligible"])
+        self.assertEqual(state["draft_package"]["chapter_spans"][0]["review_status"], "passed")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
     def test_rewrite_request_is_marked_completed_when_new_draft_arrives(self):

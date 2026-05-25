@@ -19,7 +19,7 @@
 - `chapter_draft.md` remains a continuation review surface even after its accepted sections are canonized into `chapters/*.md`; it is not the formal long-term chapter archive.
 - After successful canonization, `chapter_draft.md` should return to the lightweight default draft placeholder and must not retain already archived chapter prose. This reset is a post-success workspace cleanup, not prose generation or rewriting.
 - `.loregit/prose_delivery_state.json` is derived control-plane state for the current `chapter_draft.md` delivery transaction. It is not source prose, not hidden canon, not a `KnowledgeFile`, and not human approval.
-- `ProseDeliveryState` must bind to `draft_branch`, `base_branch`, `base_commit`, and `draft_commit`. Any manual save or continuation rewrite that changes `draft_commit` must mark older review reports stale before archive or rewrite decisions can proceed.
+- `ProseDeliveryState` must bind to `draft_branch`, `base_branch`, `base_commit`, and `draft_commit`. Any manual save or continuation rewrite that changes `draft_commit` must mark older review reports stale before archive or rewrite decisions can proceed. A review report with `source_draft_commit` must match the current `draft_commit`; otherwise it is stale review evidence and must fail closed instead of changing archive eligibility.
 - `error_archive.md` is long-term reusable review memory. Current pass/problem status, per-finding rewrite requests, unsaved manual edits, and archive eligibility belong to `ProseDeliveryState`, not to `error_archive.md`.
 - `world_model.md`, `status_card.md`, and `domain_rules.md` are the creative constraint engine: `world_model.md` owns durable story promise and hard/soft constraints, `status_card.md` owns current run state and immediate obligations, and `domain_rules.md` owns reusable rule blocks.
 - World-model constraint lifecycle is part of `KnowledgeFile` semantics. A source-backed constraint can be current-active, historical-only, retired, overridden, disabled, conditional, inherited residue, or unresolved, and its applicability may be global or limited to a timeline, arc, stage, loop, faction, POV, location, rule system, or evidence window.
@@ -60,6 +60,7 @@
 
 - `SessionConversationIndex` identity is `book_id + agent_key`.
 - `ConversationMessageLog` identity is `book_id + agent_key + conversation_id`.
+- `ConversationMessageLog.target_draft_commit` is optional compatibility metadata. When present on a prose review message, the frontend must treat it as the reviewed `chapter_draft.md` commit and must not sync that message into `ProseDeliveryState` after the draft commit changes.
 - Local conversation ids and upstream Dify conversation ids must stay separate.
 - Archive and delete are different operations.
 - Deleting a book, resolving a pending delete for a missing book, or successfully fresh/rebuild-importing the same `book_id` must clear that book's local conversation indexes and logs before the workspace is exposed again.

@@ -6,14 +6,12 @@ const PROBLEM_KEYWORDS = [
     '冲突',
     '矛盾',
     '越界',
+    '越过',
     '违反',
     '不符合',
     '不通过',
     '打回',
     '重写',
-    '修改',
-    '修正',
-    '补充',
     '缺少',
     '缺乏',
     '空洞',
@@ -23,8 +21,38 @@ const PROBLEM_KEYWORDS = [
     '跳跃',
     '崩',
     '硬伤',
-    '需要',
+];
+
+const REWRITE_REQUIRED_KEYWORDS = [
+    '不通过',
+    '打回',
+    '重写',
+    '必须重写',
+    '需要重写',
+    '阻塞',
+    '硬伤',
+    '严重',
+    '越界',
+    '越过',
+    '冲突',
+    '矛盾',
+    '崩',
+];
+
+const AUTHOR_FIX_KEYWORDS = [
+    '作者小修',
+    '小修',
+    '可小修',
+    '作者自行修改',
+    '作者可改',
+    '归档前可',
     '建议',
+    '补一句',
+    '补充一句',
+    '润色',
+    '微调',
+    '不影响归档',
+    '可接受',
 ];
 
 const PASS_KEYWORDS = [
@@ -104,14 +132,29 @@ function hasAnyKeyword(text: string, keywords: string[]): boolean {
     return keywords.some((keyword) => text.includes(keyword));
 }
 
+function isRewriteRequiredBlock(text: string): boolean {
+    if (isPassLikeBlock(text) && !/(?:但是|但|不过|仍然|仍需|打回|重写|硬伤|严重|越界|越过|冲突|矛盾)/.test(text)) {
+        return false;
+    }
+    return hasAnyKeyword(text, REWRITE_REQUIRED_KEYWORDS);
+}
+
+function isAuthorFixBlock(text: string): boolean {
+    return hasAnyKeyword(text, AUTHOR_FIX_KEYWORDS) && !isRewriteRequiredBlock(text);
+}
+
 function isPassLikeBlock(text: string): boolean {
     return PASS_LIKE_PATTERNS.some((pattern) => pattern.test(text)) || hasAnyKeyword(text, PASS_KEYWORDS);
 }
 
 function isProblemBlock(text: string): boolean {
+    if (isAuthorFixBlock(text)) return false;
     if (!hasAnyKeyword(text, PROBLEM_KEYWORDS)) return false;
+    if (isPassLikeBlock(text) && !/(?:但是|但|不过|仍然|仍需|打回|重写|硬伤|严重|越界|越过|冲突|矛盾)/.test(text)) {
+        return false;
+    }
     if (!isPassLikeBlock(text)) return true;
-    return /(?:但是|但|不过|仍然|仍需|需要|建议|打回|重写|修改|修正|补充)/.test(text);
+    return /(?:但是|但|不过|仍然|仍需|打回|重写|硬伤|严重|越界|越过|冲突|矛盾)/.test(text);
 }
 
 function splitReviewBlocks(text: string): string[] {
@@ -131,9 +174,9 @@ function splitReviewBlocks(text: string): string[] {
 export function extractProseReviewReport(
     reviewText: string,
     spans: ProseChapterSpan[],
-): { summary: string; findings: ProseReviewFinding[]; passed: boolean } {
+): { summary: string; findings: ProseReviewFinding[]; passed: boolean; decision: 'passed' | 'author_fix' | 'rewrite_required' } {
     const normalized = normalizeText(reviewText);
-    if (!normalized) return { summary: '', findings: [], passed: false };
+    if (!normalized) return { summary: '', findings: [], passed: false, decision: 'rewrite_required' };
 
     const blocks = splitReviewBlocks(normalized);
     const findings = blocks
@@ -152,6 +195,8 @@ export function extractProseReviewReport(
         });
 
     const passed = findings.length === 0 && isPassLikeBlock(normalized);
+    const hasAuthorFix = blocks.some(isAuthorFixBlock) || hasAnyKeyword(normalized, AUTHOR_FIX_KEYWORDS);
+    const decision = findings.length > 0 ? 'rewrite_required' : (hasAuthorFix ? 'author_fix' : 'passed');
     const summary = normalized.length > 360 ? `${normalized.slice(0, 360).trim()}……` : normalized;
-    return { summary, findings, passed };
+    return { summary, findings, passed: passed || decision === 'author_fix', decision };
 }

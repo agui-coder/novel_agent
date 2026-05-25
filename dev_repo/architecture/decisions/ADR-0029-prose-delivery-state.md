@@ -63,7 +63,8 @@ active shape must include these concepts:
   chapter number, title, heading line, end line, review status, and author
   status.
 - `review_report`: structured review findings keyed by chapter number and
-  finding id. This report is current-state evidence, while `error_archive.md`
+  finding id, plus a decision and the `source_draft_commit` reviewed by that
+  report. This report is current-state evidence, while `error_archive.md`
   remains long-term reusable evidence.
 - `rewrite_requests`: finding id, chapter number, rewrite scope, prior draft
   commit, target file, and instruction that chapter numbers and accepted context
@@ -82,7 +83,8 @@ active shape must include these concepts:
   draft file. A batch with three chapters is one draft package with three spans,
   not three independent review branches.
 - A structured review report updates `review_report` and per-chapter/finding
-  statuses. Review pass is not author approval.
+  statuses only when its reviewed source draft commit matches the current
+  `draft_commit`. Review pass is not author approval.
 - A human inline save updates `chapter_draft.md` through the backend, creates a
   new draft commit, updates `manual_edit`, and marks older review reports stale.
 - A rewrite request is attached to one review finding. The continuation Agent

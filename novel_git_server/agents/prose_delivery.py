@@ -139,8 +139,8 @@ def _normalize_findings(raw_findings: Any) -> list[dict[str, Any]]:
             {
                 "id": finding_id.strip(),
                 "chapter_number": chapter_number if isinstance(chapter_number, int) else None,
-                "severity": severity.strip() or "info",
-                "status": status.strip() or "open",
+                "severity": (severity.strip() or "info").lower(),
+                "status": (status.strip() or "open").lower(),
                 "message": str(raw.get("message") or "").strip(),
                 "suggestion": str(raw.get("suggestion") or "").strip(),
             }
@@ -151,7 +151,26 @@ def _normalize_findings(raw_findings: Any) -> list[dict[str, Any]]:
 def _finding_is_problem(finding: dict[str, Any]) -> bool:
     severity = str(finding.get("severity") or "").lower()
     status = str(finding.get("status") or "").lower()
-    return severity in {"fail", "error", "blocking", "problem"} or status in {"open", "blocking", "problem"}
+    if severity in {"fail", "error", "blocking", "problem", "critical"}:
+        return True
+    if status in {"blocking", "problem", "rewrite_required", "failed"}:
+        return True
+    if status == "open" and severity not in {"minor", "advisory", "info", "warn", "warning", "suggestion"}:
+        return True
+    return False
+
+
+def _normalize_review_decision(raw_decision: Any, findings: list[dict[str, Any]]) -> str:
+    decision = str(raw_decision or "").strip().lower()
+    if decision in {"passed", "author_fix", "rewrite_required"}:
+        return decision
+    return "rewrite_required" if any(_finding_is_problem(item) for item in findings) else "passed"
+
+
+def _review_status_from_decision(decision: str, findings: list[dict[str, Any]]) -> str:
+    if decision == "rewrite_required" or any(_finding_is_problem(item) for item in findings):
+        return "problem"
+    return "passed"
 
 
 def _apply_review_status_to_spans(state: dict[str, Any], findings: list[dict[str, Any]]) -> None:
@@ -368,13 +387,36 @@ def create_blueprint(
                         ),
                         409,
                     )
+                current_draft_commit = str(state.get("draft_commit") or "")
+                raw_source_draft_commit = payload.get("source_draft_commit")
+                source_draft_commit = (
+                    raw_source_draft_commit.strip()
+                    if isinstance(raw_source_draft_commit, str) and raw_source_draft_commit.strip()
+                    else current_draft_commit
+                )
+                if source_draft_commit and current_draft_commit and source_draft_commit != current_draft_commit:
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "code": "REVIEW_SOURCE_DRAFT_MISMATCH",
+                                "message": "review report targets an older chapter_draft.md commit; rerun review for the current draft",
+                                "source_draft_commit": source_draft_commit,
+                                "current_draft_commit": current_draft_commit,
+                            }
+                        ),
+                        409,
+                    )
                 findings = _normalize_findings(payload.get("findings"))
-                review_status = "problem" if any(_finding_is_problem(item) for item in findings) else "passed"
+                review_decision = _normalize_review_decision(payload.get("decision"), findings)
+                review_status = _review_status_from_decision(review_decision, findings)
                 state["status"] = "review_ready"
                 state["review_report"] = {
                     "status": review_status,
+                    "decision": review_decision,
                     "stale": False,
-                    "draft_commit": state.get("draft_commit") or "",
+                    "draft_commit": current_draft_commit,
+                    "source_draft_commit": source_draft_commit,
                     "findings": findings,
                     "summary": str(payload.get("summary") or "").strip(),
                     "updated_at": _now_utc(),

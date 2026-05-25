@@ -9,6 +9,7 @@ export function mapConversationMessages(messages: Array<any>): ChatMessage[] {
         conversationId: typeof item?.conversation_id === 'string' ? item.conversation_id : null,
         upstreamConversationId: typeof item?.upstream_conversation_id === 'string' ? item.upstream_conversation_id : null,
         activeFile: typeof item?.active_file === 'string' ? item.active_file : undefined,
+        targetDraftCommit: typeof item?.target_draft_commit === 'string' ? item.target_draft_commit : null,
         diffAttachment: null,
         stageProgress: null,
         stageEvents: [],
@@ -84,6 +85,7 @@ export function mergeHydratedMessagesWithLocalUiState(
             reasoningEvents: markUiTraceItemsDone(local.reasoningEvents),
             previewEvents: markUiTraceItemsDone(local.previewEvents),
             timelineSegments: markUiTraceItemsDone(local.timelineSegments),
+            targetDraftCommit: remote.targetDraftCommit ?? local.targetDraftCommit ?? null,
             resolution: local.resolution,
             resolvedAt: local.resolvedAt,
         };
