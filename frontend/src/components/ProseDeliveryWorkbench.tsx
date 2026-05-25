@@ -24,6 +24,13 @@ interface RewriteProgress {
     nextCommit: string | null;
 }
 
+interface RewriteStreamLine {
+    id: string;
+    label: string;
+    text: string;
+    tone?: 'warning' | 'success' | 'danger';
+}
+
 interface ProseDeliveryWorkbenchProps {
     bookRef: { kind: 'book_name' | 'book_id'; value: string };
     draftContent: string;
@@ -145,6 +152,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const rewriteInFlightRef = useRef(false);
     const editorScrollRef = useRef<HTMLTextAreaElement | null>(null);
     const previewScrollRef = useRef<HTMLDivElement | null>(null);
+    const rewriteStreamRef = useRef<HTMLDivElement | null>(null);
     const syncScrollLockRef = useRef(false);
 
     const state = payload?.state ?? null;
@@ -165,9 +173,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         || rewriteProgress.status === 'running'
         || rewriteProgress.status === 'refreshing';
     const rewriteTelemetryLines = useMemo(() => {
-        const lines: Array<{ label: string; text: string; tone?: 'warning' | 'success' | 'danger' }> = [];
+        const lines: RewriteStreamLine[] = [];
         if (rewriteProgress.status !== 'idle' && rewriteProgress.message) {
             lines.push({
+                id: 'progress',
                 label: '进度',
                 text: rewriteProgress.message,
                 tone: rewriteProgress.status === 'error'
@@ -179,18 +188,21 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         }
         if (rewriteProgress.priorCommit || rewriteProgress.nextCommit) {
             lines.push({
+                id: 'commit',
                 label: '草稿版本',
                 text: `${rewriteProgress.priorCommit ? rewriteProgress.priorCommit.slice(0, 8) : '未知'} -> ${rewriteProgress.nextCommit ? rewriteProgress.nextCommit.slice(0, 8) : '等待写入'}`,
             });
         }
         if (latestCompletedRewriteRequest?.completed_draft_commit) {
             lines.push({
+                id: 'completed',
                 label: '最近完成',
                 text: `已收到新草稿 ${latestCompletedRewriteRequest.completed_draft_commit.slice(0, 8)}`,
                 tone: 'success',
             });
         } else if (latestRewriteRequest?.status === 'requested') {
             lines.push({
+                id: 'request',
                 label: '打回请求',
                 text: `已登记 ${latestRewriteRequest.id}，等待续写 Agent 写回新草稿。`,
                 tone: 'warning',
@@ -203,20 +215,60 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
             || [...latestRewriteMessage.stageEvents].reverse().find((item) => item.stageText);
         const currentReasoning = [...latestRewriteMessage.reasoningEvents].reverse().find((item) => item.text);
         const currentPreview = [...latestRewriteMessage.previewEvents].reverse().find((item) => item.text);
-        if (currentStage?.stageText) lines.push({ label: '当前节点', text: currentStage.stageText });
-        if (currentReasoning?.text) lines.push({ label: currentReasoning.label || '思考片段', text: currentReasoning.text });
-        if (currentPreview?.text) lines.push({ label: currentPreview.label || '草稿预览', text: currentPreview.text });
-        if (latestRewriteMessage.text.trim()) lines.push({ label: 'Agent 回复', text: latestRewriteMessage.text.trim() });
-        if (latestRewriteMessage.status === 'streaming') lines.push({ label: '状态', text: '续写 Agent 正在输出或写入草稿。', tone: 'warning' });
-        if (latestRewriteMessage.status === 'done') lines.push({ label: '状态', text: '续写 Agent 已结束，等待草稿审阅。', tone: 'success' });
-        if (latestRewriteMessage.status === 'error') lines.push({ label: '状态', text: '续写 Agent 返回错误，请查看右侧会话详情。', tone: 'danger' });
+        if (currentStage?.stageText) lines.push({ id: 'stage', label: '当前节点', text: currentStage.stageText });
+        if (currentReasoning?.text) lines.push({ id: 'reasoning', label: currentReasoning.label || '思考片段', text: currentReasoning.text });
+        if (currentPreview?.text) lines.push({ id: 'preview', label: currentPreview.label || '草稿预览', text: currentPreview.text });
+        if (latestRewriteMessage.text.trim()) lines.push({ id: 'answer', label: 'Agent 回复', text: latestRewriteMessage.text.trim() });
+        if (latestRewriteMessage.status === 'streaming') lines.push({ id: 'streaming', label: '状态', text: '续写 Agent 正在输出或写入草稿。', tone: 'warning' });
+        if (latestRewriteMessage.status === 'done') lines.push({ id: 'done', label: '状态', text: '续写 Agent 已结束，等待草稿审阅。', tone: 'success' });
+        if (latestRewriteMessage.status === 'error') lines.push({ id: 'error', label: '状态', text: '续写 Agent 返回错误，请查看右侧会话详情。', tone: 'danger' });
         return lines.slice(-5);
     }, [latestCompletedRewriteRequest, latestRewriteMessage, latestRewriteRequest, rewriteProgress]);
+    const rewriteStreamLines = useMemo(() => {
+        const lines: RewriteStreamLine[] = [];
+        const pushLine = (line: RewriteStreamLine) => {
+            const text = line.text.trim();
+            if (!text) return;
+            lines.push({ ...line, text });
+        };
+        for (const line of rewriteTelemetryLines) {
+            if (line.id === 'reasoning' || line.id === 'preview' || line.id === 'answer') continue;
+            pushLine(line);
+        }
+        if (latestRewriteMessage) {
+            for (const event of latestRewriteMessage.reasoningEvents.slice(-3)) {
+                pushLine({
+                    id: `reasoning-${event.sourceEvent || ''}-${event.label}`,
+                    label: event.label || '思考',
+                    text: event.text,
+                });
+            }
+            for (const event of latestRewriteMessage.previewEvents.slice(-4)) {
+                pushLine({
+                    id: `preview-${event.sourceEvent || ''}-${event.label}`,
+                    label: event.label || '草稿预览',
+                    text: event.text,
+                });
+            }
+            pushLine({
+                id: 'answer-stream',
+                label: latestRewriteMessage.status === 'streaming' ? '正在返回' : '最终回复',
+                text: latestRewriteMessage.text,
+                tone: latestRewriteMessage.status === 'error'
+                    ? 'danger'
+                    : latestRewriteMessage.status === 'done'
+                        ? 'success'
+                        : undefined,
+            });
+        }
+        return lines.slice(-10);
+    }, [latestRewriteMessage, rewriteTelemetryLines]);
     const showRewriteTelemetry = reviewState === 'rewriting'
         || pendingRewrite
         || rewriteProgress.status !== 'idle'
         || latestRewriteMessage?.status === 'streaming'
         || rewriteTelemetryLines.length > 0;
+    const showRewriteStream = showRewriteTelemetry || rewriteStreamLines.length > 0;
     const hasRewriteInput = findings.length > 0 || Boolean(manualFinding.trim()) || Boolean(latestReviewText);
     const canRequestRewrite = !hasUnsavedEdit
         && !rewriteBusy
@@ -285,6 +337,12 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         void loadState('fetch');
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bookRef.kind, bookRef.value, draftCommitId]);
+
+    useEffect(() => {
+        const streamPanel = rewriteStreamRef.current;
+        if (!streamPanel) return;
+        streamPanel.scrollTop = streamPanel.scrollHeight;
+    }, [rewriteStreamLines, latestRewriteMessage?.status]);
 
     const handleRefresh = async () => {
         await loadState('refresh');
@@ -672,6 +730,44 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                 <div className="text-[var(--tone-warning-text)]">有审核问题，需打回重写或人工修改后再确认通过</div>
                             ) : null}
                         </div>
+                        {showRewriteStream ? (
+                            <div className="mt-3 rounded-[8px] border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.045)]">
+                                <div className="flex items-center justify-between border-b border-[rgba(245,158,11,0.12)] px-2.5 py-1.5">
+                                    <span className="text-[10px] font-semibold text-[var(--tone-warning-text)]">草稿返回流</span>
+                                    <span className="text-[10px] text-[var(--color-dark-text-faint)]">
+                                        {latestRewriteMessage?.status === 'streaming' ? '实时' : '最近'}
+                                    </span>
+                                </div>
+                                <div
+                                    ref={rewriteStreamRef}
+                                    className="app-scrollbar max-h-[168px] overflow-y-auto px-2.5 py-2 text-[11px] leading-5"
+                                >
+                                    {rewriteStreamLines.length > 0 ? rewriteStreamLines.map((line, index) => (
+                                        <div key={`${line.id}-${index}`} className="mb-2 last:mb-0">
+                                            <div className={
+                                                line.tone === 'danger'
+                                                    ? 'mb-0.5 text-[10px] font-semibold text-[var(--tone-danger-text)]'
+                                                    : line.tone === 'success'
+                                                        ? 'mb-0.5 text-[10px] font-semibold text-[var(--tone-success-text)]'
+                                                        : line.tone === 'warning'
+                                                            ? 'mb-0.5 text-[10px] font-semibold text-[var(--tone-warning-text)]'
+                                                            : 'mb-0.5 text-[10px] font-semibold text-[var(--color-dark-text-faint)]'
+                                            }>
+                                                {line.label}
+                                            </div>
+                                            <div className="whitespace-pre-wrap break-words text-[var(--color-dark-text-muted)]">
+                                                {line.text}
+                                                {latestRewriteMessage?.status === 'streaming' && index === rewriteStreamLines.length - 1 ? (
+                                                    <span className="stream-caret ml-1" aria-hidden="true" />
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="text-[var(--color-dark-text-faint)]">等待续写 Agent 返回第一段文字。</div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="mt-3 space-y-2">
@@ -779,9 +875,9 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                                 {latestRewriteMessage?.status === 'streaming' ? '进行中' : pendingRewrite ? '等待新草稿' : '最近一次'}
                                             </div>
                                         </div>
-                                        <div className="mt-2 space-y-1.5">
-                                            {rewriteTelemetryLines.length > 0 ? rewriteTelemetryLines.map((line, index) => (
-                                                <div key={`${line.label}-${index}`} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[11px] leading-5">
+                                        <div className="app-scrollbar mt-2 max-h-[116px] space-y-2 overflow-y-auto pr-1">
+                                            {rewriteStreamLines.length > 0 ? rewriteStreamLines.map((line, index) => (
+                                                <div key={`${line.id}-${index}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-2 text-[11px] leading-5">
                                                     <div className="text-[var(--color-dark-text-faint)]">{line.label}</div>
                                                     <div className={
                                                         line.tone === 'danger'
@@ -792,7 +888,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                                                     ? 'text-[var(--tone-warning-text)]'
                                                                     : 'text-[var(--color-dark-text-muted)]'
                                                     }>
-                                                        {line.text}
+                                                        <span className="whitespace-pre-wrap break-words">{line.text}</span>
+                                                        {latestRewriteMessage?.status === 'streaming' && index === rewriteStreamLines.length - 1 ? (
+                                                            <span className="stream-caret ml-1" aria-hidden="true" />
+                                                        ) : null}
                                                     </div>
                                                 </div>
                                             )) : (
