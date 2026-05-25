@@ -81,6 +81,9 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         state = body["state"]
         self.assertEqual(state["status"], "draft_ready")
         self.assertEqual(state["draft_package"]["chapter_count"], 2)
+        self.assertFalse(state["archive_state"]["eligible"])
+        self.assertEqual(state["archive_state"]["review_gate"], "not_started")
+        self.assertEqual(state["archive_state"]["blocked_reason"], "review_required_before_archive")
         self.assertEqual([span["number"] for span in state["draft_package"]["chapter_spans"]], [1, 2])
         self.assertFalse(body["staleness"]["stale"])
         self.assertIn("第1章 风起", body["draft"]["content"])
@@ -221,6 +224,9 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertEqual(next_state["rewrite_requests"][-1]["status"], "completed")
         self.assertEqual(next_state["rewrite_requests"][-1]["prior_draft_commit"], prior_commit)
         self.assertEqual(next_state["rewrite_requests"][-1]["completed_draft_commit"], next_state["draft_commit"])
+        self.assertFalse(next_state["archive_state"]["eligible"])
+        self.assertEqual(next_state["archive_state"]["review_gate"], "not_started")
+        self.assertEqual(next_state["archive_state"]["blocked_reason"], "review_required_before_archive")
         spans = {span["number"]: span for span in next_state["draft_package"]["chapter_spans"]}
         self.assertEqual(spans[2]["author_status"], "rewrite_completed")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")

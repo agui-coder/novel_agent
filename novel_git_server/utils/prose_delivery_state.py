@@ -284,11 +284,13 @@ def build_initial_state(
             "review_required": False,
         },
         "archive_state": {
-            "eligible": bool(chapter_spans),
+            "eligible": False,
             "status": "not_started",
             "archived_files": [],
             "error": None,
             "post_confirm_bridge_status": "not_started",
+            "review_gate": "not_started",
+            "blocked_reason": "review_required_before_archive" if chapter_spans else "draft_package_empty",
         },
         "handoff_state": {
             "summary_status": "not_started",
@@ -333,6 +335,35 @@ def _apply_rewrite_request_status_to_spans(
             span["author_status"] = next_author_status
 
 
+def _archive_blocked_reason(review_status: str, has_chapters: bool, review_stale: bool) -> str:
+    if not has_chapters:
+        return "draft_package_empty"
+    if review_stale or review_status == "stale":
+        return "review_required_after_draft_change"
+    if review_status == "problem":
+        return "review_findings_require_rewrite_or_author_approval"
+    return "review_required_before_archive"
+
+
+def normalize_prose_delivery_state(state: dict[str, Any]) -> dict[str, Any]:
+    next_state = dict(state)
+    review_report = next_state.get("review_report") if isinstance(next_state.get("review_report"), dict) else {}
+    review_status = str(review_report.get("status") or "not_started")
+    review_stale = bool(review_report.get("stale"))
+    spans = ((next_state.get("draft_package") or {}).get("chapter_spans") or [])
+    has_chapters = bool(spans)
+    archive_state = dict(next_state.get("archive_state")) if isinstance(next_state.get("archive_state"), dict) else {}
+    eligible = review_status == "passed" and has_chapters and not review_stale
+    archive_state["eligible"] = eligible
+    archive_state["review_gate"] = review_status
+    if eligible:
+        archive_state.pop("blocked_reason", None)
+    else:
+        archive_state["blocked_reason"] = _archive_blocked_reason(review_status, has_chapters, review_stale)
+    next_state["archive_state"] = archive_state
+    return next_state
+
+
 def read_prose_delivery_state(repo_dir: str) -> dict[str, Any] | None:
     _ensure_loregit_excluded(repo_dir)
     path = _state_path(repo_dir)
@@ -343,14 +374,14 @@ def read_prose_delivery_state(repo_dir: str) -> dict[str, Any] | None:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, dict) else None
+    return normalize_prose_delivery_state(data) if isinstance(data, dict) else None
 
 
 def write_prose_delivery_state(repo_dir: str, state: dict[str, Any]) -> dict[str, Any]:
     _ensure_loregit_excluded(repo_dir)
     state_dir = os.path.join(repo_dir, DRAFT_META_DIR)
     os.makedirs(state_dir, exist_ok=True)
-    next_state = {**state, "updated_at": _now_utc()}
+    next_state = normalize_prose_delivery_state({**state, "updated_at": _now_utc()})
     with open(_state_path(repo_dir), "w", encoding="utf-8", newline="") as handle:
         json.dump(next_state, handle, ensure_ascii=False, indent=2)
         handle.write("\n")

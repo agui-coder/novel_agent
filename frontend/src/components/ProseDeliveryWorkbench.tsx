@@ -167,11 +167,13 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
     const pendingRewrite = state?.status === 'rewrite_requested'
         || findings.some((finding) => finding.status === 'rewrite_requested');
-    const rewriteBusy = reviewState === 'saving'
-        || reviewState === 'rewriting'
+    const rewriteStreamActive = reviewState === 'rewriting'
+        || latestRewriteMessage?.status === 'streaming'
         || rewriteProgress.status === 'registering'
         || rewriteProgress.status === 'running'
         || rewriteProgress.status === 'refreshing';
+    const rewriteBusy = reviewState === 'saving'
+        || rewriteStreamActive;
     const rewriteTelemetryLines = useMemo(() => {
         const lines: RewriteStreamLine[] = [];
         if (rewriteProgress.status !== 'idle' && rewriteProgress.message) {
@@ -272,9 +274,8 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const hasRewriteInput = findings.length > 0 || Boolean(manualFinding.trim()) || Boolean(latestReviewText);
     const canRequestRewrite = !hasUnsavedEdit
         && !rewriteBusy
-        && !pendingRewrite
         && draftActionPending === 'none'
-        && hasRewriteInput;
+        && (hasRewriteInput || pendingRewrite);
     const canArchive = Boolean(
         state
         && state.review_report.status === 'passed'
@@ -716,8 +717,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             <div>阶段：{deliveryStatusLabel(state?.status)}</div>
                             <div>审核：{reviewStatusLabel(state?.review_report.status)}</div>
                             <div>归档：{canArchive ? '可由作者确认' : '需先审核通过'}</div>
-                            {reviewState === 'rewriting' || pendingRewrite ? (
+                            {rewriteStreamActive ? (
                                 <div className="text-[var(--tone-warning-text)]">续写 Agent 正在按审核意见重写，请等待新草稿返回</div>
+                            ) : pendingRewrite ? (
+                                <div className="text-[var(--tone-warning-text)]">已有打回请求，可继续交给续写 Agent 重写</div>
                             ) : null}
                             {latestCompletedRewriteRequest?.completed_draft_commit ? (
                                 <div className="text-[var(--tone-success-text)]">
@@ -812,8 +815,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                         >
                             {reviewState === 'saving'
                                 ? '打回处理中'
-                                : reviewState === 'rewriting' || pendingRewrite
+                                : rewriteStreamActive
                                     ? '等待续写 Agent 重写'
+                                    : pendingRewrite
+                                        ? '继续已登记重写'
                                     : '按审核意见打回重写'}
                         </button>
                         <button
@@ -922,10 +927,10 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleRewriteFinding(finding); }}
-                                                    disabled={reviewState === 'saving' || reviewState === 'rewriting' || pendingRewrite || hasUnsavedEdit || draftActionPending !== 'none'}
+                                                    disabled={reviewState === 'saving' || rewriteStreamActive || (pendingRewrite && finding.status !== 'rewrite_requested') || hasUnsavedEdit || draftActionPending !== 'none'}
                                                     className="shrink-0 rounded-[8px] border border-[var(--tone-warning-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--tone-warning-text)] hover:bg-[rgba(245,158,11,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                                 >
-                                                    {finding.status === 'rewrite_requested' ? '已打回' : '打回重写'}
+                                                    {finding.status === 'rewrite_requested' ? '继续重写' : '打回重写'}
                                                 </button>
                                             </div>
                                         </div>
