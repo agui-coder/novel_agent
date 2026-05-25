@@ -247,6 +247,13 @@ def build_initial_state(
     )
     chapter_spans = parse_chapter_spans(draft_markdown)
     draft_commit = identity["draft_commit"]
+    prior_rewrite_requests = (
+        existing_state.get("rewrite_requests")
+        if existing_state and isinstance(existing_state.get("rewrite_requests"), list)
+        else []
+    )
+    rewrite_requests = _carry_rewrite_requests(prior_rewrite_requests, draft_commit)
+    _apply_rewrite_request_status_to_spans(chapter_spans, rewrite_requests)
     return {
         "schema_version": PROSE_DELIVERY_STATE_SCHEMA_VERSION,
         "book_id": book_id,
@@ -268,7 +275,7 @@ def build_initial_state(
             "findings": [],
             "updated_at": None,
         },
-        "rewrite_requests": [],
+        "rewrite_requests": rewrite_requests,
         "manual_edit": {
             "dirty": False,
             "saved": False,
@@ -290,6 +297,40 @@ def build_initial_state(
             "errors": [],
         },
     }
+
+
+def _carry_rewrite_requests(raw_requests: list[Any], draft_commit: str) -> list[dict[str, Any]]:
+    carried: list[dict[str, Any]] = []
+    for raw in raw_requests:
+        if not isinstance(raw, dict):
+            continue
+        request_entry = dict(raw)
+        status = str(request_entry.get("status") or "").strip()
+        prior_commit = str(request_entry.get("prior_draft_commit") or "").strip()
+        if status in {"requested", "running"} and draft_commit and prior_commit and draft_commit != prior_commit:
+            request_entry["status"] = "completed"
+            request_entry["completed_draft_commit"] = draft_commit
+            request_entry["completed_at"] = _now_utc()
+        carried.append(request_entry)
+    return carried[-8:]
+
+
+def _apply_rewrite_request_status_to_spans(
+    chapter_spans: list[dict[str, Any]],
+    rewrite_requests: list[dict[str, Any]],
+) -> None:
+    for request_entry in rewrite_requests:
+        status = str(request_entry.get("status") or "").strip()
+        if status not in {"requested", "running", "completed"}:
+            continue
+        chapter_number = request_entry.get("chapter_number")
+        next_author_status = "rewrite_completed" if status == "completed" else "rewrite_requested"
+        for span in chapter_spans:
+            if not isinstance(span, dict):
+                continue
+            if isinstance(chapter_number, int) and span.get("number") != chapter_number:
+                continue
+            span["author_status"] = next_author_status
 
 
 def read_prose_delivery_state(repo_dir: str) -> dict[str, Any] | None:

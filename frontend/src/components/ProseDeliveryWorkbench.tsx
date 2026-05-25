@@ -70,6 +70,8 @@ function authorStatusLabel(status: string | undefined): string {
     switch (status) {
         case 'rewrite_requested':
             return '已打回';
+        case 'rewrite_completed':
+            return '已重写';
         case 'pending':
         default:
             return '待处理';
@@ -86,6 +88,8 @@ function deliveryStatusLabel(status: string | undefined): string {
             return '审核已记录';
         case 'rewrite_requested':
             return '已打回重写';
+        case 'rewrite_completed':
+            return '重写已返回';
         case 'blocked':
             return '等待正文草稿';
         default:
@@ -148,6 +152,9 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const spans = state?.draft_package.chapter_spans ?? [];
     const findings = state?.review_report.findings ?? [];
     const stale = Boolean(payload?.staleness.stale || state?.review_report.stale);
+    const rewriteRequests = state?.rewrite_requests ?? [];
+    const latestRewriteRequest = [...rewriteRequests].reverse()[0] ?? null;
+    const latestCompletedRewriteRequest = [...rewriteRequests].reverse().find((item) => item.status === 'completed') ?? null;
     const latestReviewText = latestReviewMessageText.trim();
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
     const pendingRewrite = state?.status === 'rewrite_requested'
@@ -176,6 +183,19 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                 text: `${rewriteProgress.priorCommit ? rewriteProgress.priorCommit.slice(0, 8) : '未知'} -> ${rewriteProgress.nextCommit ? rewriteProgress.nextCommit.slice(0, 8) : '等待写入'}`,
             });
         }
+        if (latestCompletedRewriteRequest?.completed_draft_commit) {
+            lines.push({
+                label: '最近完成',
+                text: `已收到新草稿 ${latestCompletedRewriteRequest.completed_draft_commit.slice(0, 8)}`,
+                tone: 'success',
+            });
+        } else if (latestRewriteRequest?.status === 'requested') {
+            lines.push({
+                label: '打回请求',
+                text: `已登记 ${latestRewriteRequest.id}，等待续写 Agent 写回新草稿。`,
+                tone: 'warning',
+            });
+        }
         if (!latestRewriteMessage) {
             return lines;
         }
@@ -191,7 +211,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         if (latestRewriteMessage.status === 'done') lines.push({ label: '状态', text: '续写 Agent 已结束，等待草稿审阅。', tone: 'success' });
         if (latestRewriteMessage.status === 'error') lines.push({ label: '状态', text: '续写 Agent 返回错误，请查看右侧会话详情。', tone: 'danger' });
         return lines.slice(-5);
-    }, [latestRewriteMessage, rewriteProgress]);
+    }, [latestCompletedRewriteRequest, latestRewriteMessage, latestRewriteRequest, rewriteProgress]);
     const showRewriteTelemetry = reviewState === 'rewriting'
         || pendingRewrite
         || rewriteProgress.status !== 'idle'
@@ -640,6 +660,11 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             <div>归档：{canArchive ? '可由作者确认' : '需先审核通过'}</div>
                             {reviewState === 'rewriting' || pendingRewrite ? (
                                 <div className="text-[var(--tone-warning-text)]">续写 Agent 正在按审核意见重写，请等待新草稿返回</div>
+                            ) : null}
+                            {latestCompletedRewriteRequest?.completed_draft_commit ? (
+                                <div className="text-[var(--tone-success-text)]">
+                                    最近一次打回已收到新草稿 {latestCompletedRewriteRequest.completed_draft_commit.slice(0, 8)}
+                                </div>
                             ) : null}
                             {stale ? <div className="text-[var(--tone-warning-text)]">状态需要刷新或重审</div> : null}
                             {hasUnsavedEdit ? <div className="text-[var(--tone-warning-text)]">有未保存修改</div> : null}

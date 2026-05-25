@@ -53,6 +53,9 @@ export interface ProseDeliveryState {
         chapter_number: number | null;
         status: string;
         instruction: string;
+        prior_draft_commit?: string;
+        completed_draft_commit?: string;
+        completed_at?: string;
         route_agent_key: 'continuation_agent';
     }>;
     manual_edit: {

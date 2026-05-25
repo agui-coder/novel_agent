@@ -164,6 +164,67 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertEqual(rewritten_state["draft_package"]["chapter_spans"][1]["author_status"], "rewrite_requested")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
+    def test_rewrite_request_is_marked_completed_when_new_draft_arrives(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id})
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "summary": "第2章需要补因果。",
+                "findings": [
+                    {
+                        "id": "logic-001",
+                        "chapter_number": 2,
+                        "severity": "blocking",
+                        "message": "人物动机缺少承接。",
+                        "suggestion": "补上上一章决定和本章行动之间的因果。",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(review.status_code, 200, review.get_json())
+        rewrite = self.client.post(
+            "/api/prose_delivery/rewrite_request",
+            json={"book_id": book_id, "finding_id": "logic-001"},
+        )
+        self.assertEqual(rewrite.status_code, 200, rewrite.get_json())
+        prior_commit = rewrite.get_json()["state"]["draft_commit"]
+
+        rewritten_draft = (
+            "# 续写草稿\n\n"
+            "## 第1章 风起\n"
+            "正文一。\n\n"
+            "## 第2章 云涌\n"
+            "正文二，补上上一章决定和本章行动之间的因果。\n"
+        )
+        sync = self.client.post(
+            "/api/draft/sync_all",
+            json={
+                "book_id": book_id,
+                "active_file": "chapter_draft.md",
+                "write_scope": "active_file_strict",
+                "message": "rewrite draft after review",
+                "writes": [
+                    {
+                        "file_name": "chapter_draft.md",
+                        "op": "update",
+                        "content": rewritten_draft,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(sync.status_code, 200, sync.get_json())
+        next_state = sync.get_json()["prose_delivery_state"]
+        self.assertEqual(next_state["status"], "draft_ready")
+        self.assertNotEqual(next_state["draft_commit"], prior_commit)
+        self.assertEqual(next_state["rewrite_requests"][-1]["status"], "completed")
+        self.assertEqual(next_state["rewrite_requests"][-1]["prior_draft_commit"], prior_commit)
+        self.assertEqual(next_state["rewrite_requests"][-1]["completed_draft_commit"], next_state["draft_commit"])
+        spans = {span["number"]: span for span in next_state["draft_package"]["chapter_spans"]}
+        self.assertEqual(spans[2]["author_status"], "rewrite_completed")
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
     def test_review_report_rebuilds_missing_delivery_state(self):
         book_id, repo_dir = self._bootstrap_draft()
         clear = self.client.post("/api/prose_delivery/clear", json={"book_id": book_id})
