@@ -42,6 +42,14 @@ if (passed.findings.length !== 0 || !passed.passed || passed.decision !== 'passe
     throw new Error(`pass-like review was misclassified: ${JSON.stringify(passed)}`);
 }
 
+const fullPass = extractProseReviewReport(
+    '审核结论：通过，不需要写入error_archive。本版草稿完全通过审核，所有历史error_archive约束已正确遵守，无新问题需记录。',
+    spans,
+);
+if (fullPass.findings.length !== 0 || !fullPass.passed || fullPass.decision !== 'passed') {
+    throw new Error(`full pass review was misclassified: ${JSON.stringify(fullPass)}`);
+}
+
 const authorFix = extractProseReviewReport('整体可以归档。第512章建议作者小修一句衔接，不影响归档。', spans);
 if (authorFix.findings.length !== 0 || !authorFix.passed || authorFix.decision !== 'author_fix') {
     throw new Error(`author-fix review was misclassified: ${JSON.stringify(authorFix)}`);

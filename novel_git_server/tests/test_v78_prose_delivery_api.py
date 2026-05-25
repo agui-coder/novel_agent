@@ -238,6 +238,33 @@ class V78ProseDeliveryApiTests(unittest.TestCase):
         self.assertEqual(state["draft_package"]["chapter_spans"][0]["review_status"], "passed")
         self.assertEqual(self._git(repo_dir, "status", "--short"), "")
 
+    def test_author_adopted_pass_unlocks_archive_gate(self):
+        book_id, repo_dir = self._bootstrap_draft()
+        refreshed = self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id}).get_json()
+        source_draft_commit = refreshed["state"]["draft_commit"]
+
+        review = self.client.post(
+            "/api/prose_delivery/review_report",
+            json={
+                "book_id": book_id,
+                "source_draft_commit": source_draft_commit,
+                "decision": "passed",
+                "review_is_author_approval": True,
+                "summary": "作者采用历史审核结论：本版草稿完全通过审核。",
+                "findings": [],
+            },
+        )
+
+        self.assertEqual(review.status_code, 200, review.get_json())
+        state = review.get_json()["state"]
+        self.assertEqual(state["review_report"]["status"], "passed")
+        self.assertEqual(state["review_report"]["decision"], "passed")
+        self.assertEqual(state["review_report"]["source_draft_commit"], source_draft_commit)
+        self.assertTrue(state["review_report"]["review_is_author_approval"])
+        self.assertTrue(state["archive_state"]["eligible"])
+        self.assertNotIn("blocked_reason", state["archive_state"])
+        self.assertEqual(self._git(repo_dir, "status", "--short"), "")
+
     def test_rewrite_request_is_marked_completed_when_new_draft_arrives(self):
         book_id, repo_dir = self._bootstrap_draft()
         self.client.post("/api/prose_delivery/refresh", json={"book_id": book_id})

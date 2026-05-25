@@ -420,7 +420,7 @@ def create_blueprint(
                     "findings": findings,
                     "summary": str(payload.get("summary") or "").strip(),
                     "updated_at": _now_utc(),
-                    "review_is_author_approval": False,
+                    "review_is_author_approval": bool(payload.get("review_is_author_approval")),
                 }
                 _apply_review_status_to_spans(state, findings)
                 archive_state = state.get("archive_state") if isinstance(state.get("archive_state"), dict) else {}

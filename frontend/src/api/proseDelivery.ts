@@ -110,6 +110,7 @@ export interface ProseReviewReportPayload {
     summary?: string;
     decision?: 'passed' | 'author_fix' | 'rewrite_required';
     source_draft_commit?: string;
+    review_is_author_approval?: boolean;
     findings?: Array<Partial<ProseReviewFinding>>;
 }
 

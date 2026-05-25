@@ -168,6 +168,18 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
     const latestReviewText = latestReviewMessageText.trim();
     const currentDraftCommit = payload?.draft.commit_id ?? state?.draft_commit ?? draftCommitId ?? null;
     const hasUnsavedEdit = editorDraft !== (payload?.draft.content ?? draftContent);
+    const hasDraftWithoutDeliveryState = Boolean(payload && !payload.state && payload.draft.commit_id && payload.draft.content.trim());
+    const latestReviewExtraction = useMemo(
+        () => latestReviewText ? extractProseReviewReport(latestReviewText, spans) : null,
+        [latestReviewText, spans],
+    );
+    const canAuthorAdoptLatestReview = Boolean(
+        latestReviewExtraction
+        && latestReviewExtraction.findings.length === 0
+        && latestReviewExtraction.passed
+        && currentDraftCommit
+        && !latestReviewTargetDraftCommit,
+    );
     const pendingRewrite = state?.status === 'rewrite_requested'
         || findings.some((finding) => finding.status === 'rewrite_requested');
     const rewriteStreamActive = reviewState === 'rewriting'
@@ -318,9 +330,13 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         setLoading(true);
         setError('');
         try {
-            const next = mode === 'refresh'
+            let next = mode === 'refresh'
                 ? await refreshProseDeliveryState(bookRef)
                 : await fetchProseDeliveryState(bookRef);
+            if (mode === 'fetch' && !next.state && next.draft.commit_id && next.draft.content.trim()) {
+                next = await refreshProseDeliveryState(bookRef);
+                onNotice({ type: 'info', message: '检测到正文草稿，已自动初始化交付状态。', ts: Date.now() });
+            }
             applyLoadedPayload(next);
             return next;
         } catch (err) {
@@ -449,6 +465,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                 summary: reviewSummary || '作者确认本轮审核未发现阻塞问题。',
                 decision: 'passed',
                 source_draft_commit: currentDraftCommit || undefined,
+                review_is_author_approval: true,
                 findings: [],
             });
             setPayload(next);
@@ -468,14 +485,6 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
             onNotice({ type: 'info', message: '还没有可同步的审核 Agent 回复。', ts: Date.now() });
             return;
         }
-        if (currentDraftCommit && !latestReviewTargetDraftCommit) {
-            onNotice({
-                type: 'error',
-                message: '最近审核回复没有绑定草稿版本。为避免旧审核污染当前草稿，请重新启动审核 Agent。',
-                ts: Date.now(),
-            });
-            return;
-        }
         if (currentDraftCommit && latestReviewTargetDraftCommit && latestReviewTargetDraftCommit !== currentDraftCommit) {
             onNotice({
                 type: 'error',
@@ -487,11 +496,24 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
         setReviewState('saving');
         setError('');
         try {
-            const extracted = extractProseReviewReport(reviewText, spans);
+            const extracted = latestReviewExtraction || extractProseReviewReport(reviewText, spans);
+            const adoptingUnboundPass = Boolean(currentDraftCommit && !latestReviewTargetDraftCommit);
+            if (adoptingUnboundPass && (extracted.findings.length > 0 || !extracted.passed)) {
+                onNotice({
+                    type: 'error',
+                    message: '最近审核回复没有绑定草稿版本，且不是纯通过结论。请重新启动审核 Agent，避免旧审核污染当前草稿。',
+                    ts: Date.now(),
+                });
+                setReviewState('idle');
+                return;
+            }
             const next = await attachProseReviewReport(bookRef, {
-                summary: extracted.summary || '已同步审核 Agent 最近一次回复。',
+                summary: adoptingUnboundPass
+                    ? `作者采用历史审核结论：${extracted.summary || '审核 Agent 最近一次回复判断通过。'}`
+                    : extracted.summary || '已同步审核 Agent 最近一次回复。',
                 decision: extracted.decision,
                 source_draft_commit: latestReviewTargetDraftCommit || currentDraftCommit || undefined,
+                review_is_author_approval: adoptingUnboundPass,
                 findings: extracted.findings,
             });
             setPayload(next);
@@ -501,7 +523,9 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                 type: extracted.findings.length > 0 ? 'success' : 'info',
                 message: extracted.findings.length > 0
                     ? `已同步 ${extracted.findings.length} 条审核问题。`
-                    : '审核回复未识别到阻塞问题，已按通过记录；归档仍需作者确认。',
+                    : adoptingUnboundPass
+                        ? '已由作者采用这条历史通过结论，并绑定到当前草稿；归档仍需作者确认。'
+                        : '审核回复未识别到阻塞问题，已按通过记录；归档仍需作者确认。',
                 ts: Date.now(),
             });
         } catch (err) {
@@ -743,6 +767,12 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             <div>阶段：{deliveryStatusLabel(state?.status)}</div>
                             <div>审核：{reviewStatusLabel(state?.review_report.status)}</div>
                             <div>归档：{canArchive ? '可由作者确认' : '需先审核通过'}</div>
+                            {hasDraftWithoutDeliveryState ? (
+                                <div className="text-[var(--tone-warning-text)]">已检测到草稿，正在补齐交付状态</div>
+                            ) : null}
+                            {canAuthorAdoptLatestReview ? (
+                                <div className="text-[var(--tone-success-text)]">最近审核回复是未绑定版本的通过结论，可由作者采用到当前草稿</div>
+                            ) : null}
                             {rewriteStreamActive ? (
                                 <div className="text-[var(--tone-warning-text)]">续写 Agent 正在按审核意见重写，请等待新草稿返回</div>
                             ) : pendingRewrite ? (
@@ -830,7 +860,7 @@ export const ProseDeliveryWorkbench: React.FC<ProseDeliveryWorkbenchProps> = ({
                             disabled={!latestReviewText || reviewState === 'saving' || reviewState === 'rewriting' || hasUnsavedEdit || draftActionPending !== 'none'}
                             className="w-full rounded-[8px] border border-[rgba(255,255,255,0.12)] px-3 py-2 text-[12px] font-semibold text-[var(--color-dark-text-main)] hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                            同步最近审核回复
+                            {canAuthorAdoptLatestReview ? '采用历史通过结论' : '同步最近审核回复'}
                         </button>
                         <button
                             type="button"
