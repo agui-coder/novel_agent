@@ -123,14 +123,14 @@ flowchart TB
 
 ## 如何部署
 
-这个项目目前定位为“可复现的本地 demo + 可展示的工程样例”，不是把所有密钥、Dify 数据库和私有书库都打进包里的黑盒一键应用。推荐路线是：先用 Release ZIP、源码 clone 或 GHCR 镜像跑通前后端和书库工作台，再接入自己的 Dify Runtime、模型供应商和 Dify App API Key。
+这个项目目前定位为“可复现的本地 demo + 可展示的工程样例”，不是把所有密钥、Dify 数据库和私有书库都打进包里的黑盒一键应用。推荐路线是：先用 Release ZIP、源码 clone、Docker Compose 本地构建或 GHCR 镜像跑通前后端和书库工作台，再接入自己的 Dify Runtime、模型供应商和 Dify App API Key。
 
 部署说明：项目目前由个人维护，且架构原创性较高，是“本地书库 + Dify Agent 工作流 + 后端 LangChain 链路 + LoreGit 工具层 + 每书 Git 仓库”的混合系统，还没有成熟商业软件那种覆盖所有机器环境的一键部署方案。如果部署过程中遇到端口占用、Docker/WSL、Dify Runtime、模型 Key、ToolProvider 连通性或路径差异问题，建议把报错日志、`deploy/demo/.env` 配置和当前系统环境交给 AI 辅助排查。多数问题可以快速定位到路径、网络、密钥、服务启动顺序或 Dify 到后端的访问地址。
 
 部署边界先说清楚：
 
-- Release ZIP / GHCR 镜像包含：前端、后端、启动脚本、Dify DSL YAML、部署示例配置和 smoke check。
-- Release ZIP / GHCR 镜像不包含：真实模型密钥、Dify App API Key、Dify 数据库备份、私有书库、`.runtime`、运行时草稿和个人环境文件。
+- Release ZIP / Compose / GHCR 镜像包含：前端、后端、启动脚本、Dify DSL YAML、部署示例配置和 smoke check。
+- Release ZIP / Compose / GHCR 镜像不包含：真实模型密钥、Dify App API Key、Dify 数据库备份、私有书库、`.runtime`、运行时草稿和个人环境文件。
 - 活跃 Dify 工作流需要导入后重新配置模型供应商，并生成对应 App 的 API Key；已退役 DSL 可以不导入，只作为历史兼容资料保留。
 - Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则活跃 Dify Agent 会生成文本但无法读写书库文件。
 
@@ -215,7 +215,20 @@ Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
 .\deploy\demo\bootstrap.ps1 -SkipDify
 ```
 
-### 路线 C：GHCR 预构建镜像，适合快速拉起
+### 路线 C：Docker Compose 本地构建，适合隔离验证
+
+适合在新机器上用容器隔离后端、前端、demo storage 和 smoke check。
+
+```powershell
+Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
+# 填写 Dify App API Key、模型供应商 Key 和 COMPOSE_DIFY_BASE_URL
+docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml up -d --build
+docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm smoke
+```
+
+Compose 默认使用隔离卷 `demo-storage` 和 `demo-runtime`，不会挂载宿主机的 `novel_git_server/storage/`。如果宿主机端口冲突，只改 `BACKEND_HOST_PORT` 或 `FRONTEND_HOST_PORT`，容器内部端口保持后端 `8000`、前端 `5173`。
+
+### 路线 D：GHCR 预构建镜像，适合快速拉起
 
 仓库会通过 `.github/workflows/publish-images.yml` 发布前后端镜像到 GitHub Container Registry：
 

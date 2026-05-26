@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.2",
+    [string]$Version = "0.1.3",
     [string]$OutputDir
 )
 
@@ -53,7 +53,9 @@ $excludePrefixes = @(
     "frontend/node_modules/",
     "frontend/dist/",
     "frontend/.vite/",
-    "novel_git_server/.venv/"
+    "novel_git_server/.venv/",
+    "scripts/tomato_experiments/",
+    "video_specs/"
 )
 $excludeExact = @(
     "AGENTS.md"
@@ -100,5 +102,58 @@ finally {
 }
 if (-not (Test-Path -LiteralPath $ZipPath -PathType Leaf)) {
     throw "release zip was not created: $ZipPath"
+}
+
+$requiredEntries = @(
+    "README.md",
+    "RELEASE_README.md",
+    "docs/DEPLOYMENT.md",
+    "deploy/demo/.env.example",
+    "docker-compose.demo.yml",
+    "docker-compose.ghcr.yml",
+    "start_demo.ps1",
+    "dify_workflows/README.md"
+)
+$forbiddenPrefixes = @(
+    ".runtime/",
+    "dev_repo/",
+    ".codex/",
+    ".claude/",
+    ".dify_backups/",
+    "novels/",
+    "novel_git_server/storage/",
+    "frontend/node_modules/",
+    "frontend/dist/",
+    "novel_git_server/.venv/",
+    "scripts/tomato_experiments/",
+    "video_specs/",
+    "dist/"
+)
+$forbiddenExact = @(
+    "AGENTS.md",
+    "deploy/demo/.env"
+)
+
+$verifyZip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+try {
+    $entries = @($verifyZip.Entries | ForEach-Object { $_.FullName })
+    foreach ($entry in $requiredEntries) {
+        if ($entries -notcontains $entry) {
+            throw "release zip missing required entry: $entry"
+        }
+    }
+    foreach ($entry in $entries) {
+        if ($forbiddenExact -contains $entry) {
+            throw "release zip contains forbidden entry: $entry"
+        }
+        foreach ($prefix in $forbiddenPrefixes) {
+            if ($entry.StartsWith($prefix)) {
+                throw "release zip contains forbidden path: $entry"
+            }
+        }
+    }
+}
+finally {
+    $verifyZip.Dispose()
 }
 Write-Output $ZipPath

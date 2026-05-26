@@ -1,152 +1,212 @@
-# Deployment And Reproducible Demo
+# 部署路线与可复现演示
 
-This document defines the reproducible demo target for `novel_agent`. It is intentionally conservative: the demo must make the existing project chain easier to start, not replace the chain with local fake generation.
+本文定义 `novel_agent` 当前公开仓库和 Release 包的复现边界。目标是让新的评审者能在一台机器上跑起工作台，接入自己的 Dify Runtime 和模型配置，验证小说导入、大纲、续写、审核、正文归档、剧情分支和回退链路。
 
-Operator note: `novel_agent` is currently maintained by an individual and uses a relatively original mixed architecture: local book workspaces, Dify Agent workflows, backend LangChain chains, the LoreGit ToolProvider layer, and one nested Git repository per book. It is not yet a mature commercial one-click deployment product for every possible machine. If setup fails, collect the terminal error, `deploy/demo/.env`, Docker/WSL state, Dify runtime status, model key configuration, and ToolProvider endpoint, then use an AI assistant to help narrow the issue. Most deployment failures come from paths, ports, credentials, service startup order, or the address Dify must use to reach the Flask backend.
+项目不是纯 Dify 应用，也不是纯 LangChain 应用，而是：
 
-## Goal
+```text
+React 工作台
+  -> Flask 后端与 LoreGit ToolProvider
+  -> 每本书独立 Markdown 工作区与 Git 仓库
+  -> 后端 LangChain 批处理管线
+  -> Dify 活跃 Agent 工作流
+```
 
-A new evaluator should be able to run the workbench, connect it to a valid Dify runtime and backend LangChain model configuration, import or open a demo book, and verify that outline, continuation, review, local repair chains, Git branch, and rollback flows still use the project-owned agents and LoreGit tools.
+个人维护说明：本项目架构原创性较高，目前是“可复现本地 demo + 工程展示样例”，不是覆盖所有机器环境的成熟商业一键部署产品。如果部署不顺利，请收集终端报错、`deploy/demo/.env` 的非敏感配置结构、Docker/WSL 状态、Dify 运行状态、模型配置和 ToolProvider 地址，再使用 AI 辅助定位。大多数问题来自路径、端口、密钥、服务启动顺序，或 Dify 访问 Flask 后端地址失败。
 
-## Supported Modes
+## 发布边界
 
-### Public Reproducibility Boundary
+公开仓库与 Release ZIP 应当包含：
 
-The public repository and release assets are expected to reproduce the workbench shell, local storage model, backend API, frontend UI, deployment scripts, sanitized Dify DSL snapshots, and smoke checks. They intentionally do not include private Dify PostgreSQL state, model-provider credentials, Dify App API keys, private books, `.runtime`, or `novel_git_server/storage/`.
+- 前端工作台；
+- Flask 后端、LoreGit 工具层和后端 LangChain 管线；
+- `deploy/demo/` 启动脚本、Compose 配置和 smoke check；
+- `dify_workflows/*.yml` 净化后的 Dify DSL 快照；
+- 技术档案、部署文档和演示说明；
+- 构建 release 包的脚本。
 
-Release ZIP assets must be portable archives: entry names use `/` path separators so Windows, WSL, and Linux extraction all produce real directories such as `deploy/demo/` and `docs/`.
+公开仓库与 Release ZIP 不包含：
 
-### Mode A: Local Windows Demo Pack
+- 模型 API 密钥；
+- Dify App API Key；
+- 私有 Dify PostgreSQL 备份；
+- 私有小说书库；
+- `.runtime`；
+- `novel_git_server/storage/`；
+- `deploy/demo/.env`；
+- 本地视频制作工程和临时产物。
 
-This mode is for the main development machine or a Windows laptop with Docker Desktop, Python, Node.js, and an existing Dify compose stack.
+Release ZIP 需要使用可移植路径，压缩包内条目统一使用 `/` 分隔，让 Windows、WSL 和 Linux 解压后都能得到真实目录，例如 `deploy/demo/`、`docs/`、`dify_workflows/`。
 
-Target command:
+## 路线 A：Release ZIP，本地演示推荐
+
+适合面试演示、录屏、本机快速体验。
+
+前置条件：
+
+- Windows 10/11；
+- PowerShell；
+- Git for Windows；
+- Python 3.11 或兼容版本；
+- Node.js LTS 与 npm；
+- Docker Desktop；
+- 已经可打开的 Dify Runtime。
+
+操作步骤：
 
 ```powershell
+# 1. 从 GitHub Releases 下载并解压 novel-agent-demo-v*.zip。
+
+# 2. 第一次运行时创建本地配置文件。
+.\start_demo.ps1 -InitEnv
+
+# 3. 编辑 deploy/demo/.env，填入 Dify App API Key 和模型 Key。
+
+# 4. 启动三端。
+.\start_demo.ps1
+```
+
+启动后打开：
+
+```text
+http://127.0.0.1:5173/bookshelf.html
+```
+
+常用命令：
+
+```powershell
+.\start_demo.ps1 -Status
+.\start_demo.ps1 -Stop
+.\start_demo.ps1 -SkipDify
+.\start_demo.ps1 -DryRun
+```
+
+`-SkipDify` 只启动后端和前端，适合 UI 调试。完整大纲、续写、审核和正文归档体验仍然需要 Dify 可访问。
+
+## 路线 B：源码运行，适合开发和二次修改
+
+适合需要阅读代码、改功能、写简历项目说明的人。
+
+```powershell
+git clone https://github.com/blackzhanzhan/novel_agent.git
+cd novel_agent
+Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
+# 编辑 deploy/demo/.env。
 .\deploy\demo\bootstrap.ps1
 ```
 
-First-time local setup:
+`bootstrap.ps1` 会做这些事：
+
+- 检查 Docker、Python、Node.js、npm、Git 和 Dify compose 路径；
+- 从示例文件准备本地环境配置；
+- 安装后端虚拟环境和前端依赖；
+- 启动 Dify、Flask 后端和 Vite 前端；
+- 同步 LoreGit ToolProvider 到当前后端端口；
+- 打印前端地址和健康检查地址。
+
+关键配置字段：
+
+| 字段 | 作用 |
+| --- | --- |
+| `NOVEL_AGENT_WSL_DISTRO` | Dify 位于 WSL 时使用的发行版，默认 `Ubuntu`。 |
+| `NOVEL_AGENT_DIFY_COMPOSE_DIR` | 本机 Dify compose 目录。 |
+| `DIFY_BASE_URL` | 后端在 Windows 路径下调用 Dify Service API 的地址，常见为 `http://localhost/v1`。 |
+| `COMPOSE_DIFY_BASE_URL` | Docker Compose 内访问 Dify 的地址，常见为 `http://host.docker.internal/v1`。 |
+| `DIFY_*_API_KEY` | 各个活跃 Dify App 的 API Key。 |
+| `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` / `DEEPSEEK_API_KEY` | 后端 LangChain 管线的 OpenAI-compatible 模型配置。 |
+| `BACKEND_HOST_PORT` / `FRONTEND_HOST_PORT` | Compose 暴露到宿主机的端口，默认 `8000` 与 `5173`。 |
+
+## 路线 C：Docker Compose 本地构建
+
+适合用容器隔离后端、前端、demo storage 和 runtime。
 
 ```powershell
 Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
-# Fill Dify app keys and optional DeepSeek key in deploy/demo/.env.
-.\deploy\demo\bootstrap.ps1
+# 编辑 deploy/demo/.env，填入 Dify 与模型配置。
+docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml up -d --build
+docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm smoke
 ```
 
-The bootstrap flow must:
-
-- check Docker, Python, Node.js, npm, Git, and the Dify compose path;
-- prepare local environment files from examples without committing secrets;
-- optionally restore a sanitized Dify runtime seed;
-- start Dify, Flask, and Vite through the existing startup scripts;
-- synchronize the live LoreGit ToolProvider endpoint to the selected backend port;
-- run smoke checks and print the frontend URL.
-
-Useful switches:
-
-- `-InitEnv`: create `deploy/demo/.env` from the safe example if it does not exist.
-- `-SkipDify`: start only backend/frontend for local UI work.
-- `-Status` / `-Stop`: forward to the underlying startup scripts.
-- `-DryRun`: print what would be checked or started.
-
-Dify runtime helper:
-
-```powershell
-.\deploy\demo\dify_runtime.ps1 -VerifyOnly
-```
-
-This helper defaults to verification and endpoint dry-run. Live Dify writes such as SQL restore, plugin-storage repair, or ToolProvider endpoint sync require `-IUnderstandThisWritesDify`.
-
-### Mode B: Compose Demo Pack
-
-This mode is for repeatable evaluation. It should make backend, frontend, demo storage, and smoke checks reproducible from repository-owned config.
-
-Target command:
-
-```powershell
-docker compose --env-file deploy\demo\.env.example -f docker-compose.demo.yml up -d --build
-```
-
-The compose pack may connect to an external or separately restored Dify stack, but that dependency must be explicit. A compose process being alive is not enough; the smoke check must prove that Dify can reach the backend LoreGit tools.
-
-Smoke command:
-
-```powershell
-docker compose --env-file deploy\demo\.env.example -f docker-compose.demo.yml run --rm smoke
-```
-
-The compose pack builds two local images:
+Compose 包会构建：
 
 - `deploy/demo/backend.Dockerfile`
 - `deploy/demo/frontend.Dockerfile`
 
-The default base images are MCR devcontainer images because they are usually reachable from Docker Desktop environments even when direct Docker Hub pulls are blocked. Override these in `deploy/demo/.env` when your environment prefers Docker Hub or a private mirror:
+默认基础镜像使用 MCR devcontainer 镜像，通常在 Docker Desktop 环境下较容易拉取。如果环境更适合 Docker Hub 或私有镜像源，可以在 `deploy/demo/.env` 中改：
 
 ```text
 BACKEND_BASE_IMAGE=python:3.11-slim
 FRONTEND_BASE_IMAGE=node:22-bookworm-slim
 ```
 
-The backend image mounts an isolated `demo-storage` volume and a `demo-runtime` volume. The pack must not mount or reuse `novel_git_server/storage/` from the host.
-Use `COMPOSE_DIFY_BASE_URL` when the compose stack should talk to an external Dify runtime; keep `DIFY_BASE_URL` for the Windows bootstrap path.
-The compose frontend sets `VITE_ALLOWED_HOSTS=frontend` so the smoke container can reach Vite through the Docker service name without weakening the normal local dev default.
-If the host already uses ports `8000` or `5173`, change only the host-side compose ports:
+容器会使用隔离卷：
+
+- `demo-storage`：书库 demo 数据；
+- `demo-runtime`：运行时状态。
+
+它不会挂载宿主机的 `novel_git_server/storage/`。
+
+如果宿主机端口冲突，只改宿主机端口：
 
 ```text
 BACKEND_HOST_PORT=18000
 FRONTEND_HOST_PORT=15173
 ```
 
-The backend and frontend container ports stay fixed at `8000` and `5173`. Keeping the internal ports fixed preserves health checks, frontend proxying, and smoke checks.
+容器内部端口保持后端 `8000`、前端 `5173`，这样健康检查和前端代理不会漂移。
 
-### Mode C: GHCR Package Demo
+## 路线 D：GHCR 预构建镜像
 
-This mode uses prebuilt images from GitHub Container Registry instead of building them locally.
-
-Target command:
+适合跳过本地 build，直接拉取已发布镜像。
 
 ```powershell
 Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
-# Fill Dify app keys, model provider keys, and COMPOSE_DIFY_BASE_URL.
+# 编辑 deploy/demo/.env，填入 Dify App API Key、模型 Key 和 COMPOSE_DIFY_BASE_URL。
 docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml up -d
 docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm smoke
 ```
 
-Expected images:
+镜像：
 
 - `ghcr.io/blackzhanzhan/novel_agent-backend:latest`
 - `ghcr.io/blackzhanzhan/novel_agent-frontend:latest`
 
-The package workflow lives at `.github/workflows/publish-images.yml`. It publishes both images on pushes to `main`, `v*` tags, and manual `workflow_dispatch` runs.
+`.github/workflows/publish-images.yml` 会在 `main`、`v*` tag 和手动触发时发布镜像。GHCR 镜像不包含 Dify 数据库、密钥、私有书库或运行时 storage，只替代本地镜像构建步骤。
 
-GHCR packages do not include Dify PostgreSQL state, model provider credentials, Dify App API keys, private books, or runtime storage. They only replace the local image build step.
+## Dify Runtime 规则
 
-## Dify Runtime Rule
+Dify live PostgreSQL 和插件存储是 Dify 运行时真相。`dify_workflows/*.yml` 是净化后的 DSL 快照，可以用来复现 App/workflow 结构、提示词、节点图和工具引用，但不是完整运行时备份。
 
-Dify live PostgreSQL plus plugin storage are the runtime source of truth. The exported `dify_workflows/*.yml` files are sanitized DSL snapshots: they can be imported into Dify to recreate app/workflow structure, prompts, graphs, and tool references, but they are not a full runtime backup.
+当前 DSL 状态：
 
-Current exported DSL files:
-
-| DSL | Current status |
+| DSL | 当前状态 |
 | --- | --- |
-| `dify_workflows/世界模型agent.yml` | Kept for post-initialization discussion, explanation, correction, and verification. Its first-create/rebuild ownership is retired and replaced by the backend LangChain world/state pipeline. |
-| `dify_workflows/文风学习agent.yml` | Kept for post-initialization style discussion and author-guided refinement. Its first-create/rebuild ownership is retired and replaced by the backend style pipeline and LoreGit diagnostics. |
-| `dify_workflows/灵感大纲agent.yml` | Active. |
-| `dify_workflows/续写agent.yml` | Active. |
-| `dify_workflows/审核agent.yml` | Active. |
-| `dify_workflows/读书存档agent.yml` | Retired. Kept only as historical compatibility evidence; `summary.md` first-create/rebuild is owned by the backend LangChain summary archive pipeline. |
+| `dify_workflows/世界模型agent.yml` | 保留，用于初始化后的讨论、解释、局部修订和考据；首次生成/重建已迁移到后端 LangChain 世界/状态管线。 |
+| `dify_workflows/文风学习agent.yml` | 保留，用于初始化后的文风讨论、解释和作者协作修订；首次生成/重建已迁移到后端文风管线。 |
+| `dify_workflows/灵感大纲agent.yml` | 活跃，用于大纲讨论、联网参考、分层大纲和章节卡落档。 |
+| `dify_workflows/续写agent.yml` | 活跃，用于生成 `chapter_draft.md`。 |
+| `dify_workflows/审核agent.yml` | 活跃，用于审核剧情冲突、状态风险、断章和正文归档风险，并沉淀 `error_archive.md`。 |
+| `dify_workflows/读书存档agent.yml` | 已退役，仅历史兼容；`summary.md` 初建/重建由后端 LangChain 摘要归档管线负责。 |
 
-After importing DSL files into a fresh Dify runtime, configure model providers, app API keys, and the LoreGit ToolProvider endpoint before running the workbench.
+导入活跃 DSL 后需要重新配置：
 
-Sanitized restore material may seed a demo runtime, but it must not contain:
+1. 模型供应商和模型；
+2. 需要思考能力的 Agent 的 thinking 设置；
+3. 每个 App 的 API Key；
+4. LoreGit ToolProvider endpoint；
+5. Dify 到后端的网络可达性。
 
-- API keys or model credentials;
-- private Dify backups;
-- real user books from `novel_git_server/storage/`;
-- local absolute paths that are required for every machine.
+Dify 内 LoreGit ToolProvider 常见地址：
 
-To restore an out-of-band sanitized SQL seed:
+```text
+http://host.docker.internal:8000
+```
+
+如果 Dify 运行在 WSL 或远端服务器，需要换成该环境能访问 Flask 后端的地址。
+
+## 可选 Dify 恢复
+
+如果你有额外的净化 SQL seed，可以用：
 
 ```powershell
 .\deploy\demo\dify_runtime.ps1 `
@@ -156,30 +216,62 @@ To restore an out-of-band sanitized SQL seed:
   -IUnderstandThisWritesDify
 ```
 
-The seed directory must contain `dify.sql` and `dify_plugin.sql`. Private `.dify_backups` stay ignored and must not be committed.
+seed 目录需要包含：
 
-## Authorship Boundary
+- `dify.sql`
+- `dify_plugin.sql`
 
-Deployment scripts may orchestrate, restore, start, healthcheck, and validate. They must not generate outline cards or novel prose directly.
+私有 `.dify_backups` 保持忽略，不应提交或打进 release。
 
-For demo content:
+## 创作权责边界
 
-- outline files must be produced by the outline Agent;
-- `chapter_draft.md` must be produced by the continuation Agent;
-- review findings must be produced by the review Agent;
-- Git operations must preserve the per-book branch and rollback model.
+部署脚本可以启动、恢复、配置、健康检查和验证，但不能代替 Agent 直接生成小说内容。
 
-## Healthcheck Contract
+演示内容必须遵守：
 
-A reproducible demo is accepted only when these checks pass:
+- 大纲文件由大纲 Agent 产生；
+- `chapter_draft.md` 由续写 Agent 产生；
+- 审核意见由审核 Agent 产生；
+- 正文归档由审阅/归档工作台触发；
+- Git 操作保留每本书独立分支、回退和审计模型。
 
-- backend `/health` is reachable;
-- frontend is reachable;
-- Dify API is reachable;
-- Dify sandbox or API can reach Flask LoreGit `/health` through the configured endpoint;
-- the LoreGit ToolProvider endpoint matches the selected backend port;
-- no secret or real storage file becomes tracked by Git.
+## 验收清单
 
-## Current Slice Status
+最小可复现 demo 需要满足：
 
-This file defines the deployment contract. The concrete bootstrap, Dify restore, compose, and smoke scripts are implemented by the subsequent `DEPLOY-LOCAL-1`, `DEPLOY-DIFY-1`, `DEPLOY-COMPOSE-1`, and `DEPLOY-E2E-1` slices.
+- 后端 `/health` 可访问；
+- 前端书架页可访问；
+- 配置中心可以保存 Dify Base URL、Dify App Key 和后端模型配置；
+- Dify API 可访问；
+- Dify sandbox 或 API 能访问 Flask LoreGit `/health`；
+- LoreGit ToolProvider endpoint 指向当前后端端口；
+- 可以导入或打开一本书；
+- 后端 LangChain 初始化链路能生成或重建摘要、世界/状态、文风资料；
+- 活跃大纲、续写、审核 Agent 至少能完成一次端到端链路；
+- 正文归档后章节、状态卡和必要世界观更新可见；
+- 每书 Git 分支、diff、回退能力可用；
+- 没有密钥、真实书库、`.runtime` 或 `novel_git_server/storage/` 被 Git 跟踪或打进 release。
+
+后端健康检查：
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8000/health
+```
+
+Compose smoke：
+
+```powershell
+docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm smoke
+```
+
+## 常见故障
+
+| 现象 | 排查方向 |
+| --- | --- |
+| 前端能打开，但 Dify 调用失败 | 检查 `DIFY_BASE_URL`、对应 `DIFY_*_API_KEY`、Dify App 是否发布。 |
+| Dify 能生成文字，但不能读写书库 | 检查 LoreGit ToolProvider 是否指向 Flask 后端，容器里通常用 `http://host.docker.internal:8000`。 |
+| Compose smoke 失败 | 检查 `COMPOSE_DIFY_BASE_URL` 是否是容器内可访问的 Dify 地址。 |
+| 端口被占用 | Compose 改 `BACKEND_HOST_PORT` 或 `FRONTEND_HOST_PORT`；PowerShell 启动脚本用 `-BackendPort` 或 `-FrontendPort`。 |
+| GHCR 拉取失败 | 检查 GitHub Packages 可见性；必要时执行 `docker login ghcr.io`。 |
+| Dify YAML 导入后没有模型 | 正常现象，需要在自己的 Dify 环境里重新选择模型供应商和模型。 |
+| Agent 能回答但工作台没变化 | 检查是否启用了正确的活跃 Dify App、API Key 是否填到了对应字段、工具调用是否命中 LoreGit。 |
