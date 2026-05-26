@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 from flask import Request, g
 
 from utils.book_storage import get_book_metadata, validate_book_id
+from utils.git_utils import ensure_repo_identity, is_nothing_to_commit_error, run_git
 
 
 DEMO_COOKIE_NAME = "novel_agent_demo_session"
@@ -156,6 +158,7 @@ class PublicDemoManager:
             ignore=shutil.ignore_patterns(".runtime", ".locks", ".loregit", "sessions", ".sessions", "conversations", ".conversations"),
         )
         self._rewrite_metadata_book_id(target_book_id, target_dir)
+        self._commit_template_copy_baseline(target_dir)
         return target_book_id
 
     def note_imported_book(self, original_book_id: str, imported_book_id: str) -> None:
@@ -307,3 +310,21 @@ class PublicDemoManager:
             metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         except OSError:
             pass
+
+    def _commit_template_copy_baseline(self, book_dir: Path) -> None:
+        if not (book_dir / ".git").is_dir():
+            return
+        repo_dir = str(book_dir)
+        try:
+            status = run_git(repo_dir, ["status", "--porcelain"]).stdout
+            if not status.strip():
+                return
+            ensure_repo_identity(repo_dir)
+            run_git(repo_dir, ["add", "--all"])
+            run_git(repo_dir, ["commit", "-m", "chore: initialize public demo sandbox"])
+        except subprocess.CalledProcessError as exc:
+            if is_nothing_to_commit_error(exc):
+                return
+            return
+        except Exception:
+            return
