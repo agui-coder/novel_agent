@@ -15,6 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 
 import app as gs  # noqa: E402
 from utils.book_storage import ensure_book_layout  # noqa: E402
+from utils.git_utils import run_git  # noqa: E402
 
 
 class V79PublicDemoModeTests(unittest.TestCase):
@@ -95,6 +96,26 @@ class V79PublicDemoModeTests(unittest.TestCase):
         second = second_client.get("/books/list")
         second_book_id = second.get_json()["books"][0]["book_id"]
         self.assertNotEqual(second_book_id, demo_book_id)
+
+    def test_template_copy_rebuilds_clean_git_repo_without_source_branches(self):
+        template_refs = self.storage_root / self.template_id / ".git" / "refs" / "heads"
+        template_refs.mkdir(parents=True, exist_ok=True)
+        (template_refs / "broken_story").write_text(
+            "7ec1789a2ca5a1e3dc0e089643db9d79ec85aa1d\n",
+            encoding="utf-8",
+        )
+
+        resp = self.client.get("/books/list")
+        self.assertEqual(resp.status_code, 200)
+        demo_book_id = resp.get_json()["books"][0]["book_id"]
+        demo_dir = self.storage_root / demo_book_id
+
+        self.assertTrue((demo_dir / ".git").is_dir())
+        self.assertFalse((demo_dir / ".git" / "refs" / "heads" / "broken_story").exists())
+        branches = run_git(str(demo_dir), ["for-each-ref", "--format=%(refname:short)", "refs/heads"]).stdout
+        self.assertNotIn("broken_story", branches)
+        self.assertTrue(run_git(str(demo_dir), ["rev-parse", "HEAD"]).stdout.strip())
+        self.assertEqual(run_git(str(demo_dir), ["status", "--short"]).stdout.strip(), "")
 
     def test_config_save_and_manual_init_are_forbidden(self):
         config_resp = self.client.post("/api/runtime/config", json={"values": {"DIFY_BASE_URL": "http://example/v1"}})

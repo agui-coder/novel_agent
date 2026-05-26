@@ -155,7 +155,16 @@ class PublicDemoManager:
         shutil.copytree(
             source_dir,
             target_dir,
-            ignore=shutil.ignore_patterns(".runtime", ".locks", ".loregit", "sessions", ".sessions", "conversations", ".conversations"),
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".runtime",
+                ".locks",
+                ".loregit",
+                "sessions",
+                ".sessions",
+                "conversations",
+                ".conversations",
+            ),
         )
         self._rewrite_metadata_book_id(target_book_id, target_dir)
         self._commit_template_copy_baseline(target_dir)
@@ -312,13 +321,11 @@ class PublicDemoManager:
             pass
 
     def _commit_template_copy_baseline(self, book_dir: Path) -> None:
-        if not (book_dir / ".git").is_dir():
-            return
         repo_dir = str(book_dir)
         try:
-            status = run_git(repo_dir, ["status", "--porcelain"]).stdout
-            if not status.strip():
-                return
+            if (book_dir / ".git").exists():
+                shutil.rmtree(book_dir / ".git", ignore_errors=True)
+            run_git(repo_dir, ["init"])
             ensure_repo_identity(repo_dir)
             run_git(repo_dir, ["add", "--all"])
             run_git(repo_dir, ["commit", "-m", "chore: initialize public demo sandbox"])
