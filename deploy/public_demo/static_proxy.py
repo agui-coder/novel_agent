@@ -10,15 +10,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 
-PROXY_PREFIXES = (
-    "/api/",
-    "/api",
-    "/books/",
-    "/books",
-    "/tools/",
-    "/tools",
-    "/checkout",
-)
+PROXY_EXACT_PATHS = {"/api", "/books", "/tools", "/checkout"}
+PROXY_PREFIXES = ("/api/", "/books/", "/tools/")
+
+
+def should_proxy_path(path: str) -> bool:
+    return path in PROXY_EXACT_PATHS or any(path.startswith(prefix) for prefix in PROXY_PREFIXES)
 
 
 class StaticProxyHandler(BaseHTTPRequestHandler):
@@ -48,7 +45,7 @@ class StaticProxyHandler(BaseHTTPRequestHandler):
 
     def _dispatch(self) -> None:
         path = urlsplit(self.path).path
-        if any(path == prefix or path.startswith(prefix) for prefix in PROXY_PREFIXES):
+        if should_proxy_path(path):
             self._proxy_to_backend()
             return
         if self.command not in {"GET", "HEAD"}:

@@ -50,7 +50,9 @@ def create_app(
     CORS(app)
     app.json.ensure_ascii = False
 
-    resolved_storage_root = os.path.abspath(storage_root or get_storage_root(BASE_DIR))
+    resolved_storage_root = os.path.abspath(
+        storage_root or os.environ.get("STORAGE_ROOT") or get_storage_root(BASE_DIR)
+    )
     app.config["STORAGE_ROOT"] = resolved_storage_root
     app.config["PUBLIC_DEMO_MANAGER"] = PublicDemoManager.from_env(resolved_storage_root)
     app.config["RUNTIME_CONFIG_DIR"] = os.path.abspath(runtime_config_dir or BASE_DIR)

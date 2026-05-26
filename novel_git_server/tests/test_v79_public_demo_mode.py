@@ -4,10 +4,12 @@ import shutil
 import sys
 import unittest
 import uuid
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = ROOT_DIR.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
@@ -45,6 +47,39 @@ class V79PublicDemoModeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.env_patch.stop()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_storage_root_env_is_honored_without_explicit_argument(self):
+        self.env_patch.stop()
+        self.env_patch = patch.dict(
+            os.environ,
+            {
+                "STORAGE_ROOT": str(self.storage_root),
+                "PUBLIC_DEMO_MODE": "1",
+                "PUBLIC_DEMO_TEMPLATE_BOOK_ID": self.template_id,
+                "PUBLIC_DEMO_SESSION_TTL_SECONDS": "600",
+                "PUBLIC_DEMO_IMPORT_CHAPTER_LIMIT": "25",
+                "PUBLIC_DEMO_WORLD_INIT_LIMIT": "1",
+            },
+        )
+        self.env_patch.start()
+
+        env_app = gs.create_app()
+        self.assertEqual(Path(env_app.config["STORAGE_ROOT"]), self.storage_root.resolve())
+        env_app.testing = True
+        resp = env_app.test_client().get("/api/demo/session")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNotNone(resp.get_json()["template_book_id"])
+
+    def test_static_proxy_does_not_treat_bookshelf_as_books_api(self):
+        proxy_path = PROJECT_ROOT / "deploy" / "public_demo" / "static_proxy.py"
+        spec = importlib.util.spec_from_file_location("public_demo_static_proxy", proxy_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertFalse(module.should_proxy_path("/bookshelf.html"))
+        self.assertTrue(module.should_proxy_path("/books"))
+        self.assertTrue(module.should_proxy_path("/books/list"))
 
     def test_bookshelf_gets_session_scoped_template_copy(self):
         resp = self.client.get("/books/list")
