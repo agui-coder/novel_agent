@@ -133,7 +133,7 @@ flowchart TB
 - Release ZIP / Compose / GHCR 镜像不包含：真实模型密钥、Dify App API Key、Dify 数据库备份、私有书库、`.runtime`、运行时草稿和个人环境文件。
 - 活跃 Dify 工作流需要导入后重新配置模型供应商，并生成对应 App 的 API Key；已退役 DSL 可以不导入，只作为历史兼容资料保留。
 - Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则活跃 Dify Agent 会生成文本但无法读写书库文件。
-- 半公开体验版可以用 `PUBLIC_DEMO_MODE=1` 启动临时沙箱：每位访问者独立 cookie 会话，默认 10 分钟 TTL；可以导入书籍，但后端只保存前 25 章；世界观初始化每个临时会话只允许一次；配置中心和删除入口会在前台隐藏。
+- 半公开体验版可以用 `PUBLIC_DEMO_MODE=1` 启动临时沙箱：每位访问者独立 cookie 会话，默认 10 分钟 TTL；导入入口不限制原书总章节数，但后端只截取并保存前 25 章；世界观初始化每个临时会话只允许一次；配置中心和删除入口会在前台隐藏。
 
 ### 路线 A：Release ZIP，本地演示推荐
 
@@ -251,10 +251,12 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 
 适合把项目放在自己的服务器上给面试官或朋友体验，但不希望公开消耗模型额度。这个模式不公开 Dify 控制台，不开放配置中心，不上传私有密钥到仓库。
 
+这条路线已经按低配云服务器验证过一次：Novel Agent 前后端可以独立部署在一台小机器上，对外只开放前端静态代理；Dify Runtime 可以继续放在私有环境或另一台更适合跑 Docker 的机器上，只要 Dify App API 和 LoreGit ToolProvider 能互相连通即可。2 核 2G 级别机器可以作为体验入口，但不建议同时承载完整 Dify、PostgreSQL、插件服务、模型调用代理和多个演示项目。
+
 核心限制：
 
 - 访问者按 cookie 分配临时沙箱，默认 10 分钟后清理。
-- 可以导入书籍，但后端只写入前 25 章。
+- 可以尝试导入任意章节规模的书籍，但后端只截取并保存前 25 章；例如原书 2000 章，体验版也只落库前 25 章。
 - 世界观初始化每个临时会话只允许一次。
 - 滚动三章续写可以多次运行，用来展示人机协同工作流。
 - 前端会展示体验版提示和剩余时间。
@@ -267,6 +269,16 @@ cat deploy/public_demo/README.md
 ```
 
 默认端口设计是后端只监听 `127.0.0.1:18000`，对外只开放前端静态代理 `0.0.0.0:15173`，用于避免影响同一台服务器上的其他演示项目。
+
+服务器部署时建议按这个顺序验收：
+
+1. 先确认同机已有项目的端口，给 Novel Agent 单独分配公开端口，例如 `15173`。
+2. Flask 后端只绑定 `127.0.0.1:18000`，不要直接暴露到公网。
+3. 前端静态代理负责同时提供 `frontend/dist` 和 `/api/*` 反向代理。
+4. 服务器必须有 Python venv、Node.js 和 npm；如果没有 npm，源码改了前端也不会自动反映到 `frontend/dist`。
+5. Dify 控制台、Dify 数据库、模型 Key 和 `/etc/novel-agent-demo.env` 只留在服务器私有侧。
+6. 每次上线后运行 `curl http://127.0.0.1:18000/health`、`curl http://127.0.0.1:15173/api/demo/session` 和公开书架页面检查。
+7. 如果线上导入失败且日志出现 Git `Author identity unknown`，优先检查新书库是否已初始化 Git user.name/user.email；体验版导入需要在提交 `metadata.json` 和章节文件前具备可用 Git 身份。
 
 ### Dify 工作流导入
 
@@ -323,6 +335,10 @@ docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm s
 | 端口被占用 | Docker Compose 修改 `BACKEND_HOST_PORT` 或 `FRONTEND_HOST_PORT`；PowerShell 启动脚本使用 `-BackendPort` 或 `-FrontendPort` 参数。 |
 | GHCR 拉取失败 | 检查包是否公开，必要时执行 `docker login ghcr.io`。 |
 | Dify YAML 导入后没有模型 | 这是正常现象，需要在你的 Dify 环境中重新选择模型供应商和模型。 |
+| 公网体验版导入大书很慢或成本不可控 | 开启 `PUBLIC_DEMO_IMPORT_CHAPTER_LIMIT`，允许用户选择任意书籍，但只截取前 N 章落库。 |
+| 公网体验版页面能打开但 API 失败 | 检查前端静态代理是否把 `/api/*`、`/books/*`、`/tools/*` 代理到 `127.0.0.1:18000`，同时确认后端服务没有直接绑定公网。 |
+| 服务器前端源码改了但页面没变化 | 需要在服务器安装 Node.js/npm 并重新执行 `npm ci && npm run build`，或同步已经构建好的 `frontend/dist`。 |
+| 在线导入时报 Git 作者身份错误 | 新建书库提交前需要配置 Git user.name/user.email；systemd 环境没有交互式 Git 全局配置时尤其容易触发。 |
 
 更完整的部署边界、Dify runtime 规则和 smoke check 标准见 `docs/DEPLOYMENT.md`。
 
