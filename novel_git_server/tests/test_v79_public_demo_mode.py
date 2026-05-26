@@ -5,6 +5,10 @@ import sys
 import unittest
 import uuid
 import importlib.util
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
@@ -81,6 +85,96 @@ class V79PublicDemoModeTests(unittest.TestCase):
         self.assertFalse(module.should_proxy_path("/bookshelf.html"))
         self.assertTrue(module.should_proxy_path("/books"))
         self.assertTrue(module.should_proxy_path("/books/list"))
+
+    def test_static_proxy_streaming_and_gzip_policy(self):
+        proxy_path = PROJECT_ROOT / "deploy" / "public_demo" / "static_proxy.py"
+        spec = importlib.util.spec_from_file_location("public_demo_static_proxy", proxy_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertTrue(module.is_streaming_content_type("text/event-stream; charset=utf-8"))
+        self.assertTrue(module.is_streaming_content_type("application/x-ndjson"))
+        self.assertFalse(module.is_streaming_content_type("application/json"))
+        self.assertFalse(
+            module.should_gzip_response(
+                accept_encoding="gzip, deflate",
+                content_type="text/event-stream; charset=utf-8",
+                body_size=4096,
+            )
+        )
+        self.assertTrue(
+            module.should_gzip_response(
+                accept_encoding="br, gzip",
+                content_type="application/json",
+                body_size=4096,
+            )
+        )
+        self.assertFalse(
+            module.should_gzip_response(
+                accept_encoding="gzip",
+                content_type="application/javascript",
+                body_size=4096,
+                file_suffix=".gz",
+            )
+        )
+
+    def test_static_proxy_streams_sse_before_upstream_finishes(self):
+        proxy_path = PROJECT_ROOT / "deploy" / "public_demo" / "static_proxy.py"
+        spec = importlib.util.spec_from_file_location("public_demo_static_proxy", proxy_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        class SlowSseHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                self.wfile.write(b"event: ack\n")
+                self.wfile.write(b"data: first\n\n")
+                self.wfile.flush()
+                time.sleep(1.0)
+                self.wfile.write(b"event: done\n")
+                self.wfile.write(b"data: last\n\n")
+                self.wfile.flush()
+
+            def log_message(self, fmt, *args):
+                return
+
+        backend = ThreadingHTTPServer(("127.0.0.1", 0), SlowSseHandler)
+        backend_thread = threading.Thread(target=backend.serve_forever, daemon=True)
+        backend_thread.start()
+
+        class TestProxyHandler(module.StaticProxyHandler):
+            static_root = PROJECT_ROOT / "frontend" / "dist"
+            backend_host = "127.0.0.1"
+            backend_port = backend.server_address[1]
+
+            def log_message(self, fmt, *args):
+                return
+
+        proxy = ThreadingHTTPServer(("127.0.0.1", 0), TestProxyHandler)
+        proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+        proxy_thread.start()
+
+        try:
+            start = time.perf_counter()
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{proxy.server_address[1]}/api/world/deduce_stream",
+                timeout=5,
+            ) as resp:
+                first_line = resp.readline()
+                first_elapsed = time.perf_counter() - start
+                self.assertEqual(resp.headers.get("X-Accel-Buffering"), "no")
+                self.assertNotIn("Content-Length", resp.headers)
+                self.assertEqual(first_line, b"event: ack\n")
+                self.assertLess(first_elapsed, 0.75)
+        finally:
+            proxy.shutdown()
+            backend.shutdown()
+            proxy.server_close()
+            backend.server_close()
 
     def test_bookshelf_gets_session_scoped_template_copy(self):
         resp = self.client.get("/books/list")
