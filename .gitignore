@@ -70,6 +70,9 @@ deploy/demo/*.local.*
 _debug_*.ps1
 scripts/tomato_experiments/
 
+# Local video production workspace
+video_specs/
+
 # Tomato downloader artifacts leaked into novel_git_server
 novel_git_server/[0-9]*_*/
 novel_git_server/*.txt

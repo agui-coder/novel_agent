@@ -24,7 +24,23 @@ DB_NAME = "dify"
 QUESTION_CLUSTER_MARKER = "?" * 4
 
 HARDCODED_TERMS = (
+    "我不是戏神",
+    "不是戏神",
+    "戏神",
+    "我在精神病院学斩神",
+    "精神病院",
+    "斩神",
+    "林七夜",
+    "陈伶",
+    "守夜人",
+    "灰界",
+    "迷雾",
     "donk",
+    "G2",
+    "CS2",
+    "AWP",
+    "电竞事实错误",
+    "电竞术语",
     "陈末",
     "Major",
     "BLAST",
@@ -35,6 +51,7 @@ HARDCODED_TERMS = (
     "地下竞技场",
     "CS1.6",
     "CS:GO",
+    "Counter-Strike",
     "群星猎枪篇",
     "西游",
     "孙悟空",
@@ -108,6 +125,37 @@ PROMPTISH_TEXT_MARKERS = (
 )
 SCRIPT_PROMPT_NAME_RE = re.compile(
     r"(PROMPT|QUERY|INSTRUCTION|PROTOCOL|GUARD|MARKERS|CLASS|TOOLS)", re.IGNORECASE
+)
+BACKEND_SCAN_ROOTS = (
+    "novel_git_server/agents",
+    "novel_git_server/pipelines",
+    "novel_git_server/utils",
+)
+BACKEND_SKIP_PARTS = {
+    ".venv",
+    ".venv_linux",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".runtime",
+    ".tmp_tests",
+    "storage",
+    "tests",
+    "legacy_attic",
+}
+BACKEND_PROMPT_MARKERS = (
+    "你是",
+    "任务：",
+    "输出要求",
+    "JSON 形状",
+    "审核维度",
+    "错误档案",
+    "思考",
+    "正在复查",
+    "专有名词",
+    "必须使用简体中文",
+    "不要发明",
+    "不要写续写正文",
 )
 
 
@@ -370,6 +418,72 @@ def scan_exports() -> list[PromptIssue]:
     return issues
 
 
+def is_backend_path(path: Path) -> bool:
+    try:
+        rel_parts = path.relative_to(ROOT).parts
+    except ValueError:
+        rel_parts = path.parts
+    return not any(part in BACKEND_SKIP_PARTS for part in rel_parts)
+
+
+def is_backend_promptish(text: str) -> bool:
+    if any(marker in text for marker in BACKEND_PROMPT_MARKERS):
+        return True
+    if len(text) > 180 and any(term in text for term in HARDCODED_TERMS):
+        return True
+    return False
+
+
+def backend_prompt_strings(path: Path) -> Iterable[tuple[int, str]]:
+    text = path.read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if is_backend_promptish(line) or any(term in line for term in HARDCODED_TERMS):
+                yield line_no, line
+        return
+
+    for node in ast.walk(tree):
+        segment = ""
+        value = ""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            value = node.value
+            segment = ast.get_source_segment(text, node) or value
+        elif isinstance(node, ast.JoinedStr):
+            segment = ast.get_source_segment(text, node) or ""
+            value = segment
+        else:
+            continue
+        candidate = value or segment
+        if not candidate.strip():
+            continue
+        if is_backend_promptish(candidate) or any(term in candidate for term in HARDCODED_TERMS):
+            yield getattr(node, "lineno", 1), candidate
+
+
+def scan_backend() -> list[PromptIssue]:
+    files: list[Path] = []
+    for root in BACKEND_SCAN_ROOTS:
+        base = ROOT / root
+        if not base.exists():
+            continue
+        files.extend(path for path in sorted(base.rglob("*.py")) if path.is_file() and is_backend_path(path))
+
+    issues: list[PromptIssue] = []
+    for path in files:
+        for line_no, text in backend_prompt_strings(path):
+            issue = inspect_text(
+                text,
+                source="backend",
+                file=str(path.relative_to(ROOT)),
+                line=line_no,
+            )
+            if issue:
+                issues.append(issue)
+    return issues
+
+
 def summarize(issues: list[PromptIssue]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "issue_count": len(issues),
@@ -391,6 +505,8 @@ def scan_sources(sources: list[str]) -> list[PromptIssue]:
         issues.extend(scan_scripts())
     if "all" in sources or "exports" in sources:
         issues.extend(scan_exports())
+    if "all" in sources or "backend" in sources:
+        issues.extend(scan_backend())
     return issues
 
 
@@ -399,7 +515,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source",
         action="append",
-        choices=["all", "live-db", "scripts", "exports"],
+        choices=["all", "live-db", "scripts", "exports", "backend"],
         default=None,
         help="Source to scan. Can be repeated. Defaults to all.",
     )

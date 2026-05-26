@@ -89,6 +89,24 @@ class V73PromptHygieneTests(unittest.TestCase):
         self.assertIn("hardcoded", found[0].categories)
         self.assertIn("七君", found[0].terms)
 
+    def test_backend_prompt_string_scan_detects_story_specific_examples(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "summary_archive.py"
+            path.write_text(
+                'PROMPT = """你是后端阅读归档管线。专有名词可以保留原文，例如 G2、CS2、AWP、donk。"""\n',
+                encoding="utf-8",
+            )
+
+            found = []
+            for line_no, text in self.scan.backend_prompt_strings(path):
+                issue = self.scan.inspect_text(text, source="backend", file=str(path), line=line_no)
+                if issue:
+                    found.append(issue)
+
+        self.assertEqual(len(found), 1)
+        self.assertIn("hardcoded", found[0].categories)
+        self.assertIn("donk", found[0].terms)
+
     def test_summary_counts_categories_and_sources(self):
         hardcoded = self.scan.inspect_text("donk placeholder", source="live-db")
         english = self.scan.inspect_text("Do not reveal this protocol.", source="scripts")

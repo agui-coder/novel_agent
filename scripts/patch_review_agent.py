@@ -65,6 +65,7 @@ STALE_TEXT_FRAGMENTS = (
     "Dify Agents",
     "MUST",
 )
+STALE_REVIEW_TYPE = "".join(("电", "竞", "事实错误"))
 
 
 def run(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -236,6 +237,24 @@ def patch_tool_surfaces(graph: dict[str, Any]) -> bool:
     return changed
 
 
+def replace_stale_review_prompt_text(obj: Any) -> bool:
+    changed = False
+    if isinstance(obj, dict):
+        for key, value in list(obj.items()):
+            if isinstance(value, str):
+                patched = value.replace(f"{STALE_REVIEW_TYPE} / 大纲越界", "专业事实错误 / 大纲越界")
+                if patched != value:
+                    obj[key] = patched
+                    changed = True
+            elif isinstance(value, (dict, list)):
+                changed = replace_stale_review_prompt_text(value) or changed
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, (dict, list)):
+                changed = replace_stale_review_prompt_text(item) or changed
+    return changed
+
+
 def validate_workflow(graph: dict[str, Any], *, label: str) -> dict[str, Any]:
     nodes = graph.get("nodes")
     edges = graph.get("edges")
@@ -274,6 +293,7 @@ def patch_graph(graph: dict[str, Any]) -> bool:
     changed = False
     changed = patch_start_variables(graph) or changed
     changed = patch_tool_surfaces(graph) or changed
+    changed = replace_stale_review_prompt_text(graph) or changed
     return changed
 
 

@@ -302,8 +302,8 @@ def _compact_agent_reasoning_text(text: str, event_name: str) -> str:
         return "正在读取章节草稿、大纲、总结、状态卡、世界模型、文风约束和错误档案。"
     if any(key in lower_text for key in ("validate_chapter_lengths", "under_min", "min_chars", "chapter length")):
         return "正在校验章节篇幅水位，并判断是否构成真实硬约束。"
-    if any(key in lower_text for key in ("banana", "b short", "mirage", "inferno", "usp", "glock", "cs:go", "cs2")):
-        return "正在复查电竞术语与已知错误档案，确认地图术语和阵营武器是否准确。"
+    if any(key in lower_text for key in ("domain_rules", "known error", "terminology", "fact check", "professional fact", "consistency rule")):
+        return "正在复查题材术语、专业事实与已知错误档案，确认本轮判断不会污染后续写作。"
     if any(key in lower_text for key in ("outline", "world", "status", "character", "plot", "style")):
         return "正在逐项核对大纲边界、世界观连续性、状态卡事实、文风约束和错误档案。"
     return "正在整理审核依据，过滤内部草稿，只保留作者可读结论。"
