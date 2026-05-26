@@ -80,6 +80,12 @@ def create_blueprint(
 
     @bp.post("/api/runtime/config")
     def save_runtime_config():
+        if current_app.config.get("PUBLIC_DEMO_MANAGER") is not None:
+            return json_error(
+                "PUBLIC_DEMO_CONFIG_READONLY",
+                "体验版不开放 API 配置修改。完整版本请从 GitHub 自行部署后配置。",
+                403,
+            )
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return json_error("INVALID_PAYLOAD", "request body must be application/json", 400)

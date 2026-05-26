@@ -89,6 +89,7 @@ http://host.docker.internal:8000
 
 - 前端和后端源码；
 - `deploy/demo/` 启动脚本、Compose 配置和 smoke check；
+- `deploy/public_demo/` 半公开体验版 systemd 配置、临时沙箱环境示例和轻量静态代理；
 - `dify_workflows/*.yml` 净化后的 Dify DSL 快照；
 - 部署文档、技术档案和演示说明；
 - 构建 release 包所需的脚本。

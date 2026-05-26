@@ -1,0 +1,15 @@
+[Unit]
+Description=Novel Agent public demo backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/novel-agent-demo/app/novel_git_server
+EnvironmentFile=/etc/novel-agent-demo.env
+ExecStart=/opt/novel-agent-demo/app/novel_git_server/.venv_public_demo/bin/python app.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

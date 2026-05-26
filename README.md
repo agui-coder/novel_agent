@@ -133,6 +133,7 @@ flowchart TB
 - Release ZIP / Compose / GHCR 镜像不包含：真实模型密钥、Dify App API Key、Dify 数据库备份、私有书库、`.runtime`、运行时草稿和个人环境文件。
 - 活跃 Dify 工作流需要导入后重新配置模型供应商，并生成对应 App 的 API Key；已退役 DSL 可以不导入，只作为历史兼容资料保留。
 - Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则活跃 Dify Agent 会生成文本但无法读写书库文件。
+- 半公开体验版可以用 `PUBLIC_DEMO_MODE=1` 启动临时沙箱：每位访问者独立 cookie 会话，默认 10 分钟 TTL；可以导入书籍，但后端只保存前 25 章；世界观初始化每个临时会话只允许一次；配置中心和删除入口会在前台隐藏。
 
 ### 路线 A：Release ZIP，本地演示推荐
 
@@ -245,6 +246,27 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 ```
 
 如果拉取 GHCR 镜像失败，先确认 GitHub Packages 可见性；公开包一般可以直接拉取，私有包需要 `docker login ghcr.io`。
+
+### 路线 E：半公开体验版，适合简历或小范围试用
+
+适合把项目放在自己的服务器上给面试官或朋友体验，但不希望公开消耗模型额度。这个模式不公开 Dify 控制台，不开放配置中心，不上传私有密钥到仓库。
+
+核心限制：
+
+- 访问者按 cookie 分配临时沙箱，默认 10 分钟后清理。
+- 可以导入书籍，但后端只写入前 25 章。
+- 世界观初始化每个临时会话只允许一次。
+- 滚动三章续写可以多次运行，用来展示人机协同工作流。
+- 前端会展示体验版提示和剩余时间。
+
+仓库提供轻量 systemd 路线：
+
+```bash
+cd /opt/novel-agent-demo/app
+cat deploy/public_demo/README.md
+```
+
+默认端口设计是后端只监听 `127.0.0.1:18000`，对外只开放前端静态代理 `0.0.0.0:15173`，用于避免影响同一台服务器上的其他演示项目。
 
 ### Dify 工作流导入
 

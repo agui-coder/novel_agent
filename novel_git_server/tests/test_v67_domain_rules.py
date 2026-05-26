@@ -49,7 +49,8 @@ class V67DomainRulesTests(unittest.TestCase):
         self.assertTrue(domain_rules.exists())
         content = domain_rules.read_text(encoding="utf-8")
         self.assertIn("不要在代码中硬编码题材规则", content)
-        self.assertIn("domain-rule 示例", content)
+        self.assertIn("机器可读规则示例", content)
+        self.assertIn("真正启用时请把代码块语言改成 `domain-rule`", content)
 
         tracked = self._git(repo_dir, "ls-files", "--", "domain_rules.md")
         self.assertEqual(tracked, "domain_rules.md")

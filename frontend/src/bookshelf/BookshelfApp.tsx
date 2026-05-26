@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchApi, ApiError } from '../api/client';
 import { BookListItem, deleteBook } from '../api/library';
+import { fetchDemoSession, type DemoSessionInfo } from '../api/demo';
 import { RuntimeConfigPanel } from '../components/RuntimeConfigPanel';
 import {
     searchTomatoNovels,
@@ -25,6 +26,7 @@ export function BookshelfApp() {
     const [books, setBooks] = useState<BookListItem[]>([]);
     const [toast, setToast] = useState<{ text: string; ts: number } | null>(null);
     const [runtimeConfigOpen, setRuntimeConfigOpen] = useState(false);
+    const [demoSession, setDemoSession] = useState<DemoSessionInfo | null>(null);
 
     // Online search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +45,7 @@ export function BookshelfApp() {
     const summaryPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const summaryBusy = isSummaryBusyStatus(summaryStatus?.status);
+    const isPublicDemo = Boolean(demoSession?.enabled);
 
     const refreshBooks = useCallback(async (options?: { updatePageState?: boolean }): Promise<BookListItem[]> => {
         const updatePageState = options?.updatePageState ?? true;
@@ -175,6 +178,12 @@ export function BookshelfApp() {
     useEffect(() => {
         let cancelled = false;
         const loadBooksAndResumeSummary = async () => {
+            try {
+                const demo = await fetchDemoSession();
+                if (!cancelled) setDemoSession(demo);
+            } catch {
+                if (!cancelled) setDemoSession({ enabled: false });
+            }
             const list = await refreshBooks();
             if (cancelled || summaryPollRef.current) return;
             for (const book of list) {
@@ -194,6 +203,24 @@ export function BookshelfApp() {
             cancelled = true;
         };
     }, [refreshBooks, startSummaryPoll]);
+
+    useEffect(() => {
+        if (!demoSession?.enabled || !demoSession.session_id) return;
+        const timer = setInterval(() => {
+            setDemoSession((current) => {
+                if (!current?.enabled) return current;
+                return { ...current, remaining_seconds: Math.max(0, (current.remaining_seconds ?? 0) - 1) };
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [demoSession?.enabled, demoSession?.session_id]);
+
+    const formatRemaining = (seconds?: number): string => {
+        const value = Math.max(0, seconds ?? 0);
+        const minutes = Math.floor(value / 60);
+        const rest = value % 60;
+        return `${minutes}:${String(rest).padStart(2, '0')}`;
+    };
 
     const startDownloadPoll = (bookId: string) => {
         setDownloadStatus({ book_id: bookId, status: 'idle' });
@@ -302,7 +329,7 @@ export function BookshelfApp() {
                 <div className="absolute bottom-[-18vh] right-[14%] h-[46vh] w-[34vw] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.035)_0%,rgba(255,255,255,0)_74%)] opacity-70 blur-3xl" />
             </div>
 
-            <button
+            {!isPublicDemo && <button
                 type="button"
                 onClick={() => setRuntimeConfigOpen(true)}
                 className="fixed right-5 top-5 z-20 inline-flex items-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-[#171a20]/90 px-3.5 py-2 text-xs font-semibold text-[var(--color-dark-text-muted)] shadow-[0_10px_30px_rgba(0,0,0,0.32)] backdrop-blur transition-colors hover:border-[rgba(115,134,255,0.36)] hover:bg-[rgba(115,134,255,0.12)] hover:text-[var(--color-dark-text-main)]"
@@ -313,9 +340,25 @@ export function BookshelfApp() {
                     <path d="M10 7.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Z" />
                 </svg>
                 <span>本机配置</span>
-            </button>
+            </button>}
 
             <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-8 px-8">
+                {isPublicDemo && (
+                    <div className="w-full rounded-[14px] border border-[rgba(115,134,255,0.26)] bg-[rgba(115,134,255,0.08)] px-5 py-4 text-sm text-[var(--color-dark-text-main)] shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div className="text-sm font-semibold">体验版临时沙箱</div>
+                                <div className="mt-1 text-xs leading-5 text-[var(--color-dark-text-muted)]">
+                                    数据会在会话结束后自动清理；可导入书籍，但只保留前 {demoSession?.import_chapter_limit ?? 25} 章。世界观初始化限 {demoSession?.world_init_limit ?? 1} 次，完整功能请从 GitHub 自行部署。
+                                </div>
+                            </div>
+                            <div className="rounded-[10px] border border-[rgba(255,255,255,0.1)] bg-[#111318]/70 px-3 py-2 text-right">
+                                <div className="text-[10px] text-[var(--color-dark-text-faint)]">剩余体验时间</div>
+                                <div className="font-mono text-lg font-semibold">{formatRemaining(demoSession?.remaining_seconds)}</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {/* Logo + Title */}
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-[rgba(115,134,255,0.14)] text-[var(--color-dark-text-main)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -390,7 +433,7 @@ export function BookshelfApp() {
                                             </div>
                                         </div>
                                     </button>
-                                    <button
+                                    {!isPublicDemo && <button
                                         type="button"
                                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(book); }}
                                         disabled={summaryBusy}
@@ -400,7 +443,7 @@ export function BookshelfApp() {
                                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
                                             <path d="M6 6l8 8M14 6l-8 8" />
                                         </svg>
-                                    </button>
+                                    </button>}
                                 </div>
                             ))}
                         </div>

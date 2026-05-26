@@ -7,7 +7,7 @@ import time
 from difflib import SequenceMatcher
 from typing import Any, Callable
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, current_app, request
 
 from utils.book_storage import get_book_metadata, repair_book_layout, smart_resolve_id, validate_book_id
 from utils.session_runtime import delete_book_conversations
@@ -188,6 +188,12 @@ def create_blueprint(
 
     @bp.post("/books/init")
     def init_book():
+        if current_app.config.get("PUBLIC_DEMO_MANAGER") is not None:
+            return json_error(
+                "PUBLIC_DEMO_IMPORT_ONLY",
+                "体验版请通过书架导入入口创建临时书库，不能手动初始化空书。",
+                403,
+            )
         payload, err = parse_json_payload(["book_name"])
         if err:
             return err
@@ -280,6 +286,12 @@ def create_blueprint(
 
     @bp.delete("/books/<book_id>")
     def delete_book(book_id: str):
+        if current_app.config.get("PUBLIC_DEMO_MANAGER") is not None:
+            return json_error(
+                "PUBLIC_DEMO_DELETE_DISABLED",
+                "体验版书库会在会话过期后自动清理，暂不开放手动删除。",
+                403,
+            )
         try:
             validated_id = validate_book_id(book_id)
         except ValueError as exc:
@@ -316,6 +328,9 @@ def create_blueprint(
     @bp.get("/books/list")
     def list_books():
         books = []
+        demo_manager = current_app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is not None:
+            demo_manager.ensure_template_book_for_session()
         try:
             entries = sorted(os.listdir(storage_root))
         except OSError:
@@ -336,6 +351,9 @@ def create_blueprint(
                 books.append({"book_id": book_id, "book_name": book_name})
             except Exception:
                 continue
+
+        if demo_manager is not None:
+            books = demo_manager.filter_visible_books(books)
 
         return jsonify({"status": "success", "total": len(books), "books": books}), 200
 

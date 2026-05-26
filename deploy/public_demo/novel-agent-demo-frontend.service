@@ -1,0 +1,20 @@
+[Unit]
+Description=Novel Agent public demo frontend
+After=network.target novel-agent-demo-backend.service
+Requires=novel-agent-demo-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/novel-agent-demo/app
+Environment=NOVEL_AGENT_STATIC_ROOT=/opt/novel-agent-demo/app/frontend/dist
+Environment=NOVEL_AGENT_FRONTEND_HOST=0.0.0.0
+Environment=NOVEL_AGENT_FRONTEND_PORT=15173
+Environment=NOVEL_AGENT_BACKEND_HOST=127.0.0.1
+Environment=NOVEL_AGENT_BACKEND_PORT=18000
+ExecStart=/opt/novel-agent-demo/app/novel_git_server/.venv_public_demo/bin/python /opt/novel-agent-demo/app/deploy/public_demo/static_proxy.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

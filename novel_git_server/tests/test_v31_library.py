@@ -102,7 +102,8 @@ class V31LibraryTests(unittest.TestCase):
         self.assertIn("读者承诺与主轴", world_model)
         self.assertIn("下游工作流接口", world_model)
         self.assertIn("下一章约束", status_card)
-        self.assertIn("domain-rule 示例", domain_rules)
+        self.assertIn("机器可读规则示例", domain_rules)
+        self.assertIn("真正启用时请把代码块语言改成 `domain-rule`", domain_rules)
         subjects = subprocess.run(
             ["git", "log", "--pretty=format:%s"],
             cwd=repo_dir,

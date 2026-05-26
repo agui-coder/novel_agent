@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, current_app, request
 
 from utils.book_storage import TRACKED_LAYOUT_FILES, ensure_book_layout, validate_book_id
 from utils.git_utils import (
@@ -937,6 +937,36 @@ def create_blueprint(
 ) -> Blueprint:
     bp = Blueprint("tomato_import", __name__)
 
+    def _apply_public_demo_import_limit(parsed: dict[str, Any]) -> dict[str, Any]:
+        demo_manager = current_app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is None:
+            return parsed
+        chapters = list(parsed.get("chapters") or [])
+        limit = demo_manager.import_chapter_limit
+        if len(chapters) <= limit:
+            parsed["chapter_count"] = len(chapters)
+            return parsed
+        limited = dict(parsed)
+        limited["chapters"] = chapters[:limit]
+        limited["chapter_count"] = len(limited["chapters"])
+        quality = dict(limited.get("quality") or {})
+        issues = list(quality.get("issues") or [])
+        issues.append(
+            {
+                "level": "info",
+                "code": "PUBLIC_DEMO_CHAPTER_LIMIT",
+                "message": f"体验版只导入前 {limit} 章，完整导入请自行部署完整版。",
+            }
+        )
+        quality["issues"] = issues
+        limited["quality"] = quality
+        limited["public_demo_limit"] = {
+            "chapter_limit": limit,
+            "original_chapter_count": len(chapters),
+            "saved_chapter_count": len(limited["chapters"]),
+        }
+        return limited
+
     @bp.post("/books/tomato/preview")
     def tomato_preview():
         payload, err = parse_json_payload(["source_dir"])
@@ -951,6 +981,7 @@ def create_blueprint(
             parsed = parse_tomato_bulk_export(source_dir, allowed_root=allowed_root)
         except ValueError as exc:
             return json_error("INVALID_SOURCE_DIR", str(exc), 400)
+        parsed = _apply_public_demo_import_limit(parsed)
         return jsonify(_preview_payload(parsed)), 200
 
     @bp.post("/books/tomato/confirm")
@@ -958,6 +989,13 @@ def create_blueprint(
         payload, err = parse_json_payload(["source_dir"])
         if err:
             return err
+
+        demo_manager = current_app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is not None:
+            source_book_id = str(payload.get("book_id") or payload.get("book_name") or "").strip()
+            if source_book_id:
+                payload = dict(payload)
+                payload["book_id"] = demo_manager.session_book_id(source_book_id)
 
         book_id, book_err = require_book_id(payload)
         if book_err:
@@ -973,6 +1011,7 @@ def create_blueprint(
             parsed = parse_tomato_bulk_export(source_dir, allowed_root=allowed_root)
         except ValueError as exc:
             return json_error("INVALID_SOURCE_DIR", str(exc), 400)
+        parsed = _apply_public_demo_import_limit(parsed)
 
         if not parsed["chapters"]:
             return json_error("NO_CHAPTERS_PARSED", "no chapter txt files were parsed from source_dir", 400)
@@ -1068,6 +1107,7 @@ def create_blueprint(
         if adapted is None:
             return json_error("DOWNLOAD_FAILED", "all download methods failed", 502)
 
+        adapted = _apply_public_demo_import_limit(adapted)
         chapters = adapted["chapters"]
         if not chapters:
             return json_error("NO_CHAPTERS", "download returned zero chapters", 400)
@@ -1086,8 +1126,12 @@ def create_blueprint(
                 422,
             )
 
+        demo_manager = current_app.config.get("PUBLIC_DEMO_MANAGER")
         try:
-            resolved_book_id = validate_book_id(payload.get("book_id_override") or book_id)
+            if demo_manager is not None:
+                resolved_book_id = demo_manager.session_book_id(payload.get("book_id_override") or book_id)
+            else:
+                resolved_book_id = validate_book_id(payload.get("book_id_override") or book_id)
         except ValueError as exc:
             return json_error("INVALID_BOOK_ID", str(exc), 400)
 
@@ -1144,6 +1188,8 @@ def create_blueprint(
             "chapter_count": adapted["chapter_count"],
             "written_files": rel_paths,
         }
+        if adapted.get("public_demo_limit"):
+            online_report["public_demo_limit"] = adapted["public_demo_limit"]
         report_path = os.path.join(repo_dir, "import_report.json")
         with open(report_path, "w", encoding="utf-8") as report_file:
             json.dump(online_report, report_file, ensure_ascii=False, indent=2)
@@ -1162,6 +1208,8 @@ def create_blueprint(
             args=(repo_dir, adapted["book_name"], len(chapters), None),
             daemon=True,
         ).start()
+        if demo_manager is not None:
+            demo_manager.note_imported_book(str(book_id), resolved_book_id)
 
         return jsonify({
             "status": "success",
@@ -1174,6 +1222,7 @@ def create_blueprint(
             "quality": quality,
             "force_used": force,
             "commit_id": commit_id,
+            "public_demo_limit": adapted.get("public_demo_limit"),
         }), 200
 
     @bp.post("/books/tomato/trigger_summary")

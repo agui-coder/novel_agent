@@ -7,6 +7,7 @@ from flask_cors import CORS
 from agents import archive, chapter, checkout, git_console, history, library, prose_delivery, rolling, runtime_config, session, style_init, summary, tomato_import, tools, world_draft, world_state
 from utils.book_storage import get_book_paths, get_storage_root, inspect_book_layout_integrity, resolve_book_id, resolve_book_locators
 from utils.dify_registry import build_dify_agent_registry
+from utils.public_demo import DEMO_COOKIE_NAME, PublicDemoManager
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +52,7 @@ def create_app(
 
     resolved_storage_root = os.path.abspath(storage_root or get_storage_root(BASE_DIR))
     app.config["STORAGE_ROOT"] = resolved_storage_root
+    app.config["PUBLIC_DEMO_MANAGER"] = PublicDemoManager.from_env(resolved_storage_root)
     app.config["RUNTIME_CONFIG_DIR"] = os.path.abspath(runtime_config_dir or BASE_DIR)
     if runtime_config_dir is not None:
         _load_local_env(app.config["RUNTIME_CONFIG_DIR"])
@@ -108,7 +110,14 @@ def create_app(
                     ),
                     409,
                 )
-            return resolve_book_id(raw_book_id, raw_book_name, app.config["STORAGE_ROOT"]), None
+            book_id = resolve_book_id(raw_book_id, raw_book_name, app.config["STORAGE_ROOT"])
+            demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
+            if demo_manager is not None:
+                try:
+                    book_id = demo_manager.map_book_id(book_id)
+                except PermissionError as exc:
+                    return None, json_error("PUBLIC_DEMO_FORBIDDEN_BOOK", str(exc), 403)
+            return book_id, None
         except ValueError as exc:
             return None, json_error("MISSING_FIELD", str(exc), 400)
 
@@ -118,18 +127,48 @@ def create_app(
         "require_book_id": require_book_id,
     }
 
+    @app.before_request
+    def _public_demo_session_before_request():
+        demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is None:
+            return None
+        demo_manager.get_or_create_session(request)
+        return None
+
+    @app.after_request
+    def _public_demo_session_after_request(response):
+        demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is not None and demo_manager.should_set_cookie():
+            response.set_cookie(
+                DEMO_COOKIE_NAME,
+                demo_manager.current_session().session_id,
+                max_age=demo_manager.ttl_seconds,
+                httponly=True,
+                samesite="Lax",
+            )
+        return response
+
     @app.get("/health")
     def health() -> tuple:
+        demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
         return (
             jsonify(
                 {
                     "status": "ok",
                     "service": "chronos-v3",
                     "database_json": "retired" if app.config.get("DATABASE_JSON_RETIRED") else "active",
+                    "public_demo": bool(demo_manager),
                 }
             ),
             200,
         )
+
+    @app.get("/api/demo/session")
+    def demo_session():
+        demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
+        if demo_manager is None:
+            return jsonify({"status": "success", "enabled": False}), 200
+        return jsonify({"status": "success", **demo_manager.session_payload()}), 200
 
     @app.get("/books/ping")
     def books_ping():

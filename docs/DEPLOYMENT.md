@@ -115,6 +115,9 @@ Copy-Item .\deploy\demo\.env.example .\deploy\demo\.env
 | `DIFY_*_API_KEY` | 各个活跃 Dify App 的 API Key。 |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` / `DEEPSEEK_API_KEY` | 后端 LangChain 管线的 OpenAI-compatible 模型配置。 |
 | `BACKEND_HOST_PORT` / `FRONTEND_HOST_PORT` | Compose 暴露到宿主机的端口，默认 `8000` 与 `5173`。 |
+| `PUBLIC_DEMO_MODE` | 可选公开体验沙箱开关。设为 `1` 后配置中心与删除入口会被隐藏，后端按临时会话隔离书库。 |
+| `PUBLIC_DEMO_IMPORT_CHAPTER_LIMIT` | 公开体验版导入章节上限，默认 `25`。 |
+| `PUBLIC_DEMO_WORLD_INIT_LIMIT` | 公开体验版世界观初始化次数上限，默认 `1`。 |
 
 ## 路线 C：Docker Compose 本地构建
 
@@ -172,6 +175,55 @@ docker compose --env-file deploy\demo\.env -f docker-compose.ghcr.yml run --rm s
 - `ghcr.io/blackzhanzhan/novel_agent-frontend:latest`
 
 `.github/workflows/publish-images.yml` 会在 `main`、`v*` tag 和手动触发时发布镜像。GHCR 镜像不包含 Dify 数据库、密钥、私有书库或运行时 storage，只替代本地镜像构建步骤。
+
+## 路线 E：半公开体验版服务器部署
+
+适合简历、作品集和小范围试用链接。这个路线的目标不是把完整 Dify 控制台暴露到公网，而是在服务器上给访问者一个临时、低成本、可清理的 Novel Agent 体验入口。
+
+推荐边界：
+
+- 不公开 Dify 控制台。
+- 不公开配置中心。
+- 不把真实 API Key、SSH 密码、Dify 数据库备份或私有书库写入仓库、release 包或前端。
+- 不占用已有演示项目端口；默认后端 `127.0.0.1:18000`，前端静态代理 `0.0.0.0:15173`。
+- 小内存服务器不建议强行同机部署完整 Dify Docker；可以先连接已有私有 Dify API，或把 Dify 放到更合适的机器。
+
+体验版限制由后端环境变量控制：
+
+```text
+PUBLIC_DEMO_MODE=1
+PUBLIC_DEMO_TEMPLATE_BOOK_ID=7558519503458405438
+PUBLIC_DEMO_SESSION_TTL_SECONDS=600
+PUBLIC_DEMO_IMPORT_CHAPTER_LIMIT=25
+PUBLIC_DEMO_WORLD_INIT_LIMIT=1
+```
+
+含义：
+
+- 每位访问者分配一个 cookie 临时会话。
+- 书架会复制一份模板书到当前会话沙箱。
+- 用户仍然可以导入新书，但只落盘前 25 章。
+- 世界观初始化每个临时会话/书只允许一次。
+- 滚动三章续写可以多次运行，适合展示工作流。
+- 会话过期后，`.demo_sessions` 状态与 `demo_<session>_*` 书库会被后端清理。
+
+仓库内提供：
+
+```text
+deploy/public_demo/.env.example
+deploy/public_demo/static_proxy.py
+deploy/public_demo/novel-agent-demo-backend.service
+deploy/public_demo/novel-agent-demo-frontend.service
+deploy/public_demo/README.md
+```
+
+最小安装流程见 `deploy/public_demo/README.md`。上线前至少验证：
+
+```bash
+curl http://127.0.0.1:18000/health
+curl http://127.0.0.1:15173/api/demo/session
+curl http://127.0.0.1:15173/bookshelf.html
+```
 
 ## Dify Runtime 规则
 

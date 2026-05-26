@@ -2548,10 +2548,29 @@ def create_blueprint(
         from pipelines.batch_parser import parse_summary_batches
         from pipelines.world_model_init import run_pipeline
 
+        def _sse(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
         payload = request.get_json(silent=True) or {}
         book_id, book_err = require_book_id(payload)
         if book_err:
             return book_err
+        demo_manager = None
+        try:
+            from flask import current_app
+
+            demo_manager = current_app.config.get("PUBLIC_DEMO_MANAGER")
+        except Exception:
+            demo_manager = None
+        if demo_manager is not None:
+            allowed, demo_state = demo_manager.record_world_init_once(book_id)
+            if not allowed:
+                def _blocked_stream():
+                    yield _sse("error", demo_state)
+                    yield _sse("done", demo_state)
+
+                return Response(stream_with_context(_blocked_stream()), mimetype="text/event-stream")
+            book_id = demo_state["book_id"]
         force_rebuild = payload.get("force_rebuild") is True
 
         paths, _, layout_err = _ensure_ai_route_layout_ready(book_id, storage_root)
@@ -2565,9 +2584,6 @@ def create_blueprint(
             return json_error("SUMMARY_NOT_FOUND", "summary.md not found", 404)
 
         sse_queue: Queue = Queue()
-
-        def _sse(event: str, data: dict) -> str:
-            return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
 
         def generate():
             all_batches = parse_summary_batches(summary_path)
