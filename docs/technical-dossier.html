@@ -36,7 +36,7 @@
           <a href="#faq">FAQ</a>
         </nav>
         <div class="sidebar-links">
-          <a href="../README.md">README</a>
+          <a href="https://github.com/blackzhanzhan/novel_agent">GitHub / README</a>
           <a href="TECHNICAL_DOSSIER.md">Markdown 版</a>
           <a href="ARCHITECTURE.md">架构总览</a>
           <a href="DEPLOYMENT.md">部署说明</a>
@@ -263,11 +263,43 @@ git diff --check</code></pre>
               当前部署目标是本地可复现 demo：Windows 本地启动、Compose demo、GHCR 镜像和 Release ZIP。
               它们可以复现前后端、示例配置、Dify DSL 和 smoke check，但不会包含真实 Dify 数据库、密钥或私有书库。
             </p>
+            <div class="grid-two">
+              <div class="callout">
+                <strong>本地部署体检</strong><br />
+                <code>deploy_doctor.py --profile local</code> 检查 Python/Git/Node/npm/Docker、后端健康检查、前端书架页、
+                API 代理和 Dify 地址。本地画像不检查会话隔离，因为本地开发不需要公共访问者沙箱。
+              </div>
+              <div class="callout">
+                <strong>受控体验版体检</strong><br />
+                <code>deploy_doctor.py --profile public-demo</code> 额外检查 cookie 沙箱、配置中心只读、Dify 无 cookie
+                工具回调绑定，以及 <code>book_id</code> 优先级。这个画像只用于小范围云端体验入口。
+              </div>
+            </div>
+            <pre><code># 本地
+python deploy/demo/deploy_doctor.py --profile local --env deploy/demo/.env --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+
+# 受控体验版服务器
+python deploy/demo/deploy_doctor.py --profile public-demo --env /etc/novel-agent-demo.env --backend-url http://127.0.0.1:18000 --frontend-url http://127.0.0.1:15173</code></pre>
             <div class="callout warning">
               <strong>部署提示</strong><br />
               项目由个人维护且架构原创性较高。如果部署失败，建议收集终端日志、<code>.env</code> 配置结构、Docker/WSL 状态、
               Dify Runtime 状态、模型配置和 ToolProvider 地址，再使用 AI 辅助定位是路径、端口、密钥、服务顺序还是容器访问宿主机问题。
             </div>
+            <table class="doc-table">
+              <thead>
+                <tr><th>常见坑</th><th>定位方式</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Dify 能回复但不能写文件</td><td>从 Dify 运行网络检查 LoreGit ToolProvider 地址；容器里的 <code>localhost</code> 通常不是宿主机。</td></tr>
+                <tr><td>服务器源码更新后页面不变</td><td>重新执行 <code>npm ci && npm run build</code>，确认静态代理服务使用新的 <code>frontend/dist</code>。</td></tr>
+                <tr><td>新书导入提交失败</td><td>每本书是独立 Git 仓库，服务器或 systemd 环境需要配置 <code>user.name</code> 和 <code>user.email</code>。</td></tr>
+                <tr><td>体验版会话串写</td><td>运行 public-demo 画像；Dify 回调没有浏览器 cookie，必须能用合法 <code>demo_&lt;session&gt;_&lt;book&gt;</code> 绑定回原会话。</td></tr>
+              </tbody>
+            </table>
+            <p>
+              完整命令、Release ZIP、Compose、GHCR、Dify Runtime 和 FAQ 请看
+              <a href="DEPLOYMENT.md">部署说明</a>。
+            </p>
           </section>
 
           <section class="section" id="release">

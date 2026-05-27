@@ -320,6 +320,20 @@ git diff --check
 - GHCR 镜像：用于替代本地 build 步骤，但仍需要外部或已配置的 Dify Runtime。
 - Release ZIP：源码、Dify DSL 快照、示例配置、启动脚本和 smoke check。
 
+部署体检器：
+
+```powershell
+# 本地部署画像：不检查会话隔离
+python .\deploy\demo\deploy_doctor.py --profile local --env .\deploy\demo\.env --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+```
+
+```bash
+# 受控体验版画像：检查 cookie 沙箱、配置中心只读和 Dify 无 cookie 回调绑定
+python deploy/demo/deploy_doctor.py --profile public-demo --env /etc/novel-agent-demo.env --backend-url http://127.0.0.1:18000 --frontend-url http://127.0.0.1:15173
+```
+
+两个画像的边界不同：本地部署没有会话隔离要求，重点是前端、后端、Dify 和模型配置能连通；受控体验版需要临时会话、导入上限、配置中心只读、Dify ToolProvider 回调绑定和 `book_id` 优先级同时成立。
+
 部署不包含：
 
 - 真实模型密钥。
@@ -338,6 +352,15 @@ git diff --check
 - 后端 `/health` 和前端 `bookshelf.html` 是否可访问。
 
 由于项目由个人维护且架构原创性较高，建议使用 AI 辅助排查部署问题。多数问题集中在端口、路径、密钥、服务启动顺序、Dify 容器访问宿主机地址这几类。
+
+这次云端部署暴露出的重点坑：
+
+- 前后端能打开不代表 Dify Runtime 已经部署并可用。
+- Dify 容器里的 `localhost` 往往指容器自己，ToolProvider 地址必须从 Dify 运行网络侧验证。
+- 服务器有其他项目时，后端应尽量 loopback 绑定，只暴露选定的静态代理入口。
+- 前端源码更新后必须重建 `frontend/dist`。
+- 每本书都是独立 Git 仓库，新书导入和元数据提交需要 Git 作者身份。
+- 受控体验版不能只靠 cookie 隔离，因为 Dify 工具回调没有浏览器 cookie；合法 `demo_<session>_<book>` 需要能绑定回原会话。
 
 ## 发布边界
 
