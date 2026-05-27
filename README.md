@@ -4,7 +4,7 @@
 
 完整介绍、截图、架构说明、部署教程和 FAQ 都放在 GitHub Pages：
 
-## [打开 Novel Agent 技术档案](https://blackzhanzhan.github.io/novel_agent/)
+## [打开 GitHub Pages 技术档案](https://blackzhanzhan.github.io/novel_agent/)
 
 备用入口：
 
