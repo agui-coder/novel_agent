@@ -288,7 +288,9 @@ explicit checkout button
 
 ## 测试与证据
 
-项目测试以 Flask 后端单元/集成测试和前端构建为主。代表性测试文件：
+项目测试以 Flask 后端单元/集成测试和前端构建为主。当前 `novel_git_server/tests` 下有 **50 个核心测试文件、426 个测试函数**，用于把 Agent 工具调用、Markdown 写入、Git 回退和公开体验边界落到可复查的工程证据上。
+
+代表性测试文件：
 
 - `novel_git_server/tests/test_v53_git_console.py`：Git 分支、历史、diff、回退、保护逻辑。
 - `novel_git_server/tests/test_v62_markdown_section_write.py`：Markdown 区块写入、草稿写入预算和安全边界。
@@ -297,6 +299,8 @@ explicit checkout button
 - `novel_git_server/tests/test_v73_runtime_config.py`：本地运行配置。
 - `novel_git_server/tests/test_v74_openai_compatible_config.py`：OpenAI-compatible 模型配置。
 - `novel_git_server/tests/test_v76_summary_batch_parser_cn.py`：中文摘要批处理结构。
+- `novel_git_server/tests/test_v78_prose_delivery_api.py`：正文交付、审核状态、重写请求和归档闸门。
+- `novel_git_server/tests/test_v79_public_demo_mode.py`：公开体验会话、只读配置、临时书库和 Dify ToolProvider 回调绑定。
 - `frontend/package.json` 的 `npm run build`：TypeScript 与 Vite 构建。
 - `deploy/demo/compose_smoke.py`：Compose demo 的后端、前端和可选 Dify smoke。
 
