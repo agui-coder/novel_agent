@@ -484,7 +484,7 @@ export function BookshelfApp() {
                                 <div className="text-[11px] font-mono tracking-[0.16em] text-[var(--color-dark-text-faint)]">BOOK IMPORT</div>
                                 <h2 className="mt-1 text-lg font-semibold text-[var(--color-dark-text-main)]">番茄小说在线导入</h2>
                                 <p className="mt-1 text-xs leading-5 text-[var(--color-dark-text-muted)]">
-                                    搜索番茄小说在线书库，一键下载导入到工作台。
+                                    推荐粘贴番茄详情页 URL 或 book_id；书名搜索受番茄站点限制，可能无法稳定返回结果。
                                 </p>
                             </div>
                             <button
@@ -506,7 +506,7 @@ export function BookshelfApp() {
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         onKeyDown={(e) => { if (e.key === 'Enter') void handleSearch(); }}
                                         disabled={summaryBusy}
-                                        placeholder="搜索书名或作者…"
+                                        placeholder="粘贴详情页 URL / book_id，或搜索书名…"
                                         className="flex-1 rounded-[10px] border border-[rgba(255,255,255,0.07)] bg-[#171a20] px-3 py-2 text-sm text-[var(--color-dark-text-main)] outline-none focus:border-[rgba(115,134,255,0.55)]"
                                     />
                                     <button
@@ -526,7 +526,7 @@ export function BookshelfApp() {
                                 )}
 
                                 <div className="space-y-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.015)] p-3">
-                                    <div className="text-[11px] font-medium text-[var(--color-dark-text-muted)]">按 book_id 直接导入</div>
+                                    <div className="text-[11px] font-medium text-[var(--color-dark-text-muted)]">推荐：按详情页 URL / book_id 直接导入</div>
                                     <div className="flex gap-2">
                                         <input
                                             aria-label="番茄 book_id"
@@ -547,14 +547,14 @@ export function BookshelfApp() {
                                         </button>
                                     </div>
                                     <div className="text-[11px] leading-5 text-[var(--color-dark-text-faint)]">
-                                        搜索受限时，粘贴 fanqienovel.com/page/&lt;book_id&gt; 中的数字 ID，先读取详情，再一键导入。
+                                        从番茄详情页复制 fanqienovel.com/page/&lt;book_id&gt;，或只粘贴数字 ID；系统会先读取详情，再一键导入并生成摘要。
                                     </div>
                                 </div>
 
                                 {/* Empty state */}
                                 {searchResults.length === 0 && !searching && !searchError && (
                                     <div className="flex items-center justify-center py-12 text-sm text-[var(--color-dark-text-faint)]">
-                                        输入书名或作者搜索番茄小说在线书库。
+                                        优先粘贴番茄详情页 URL 或 book_id；书名搜索只是辅助入口。
                                     </div>
                                 )}
 

@@ -294,8 +294,8 @@ def search_novels(query: str, *, count: int = 20) -> list[dict[str, Any]]:
 
     raise RuntimeError(
         f"番茄小说搜索失败：API 和页面抓取均未返回结果。"
-        f"可能原因：(1) 网络/IP 受限 (2) 关键词无结果。"
-        f"请尝试直接输入书籍 ID 导入。"
+        f"可能原因：(1) 番茄关键词搜索接口受限 (2) 关键词无结果。"
+        f"请复制 fanqienovel.com/page/<book_id> 详情页 URL，或直接输入数字 book_id 导入。"
     )
 
 
