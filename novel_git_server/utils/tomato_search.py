@@ -39,6 +39,7 @@ _UA = (
 )
 
 _INIT_STATE_RE = re.compile(r"window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;", re.DOTALL)
+_BOOK_ID_RE = re.compile(r"(?:fanqienovel\.com/page/)?(\d{12,22})")
 
 # ---------------------------------------------------------------------------
 # Charset helpers
@@ -122,6 +123,15 @@ def _normalize_search_item(item: dict[str, Any]) -> dict[str, Any]:
         "cover_url": item.get("thumb_url", ""),
         "abstract": item.get("abstract", ""),
     }
+
+
+def extract_book_id(value: str) -> str | None:
+    """Extract a Tomato book id from a numeric id or fanqienovel page URL."""
+    text = str(value or "").strip()
+    match = _BOOK_ID_RE.search(text)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +258,24 @@ def search_novels(query: str, *, count: int = 20) -> list[dict[str, Any]]:
 
     Raises RuntimeError if neither strategy returns results.
     """
+    direct_book_id = extract_book_id(query)
+    if direct_book_id:
+        try:
+            info = get_book_info(direct_book_id)
+            return [
+                {
+                    "book_id": str(info.get("book_id", direct_book_id)),
+                    "book_name": info.get("book_name", ""),
+                    "author": info.get("author", ""),
+                    "word_count": info.get("word_count", 0),
+                    "chapter_count": info.get("chapter_count", 0),
+                    "cover_url": info.get("cover_url", ""),
+                    "abstract": info.get("abstract", ""),
+                }
+            ]
+        except Exception:
+            logger.debug("direct book id search fallback failed", exc_info=True)
+
     # Strategy 0: exe downloader search
     results = _search_via_exe(query, count=count)
     if results:

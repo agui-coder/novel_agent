@@ -21,6 +21,11 @@ function isSummaryBusyStatus(status?: SummaryStatus['status']): boolean {
     return status === 'reading' || status === 'generating' || status === 'writing';
 }
 
+function extractTomatoBookId(value: string): string | null {
+    const match = value.trim().match(/(?:fanqienovel\.com\/page\/)?(\d{12,22})/);
+    return match ? match[1] : null;
+}
+
 export function BookshelfApp() {
     const [pageState, setPageState] = useState<PageState>('loading');
     const [books, setBooks] = useState<BookListItem[]>([]);
@@ -41,6 +46,7 @@ export function BookshelfApp() {
     const [deleteTarget, setDeleteTarget] = useState<BookListItem | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [summaryStatus, setSummaryStatus] = useState<SummaryStatus | null>(null);
+    const [readyBook, setReadyBook] = useState<{ book_id: string; book_name?: string } | null>(null);
     const [downloadStatus, setDownloadStatus] = useState<DownloadStatus | null>(null);
     const summaryPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -92,6 +98,13 @@ export function BookshelfApp() {
         if (summaryBusy) return;
         const q = searchQuery.trim();
         if (!q) return;
+        const directId = extractTomatoBookId(q);
+        if (directId) {
+            setDirectBookId(directId);
+            setSearching(false);
+            await handleDirectBookLookup(directId);
+            return;
+        }
         setSearching(true);
         setSearchError(null);
         setSearchResults([]);
@@ -132,10 +145,11 @@ export function BookshelfApp() {
         }
     };
 
-    const handleDirectBookLookup = async () => {
+    const handleDirectBookLookup = async (overrideBookId?: string) => {
         if (summaryBusy) return;
-        const bookId = directBookId.trim();
+        const bookId = extractTomatoBookId(overrideBookId ?? directBookId) ?? (overrideBookId ?? directBookId).trim();
         if (!bookId) return;
+        setDirectBookId(bookId);
         setDirectLookupPending(true);
         setSelectedBook(null);
         setDownloadError(null);
@@ -163,6 +177,7 @@ export function BookshelfApp() {
                     summaryPollRef.current = null;
                     if (s.status === 'done') {
                         setToast({ text: `摘要已生成（${(s.chars ?? 0).toLocaleString()} 字）`, ts: Date.now() });
+                        setReadyBook({ book_id: bookId, book_name: s.book_name ?? bookName });
                     }
                 }
             } catch {
@@ -277,6 +292,7 @@ export function BookshelfApp() {
             setBooks(nextBooks);
             setPageState('bookshelf');
             setToast({ text: `已导入《${result.book_name}》，正在生成摘要`, ts: Date.now() });
+            setReadyBook(null);
             startSummaryPoll(result.book_id, result.book_name);
         } catch (err) {
             setDownloadError(err instanceof ApiError ? err.message : '在线导入失败');
@@ -682,6 +698,36 @@ export function BookshelfApp() {
                                 {summaryTuningLabel(summaryStatus)}
                             </div>
                         )}
+                        <div className="mt-4 text-[11px] leading-5 text-[var(--color-dark-text-faint)]">
+                            摘要完成后会出现进入工作台按钮；体验版只保留前 {demoSession?.import_chapter_limit ?? 25} 章。
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {readyBook && !summaryBusy && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/58 px-4 backdrop-blur-sm">
+                    <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-[16px] border border-[rgba(71,197,129,0.24)] bg-[#111318] px-6 py-5 text-center shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+                        <div className="text-base font-semibold text-[var(--color-dark-text-main)]">摘要已生成</div>
+                        <div className="mt-2 text-sm leading-6 text-[var(--color-dark-text-muted)]">
+                            {readyBook.book_name ? `《${readyBook.book_name}》` : '新书'}已经完成导入和摘要归档，可以进入工作台继续初始化世界观、大纲和续写。
+                        </div>
+                        <div className="mt-5 flex justify-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setReadyBook(null)}
+                                className="rounded-[10px] border border-[rgba(255,255,255,0.08)] px-4 py-2 text-sm text-[var(--color-dark-text-muted)] hover:text-[var(--color-dark-text-main)]"
+                            >
+                                留在书架
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleEnterBook(readyBook.book_id)}
+                                className="rounded-[10px] border border-[rgba(71,197,129,0.42)] bg-[rgba(71,197,129,0.13)] px-4 py-2 text-sm font-semibold text-[#d9ffe9]"
+                            >
+                                进入工作台
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
