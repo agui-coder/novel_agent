@@ -135,6 +135,32 @@ flowchart TB
 - Dify 内的 LoreGit ToolProvider 需要能访问本项目 Flask 后端，否则活跃 Dify Agent 会生成文本但无法读写书库文件。
 - 受控演示入口属于作者私有部署场景，不作为公开部署方案写入主流程；Release、Compose 和 GHCR 仍以本地自部署为主。
 
+### 先跑部署体检
+
+仓库提供一个不依赖项目第三方包的部署体检器：`deploy/demo/deploy_doctor.py`。它不是启动器，而是把部署断点分成前端、后端、Dify、配置和体验版会话几层检查。
+
+本地部署使用 `local` 画像，不检查 cookie 会话隔离：
+
+```powershell
+python .\deploy\demo\deploy_doctor.py `
+  --profile local `
+  --env .\deploy\demo\.env `
+  --backend-url http://127.0.0.1:8000 `
+  --frontend-url http://127.0.0.1:5173
+```
+
+云端受控体验版使用 `public-demo` 画像，额外检查 cookie 沙箱、配置中心只读、Dify 工具回调无 cookie 时的 `demo_<session>_<book>` 绑定，以及 `book_id` 优先级：
+
+```bash
+python deploy/demo/deploy_doctor.py \
+  --profile public-demo \
+  --env /etc/novel-agent-demo.env \
+  --backend-url http://127.0.0.1:18000 \
+  --frontend-url http://127.0.0.1:15173
+```
+
+如果 Dify 地址也要一起检查，加 `--dify-url` 或在 env 中填 `DIFY_BASE_URL`。本地开发允许 Dify 暂时未启；完整大纲、续写、审核链路必须保证 Dify 可达。
+
 ### 路线 A：Release ZIP，本地演示推荐
 
 适合想最快体验项目的人，也适合面试或课堂演示机器。
@@ -292,6 +318,12 @@ Compose smoke check：
 docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm smoke
 ```
 
+部署体检：
+
+```powershell
+python .\deploy\demo\deploy_doctor.py --profile local --env .\deploy\demo\.env --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+```
+
 ### 常见问题
 
 | 现象 | 排查方向 |
@@ -304,6 +336,9 @@ docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm s
 | Dify YAML 导入后没有模型 | 这是正常现象，需要在你的 Dify 环境中重新选择模型供应商和模型。 |
 | 服务器前端源码改了但页面没变化 | 需要在服务器安装 Node.js/npm 并重新执行 `npm ci && npm run build`，或同步已经构建好的 `frontend/dist`。 |
 | 在线导入时报 Git 作者身份错误 | 新建书库提交前需要配置 Git user.name/user.email；systemd 环境没有交互式 Git 全局配置时尤其容易触发。 |
+| 明明前端能打开，Dify 工具回调却写不进书库 | 重点检查 Dify 所在网络能否访问 Flask 后端。容器内的 `localhost` 往往指容器自己，不是宿主机。 |
+| 云端体验版的某个访问者串到另一个书库 | 受控体验版必须跑 `deploy_doctor.py --profile public-demo`；本地部署没有会话隔离要求，云端需要 cookie 沙箱和无 cookie 工具回调绑定同时成立。 |
+| 服务器上完整 Dify 很慢或起不来 | 小机器可以先只部署 Novel Agent 前端/后端，连接已有私有 Dify Runtime；完整 Dify、PostgreSQL、插件服务和模型代理同机部署对内存更敏感。 |
 
 更完整的部署边界、Dify runtime 规则和 smoke check 标准见 `docs/DEPLOYMENT.md`。
 

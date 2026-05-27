@@ -109,6 +109,8 @@ $requiredEntries = @(
     "RELEASE_README.md",
     "docs/DEPLOYMENT.md",
     "deploy/demo/.env.example",
+    "deploy/demo/deploy_doctor.py",
+    "deploy/demo/deploy_doctor.ps1",
     "deploy/public_demo/README.md",
     "deploy/public_demo/.env.example",
     "deploy/public_demo/static_proxy.py",

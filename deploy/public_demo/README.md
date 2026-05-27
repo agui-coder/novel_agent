@@ -82,6 +82,28 @@ curl http://127.0.0.1:15173/api/demo/session
 curl http://127.0.0.1:15173/bookshelf.html
 ```
 
+Deployment doctor:
+
+```bash
+python deploy/demo/deploy_doctor.py \
+  --profile public-demo \
+  --env /etc/novel-agent-demo.env \
+  --backend-url http://127.0.0.1:18000 \
+  --frontend-url http://127.0.0.1:15173
+```
+
+The public-demo profile is stricter than the local profile. It checks the cookie sandbox, readonly runtime configuration, the frontend API proxy, and the no-cookie Dify ToolProvider callback path. Local development does not need these session-isolation checks; this server profile does.
+
+If Dify is reachable from this server, include it in the same pass:
+
+```bash
+python deploy/demo/deploy_doctor.py \
+  --profile public-demo \
+  --env /etc/novel-agent-demo.env \
+  --frontend-url http://127.0.0.1:15173 \
+  --dify-url http://127.0.0.1/v1
+```
+
 Service checks:
 
 ```bash
@@ -100,3 +122,5 @@ Common symptoms:
 | Frontend source changed but page is unchanged | Rebuild `frontend/dist` with Node.js/npm, then restart the frontend proxy. |
 | Dify replies but cannot write files | Check LoreGit ToolProvider endpoint from Dify's runtime network. |
 | Server becomes slow | Reduce controlled-demo limits, keep TTL short, and avoid co-locating full Dify on a very small machine. |
+| Public-demo session works in browser but Dify callback writes nowhere | Dify callbacks do not carry the browser cookie. The backend must accept a valid live `demo_<session>_<book>` id and bind it back to that session. Run the public-demo doctor profile to verify this. |
+| A long imported book stores too much content | `PUBLIC_DEMO_IMPORT_CHAPTER_LIMIT` limits materialized chapters. The import UI may select a long book, but the backend should only store the first configured number of chapters. |

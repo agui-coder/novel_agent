@@ -38,6 +38,66 @@ React 工作台
 
 Release ZIP 需要使用可移植路径，压缩包内条目统一使用 `/` 分隔，让 Windows、WSL 和 Linux 解压后都能得到真实目录，例如 `deploy/demo/`、`docs/`、`dify_workflows/`。
 
+## 部署体检工具
+
+`deploy/demo/deploy_doctor.py` 是一个 stdlib-only 体检器，适合在 Release ZIP、源码 clone 或服务器目录中直接运行。它不负责启动服务，只负责回答“现在断在哪里”：
+
+- Python/Git/Node/npm/Docker 是否存在；
+- `.env` 是否存在，关键 Dify 和体验版配置是否明显缺失；
+- Flask `/health` 是否可访问；
+- 前端书架页与 `/api/*` 代理是否可访问；
+- Dify 地址是否从当前机器可达；
+- 受控体验版是否启用了 cookie 沙箱、配置中心只读和 Dify 无 cookie 回调绑定。
+
+本地部署画像：
+
+```powershell
+python .\deploy\demo\deploy_doctor.py `
+  --profile local `
+  --env .\deploy\demo\.env `
+  --backend-url http://127.0.0.1:8000 `
+  --frontend-url http://127.0.0.1:5173
+```
+
+本地画像不会检查会话隔离。它关注的是本机三端能否启动、Dify App key 是否漏填、前端代理是否打到后端。
+
+云端受控体验版画像：
+
+```bash
+python deploy/demo/deploy_doctor.py \
+  --profile public-demo \
+  --env /etc/novel-agent-demo.env \
+  --backend-url http://127.0.0.1:18000 \
+  --frontend-url http://127.0.0.1:15173
+```
+
+云端画像会多做三件本地不需要的检查：
+
+- 浏览器 cookie 会话是否能创建临时书库；
+- Dify ToolProvider 回调没有浏览器 cookie 时，是否仍能通过 `demo_<session>_<book>` 绑定回正确会话；
+- 配置中心是否只读，避免把 API Key 配置暴露给访问者。
+
+如果想把 Dify 一起纳入体检：
+
+```powershell
+python .\deploy\demo\deploy_doctor.py --profile local --env .\deploy\demo\.env --dify-url http://localhost/v1
+```
+
+体检器支持 `--json` 给自动化脚本读取，也支持 `--strict` 在警告时返回非零退出码。
+
+## 这次云端部署踩过的坑
+
+| 坑 | 为什么会发生 | 现在的规避方式 |
+| --- | --- | --- |
+| 以为 Dify 已经部署/运行 | 前后端能打开不代表 Dify Runtime 存在，Dify DSL 也不是可运行数据库备份。 | 部署步骤把 Dify Runtime 作为显式依赖；体检器单独检查 Dify HTTP 可达。 |
+| Dify 能回复但不能写文件 | ToolProvider 从 Dify 容器/沙箱访问后端，`localhost` 往往指容器自己。 | 在 Dify 里配置它能访问到的 Flask 地址，例如宿主机地址、`host.docker.internal` 或同网段地址，并从 Dify 网络侧验证。 |
+| 服务器上已有别的项目 | 随手占用 80/8000/5173 容易冲突，也可能暴露不该暴露的后端。 | 受控体验版默认后端只绑定 `127.0.0.1:18000`，只暴露一个静态代理入口。 |
+| 小服务器跑完整 Dify 很吃力 | Dify、PostgreSQL、插件服务、模型代理和多个项目会争内存。 | 小规模展示优先部署 Novel Agent 前端/后端，Dify 可以连接已有私有 Runtime。 |
+| 前端源代码更新后页面不变 | 浏览器拿到的是 `frontend/dist`，服务器没有重新 build。 | 每次前端改动后执行 `npm ci && npm run build`，再重启静态代理。 |
+| 新书导入/元数据提交失败 | 每本书都是独立 Git 仓库，systemd 环境可能没有 Git 作者身份。 | 服务器初始化时配置 `user.name` 和 `user.email`。 |
+| 25 章限制理解错 | 体验版不是禁止导入长书，而是只落盘前 25 章以控成本。 | 后端导入管线保留搜索/选择体验，只限制实际物化章节数。 |
+| cookie 隔离修过头导致 Dify 回调丢会话 | Dify 工具调用没有浏览器 cookie，纯 cookie 模型会让写入落到新会话。 | 当前规则是浏览器 cookie 优先；无 cookie 但带合法 `demo_<sid>_<book>` 时绑定已有会话；同时 `book_id` 优先于 `book_name`。 |
+
 ## 路线 A：Release ZIP，本地演示推荐
 
 适合面试演示、录屏、本机快速体验。
@@ -316,6 +376,18 @@ Compose smoke：
 docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm smoke
 ```
 
+部署体检：
+
+```powershell
+python .\deploy\demo\deploy_doctor.py --profile local --env .\deploy\demo\.env --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+```
+
+受控体验版体检：
+
+```bash
+python deploy/demo/deploy_doctor.py --profile public-demo --env /etc/novel-agent-demo.env --backend-url http://127.0.0.1:18000 --frontend-url http://127.0.0.1:15173
+```
+
 ## 常见故障
 
 | 现象 | 排查方向 |
@@ -327,3 +399,8 @@ docker compose --env-file deploy\demo\.env -f docker-compose.demo.yml run --rm s
 | GHCR 拉取失败 | 检查 GitHub Packages 可见性；必要时执行 `docker login ghcr.io`。 |
 | Dify YAML 导入后没有模型 | 正常现象，需要在自己的 Dify 环境里重新选择模型供应商和模型。 |
 | Agent 能回答但工作台没变化 | 检查是否启用了正确的活跃 Dify App、API Key 是否填到了对应字段、工具调用是否命中 LoreGit。 |
+| `deploy_doctor.py --profile local` 警告缺少 Dify key | 本地前端/后端可以先启动，但活跃大纲、续写、审核 Agent 需要对应 App key。 |
+| `deploy_doctor.py --profile public-demo` 会话检查失败 | 检查 `PUBLIC_DEMO_MODE=1`、模板书是否存在、前端代理是否转发 cookie 和 `/api/demo/session`。 |
+| Dify 工具回调在云端写入错误书库 | 检查回调请求是否传了明确 `book_id`；受控体验版要求 `demo_<session>_<book>` 在无 cookie 请求下仍能映射到原会话。 |
+| 配置中心在云端还能写入 | 说明体验版后端没有读到 `PUBLIC_DEMO_MODE=1` 或运行的不是受控体验服务。 |
+| 服务器响应慢 | 先确认是不是 Dify 或模型 API 慢；Novel Agent 前端/后端本身可以用体检器分层测延迟。小机器不要同机跑过多项目。 |
