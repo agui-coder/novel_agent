@@ -107,6 +107,17 @@ class PublicDemoManager:
                 g.public_demo_session = session
                 return self.touch_session(session, now=now)
 
+        request_book_id = self.extract_request_book_id(request)
+        parsed_demo_book = self.parse_session_book_id(request_book_id) if request_book_id else None
+        if parsed_demo_book is not None:
+            session_id, _source_book_id = parsed_demo_book
+            session = self._load_session(session_id, now=now)
+            if session is not None:
+                g.public_demo_session = session
+                refreshed = self.touch_session(session, now=now)
+                g.public_demo_set_cookie = True
+                return refreshed
+
         session = self._create_session(now=now)
         g.public_demo_session = session
         g.public_demo_set_cookie = True
@@ -177,6 +188,16 @@ class PublicDemoManager:
     def looks_like_malformed_session_book_id(self, book_id: str) -> bool:
         parts = str(book_id).split("_", 2)
         return len(parts) >= 2 and parts[0] == "demo" and SESSION_ID_RE.fullmatch(parts[1]) is not None
+
+    def extract_request_book_id(self, request: Request) -> str | None:
+        raw_book_id: Any = request.values.get("book_id")
+        if raw_book_id is None and request.is_json:
+            body = request.get_json(silent=True)
+            if isinstance(body, dict):
+                raw_book_id = body.get("book_id")
+        if isinstance(raw_book_id, str) and raw_book_id.strip():
+            return raw_book_id.strip()
+        return None
 
     def session_book_id(self, source_book_id: str, *, session: DemoSession | None = None) -> str:
         safe_source = validate_book_id(source_book_id)

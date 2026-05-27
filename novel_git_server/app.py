@@ -97,6 +97,14 @@ def create_app(
         if raw_book_name is None:
             raw_book_name = request.args.get("book_name")
         try:
+            demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
+            if demo_manager is not None and isinstance(raw_book_id, str) and raw_book_id.strip():
+                try:
+                    book_id = demo_manager.map_book_id(resolve_book_id(raw_book_id, None, app.config["STORAGE_ROOT"]))
+                except PermissionError as exc:
+                    return None, json_error("PUBLIC_DEMO_FORBIDDEN_BOOK", str(exc), 403)
+                return book_id, None
+
             resolved_book_id, resolved_book_name_id = resolve_book_locators(
                 raw_book_id,
                 raw_book_name,
@@ -113,7 +121,6 @@ def create_app(
                     409,
                 )
             book_id = resolve_book_id(raw_book_id, raw_book_name, app.config["STORAGE_ROOT"])
-            demo_manager: PublicDemoManager | None = app.config.get("PUBLIC_DEMO_MANAGER")
             if demo_manager is not None:
                 try:
                     book_id = demo_manager.map_book_id(book_id)

@@ -211,6 +211,35 @@ class V79PublicDemoModeTests(unittest.TestCase):
         self.assertNotEqual(mapped_book_id, old_demo_book_id)
         self.assertTrue((self.storage_root / mapped_book_id / "chapters" / "0001_start.md").exists())
 
+    def test_cookie_less_tool_callback_binds_existing_session_book_id(self):
+        first = self.client.get("/books/list")
+        self.assertEqual(first.status_code, 200)
+        demo_book_id = first.get_json()["books"][0]["book_id"]
+        session_id = demo_book_id.split("_", 2)[1]
+
+        tool_client = self.app.test_client()
+        tool_resp = tool_client.get("/books/ping", query_string={"book_id": demo_book_id})
+        self.assertEqual(tool_resp.status_code, 200, tool_resp.get_json())
+        self.assertEqual(tool_resp.get_json()["book_id"], demo_book_id)
+        set_cookie = tool_resp.headers.get("Set-Cookie", "")
+        self.assertIn(f"novel_agent_demo_session={session_id}", set_cookie)
+
+    def test_public_demo_book_id_wins_over_book_name_for_tool_callbacks(self):
+        first = self.client.get("/books/list")
+        self.assertEqual(first.status_code, 200)
+        demo_book_id = first.get_json()["books"][0]["book_id"]
+
+        tool_client = self.app.test_client()
+        resp = tool_client.get(
+            "/books/ping",
+            query_string={
+                "book_id": demo_book_id,
+                "book_name": "与当前书号不同的展示名",
+            },
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertEqual(resp.get_json()["book_id"], demo_book_id)
+
     def test_malformed_demo_book_id_is_rejected(self):
         resp = self.client.get("/books/ping", query_string={"book_id": "demo_0123456789abcdef_"})
         self.assertEqual(resp.status_code, 403)
