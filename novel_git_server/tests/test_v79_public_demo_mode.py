@@ -191,6 +191,31 @@ class V79PublicDemoModeTests(unittest.TestCase):
         second_book_id = second.get_json()["books"][0]["book_id"]
         self.assertNotEqual(second_book_id, demo_book_id)
 
+    def test_stale_session_book_id_remaps_to_current_cookie_session(self):
+        first = self.client.get("/books/list")
+        self.assertEqual(first.status_code, 200)
+        old_demo_book_id = first.get_json()["books"][0]["book_id"]
+        old_session_id = old_demo_book_id.split("_", 2)[1]
+
+        second_client = self.app.test_client()
+        session_resp = second_client.get("/api/demo/session")
+        self.assertEqual(session_resp.status_code, 200)
+        current_session_id = session_resp.get_json()["session_id"]
+        self.assertNotEqual(current_session_id, old_session_id)
+
+        stale_url_resp = second_client.get("/books/ping", query_string={"book_id": old_demo_book_id})
+        self.assertEqual(stale_url_resp.status_code, 200, stale_url_resp.get_json())
+        mapped_book_id = stale_url_resp.get_json()["book_id"]
+        self.assertTrue(mapped_book_id.startswith(f"demo_{current_session_id}_"), mapped_book_id)
+        self.assertTrue(mapped_book_id.endswith(f"_{self.template_id}"), mapped_book_id)
+        self.assertNotEqual(mapped_book_id, old_demo_book_id)
+        self.assertTrue((self.storage_root / mapped_book_id / "chapters" / "0001_start.md").exists())
+
+    def test_malformed_demo_book_id_is_rejected(self):
+        resp = self.client.get("/books/ping", query_string={"book_id": "demo_0123456789abcdef_"})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.get_json()["code"], "PUBLIC_DEMO_FORBIDDEN_BOOK")
+
     def test_template_copy_rebuilds_clean_git_repo_without_source_branches(self):
         template_refs = self.storage_root / self.template_id / ".git" / "refs" / "heads"
         template_refs.mkdir(parents=True, exist_ok=True)

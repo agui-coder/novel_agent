@@ -19,6 +19,7 @@ from utils.git_utils import ensure_repo_identity, is_nothing_to_commit_error, ru
 
 DEMO_COOKIE_NAME = "novel_agent_demo_session"
 SESSION_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+DEMO_BOOK_ID_RE = re.compile(r"^demo_([a-f0-9]{16})_(.+)$")
 
 
 def env_flag(name: str, default: str = "0") -> bool:
@@ -104,7 +105,7 @@ class PublicDemoManager:
             session = self._load_session(cookie_sid, now=now)
             if session is not None:
                 g.public_demo_session = session
-                return session
+                return self.touch_session(session, now=now)
 
         session = self._create_session(now=now)
         g.public_demo_session = session
@@ -120,15 +121,62 @@ class PublicDemoManager:
     def should_set_cookie(self) -> bool:
         return bool(getattr(g, "public_demo_set_cookie", False))
 
+    def touch_session(self, session: DemoSession | None = None, *, now: int | None = None) -> DemoSession:
+        current = session or self.current_session()
+        g.public_demo_session = current
+        current_time = int(now or time.time())
+        new_expires_at = max(int(current.expires_at), current_time + self.ttl_seconds)
+        if new_expires_at == int(current.expires_at):
+            return current
+        state = dict(current.state)
+        state["expires_at"] = new_expires_at
+        state["last_active_at"] = current_time
+        self._write_state(current.state_path, state)
+        refreshed = DemoSession(
+            session_id=current.session_id,
+            created_at=current.created_at,
+            expires_at=new_expires_at,
+            state_path=current.state_path,
+            state=state,
+            is_new=current.is_new,
+        )
+        g.public_demo_session = refreshed
+        g.public_demo_set_cookie = True
+        return refreshed
+
     def map_book_id(self, raw_book_id: Any) -> str:
         source_book_id = validate_book_id(str(raw_book_id or "").strip())
         session = self.current_session()
         prefix = f"demo_{session.session_id}_"
         if source_book_id.startswith(prefix):
             return source_book_id
-        if source_book_id.startswith("demo_"):
-            raise PermissionError("this demo session cannot access another session book")
-        return self.session_book_id(source_book_id, session=session)
+
+        parsed_demo_book = self.parse_session_book_id(source_book_id)
+        if parsed_demo_book is not None:
+            _old_session_id, original_book_id = parsed_demo_book
+            mapped_book_id = self.ensure_source_book_for_session(original_book_id, session=session)
+            g.public_demo_remapped_book_id = {
+                "from_book_id": source_book_id,
+                "to_book_id": mapped_book_id,
+                "source_book_id": original_book_id,
+            }
+            return mapped_book_id
+
+        if self.looks_like_malformed_session_book_id(source_book_id):
+            raise PermissionError("invalid demo session book id")
+
+        return self.ensure_source_book_for_session(source_book_id, session=session)
+
+    def parse_session_book_id(self, book_id: str) -> tuple[str, str] | None:
+        match = DEMO_BOOK_ID_RE.fullmatch(str(book_id))
+        if match is None:
+            return None
+        session_id, source_book_id = match.groups()
+        return session_id, validate_book_id(source_book_id)
+
+    def looks_like_malformed_session_book_id(self, book_id: str) -> bool:
+        parts = str(book_id).split("_", 2)
+        return len(parts) >= 2 and parts[0] == "demo" and SESSION_ID_RE.fullmatch(parts[1]) is not None
 
     def session_book_id(self, source_book_id: str, *, session: DemoSession | None = None) -> str:
         safe_source = validate_book_id(source_book_id)
@@ -142,15 +190,22 @@ class PublicDemoManager:
     def ensure_template_book_for_session(self) -> str | None:
         if not self.template_book_id:
             return None
-        session = self.current_session()
-        target_book_id = self.session_book_id(self.template_book_id, session=session)
+        target_book_id = self.ensure_source_book_for_session(self.template_book_id)
+        if (self.storage_root / target_book_id).is_dir():
+            return target_book_id
+        return None
+
+    def ensure_source_book_for_session(self, source_book_id: str, *, session: DemoSession | None = None) -> str:
+        safe_source = validate_book_id(source_book_id)
+        current = session or self.current_session()
+        target_book_id = self.session_book_id(safe_source, session=current)
         target_dir = self.storage_root / target_book_id
         if target_dir.exists():
             return target_book_id
 
-        source_dir = self.storage_root / validate_book_id(self.template_book_id)
+        source_dir = self.storage_root / safe_source
         if not source_dir.is_dir():
-            return None
+            return target_book_id
 
         shutil.copytree(
             source_dir,
