@@ -140,7 +140,8 @@ pub fn import_confirm(
     fs::create_dir_all(&chapters_dir).map_err(|e| format!("Create dir: {}", e))?;
 
     let meta = serde_json::json!({"book_id": &id, "book_name": &book_name, "created": &chrono::Utc::now().format("%Y-%m-%d").to_string()});
-    fs::write(book_dir.join("metadata.json"), serde_json::to_string_pretty(&meta).unwrap()).unwrap();
+    let meta_json = serde_json::to_string_pretty(&meta).unwrap_or_default();
+    fs::write(book_dir.join("metadata.json"), &meta_json).ok();
 
     // Create placeholder files
     for f in storage::TRACKED_LAYOUT_FILES {
