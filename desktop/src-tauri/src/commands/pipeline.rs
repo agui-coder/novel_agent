@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, State};
 
 const MAX_BATCH_CHAPTERS: usize = 50;
-const MAX_WORKERS: usize = 4;
 
 fn prompt_for(p: &str) -> &'static str {
     match p { "summary" => include_str!("../../prompts/pipeline_summary.md"), "world" => include_str!("../../prompts/pipeline_world.md"), _ => "" }
@@ -13,40 +12,11 @@ fn output_for(p: &str) -> &'static str {
     match p { "summary" => "summary.md", "world" => "world_model.md", _ => "output.md" }
 }
 
-fn extract_json(text: &str) -> Result<Value, String> {
-    let mut raw = text.trim().to_string();
-    if let Some(start) = raw.find("```") {
-        if let Some(end) = raw[start+3..].find("```") {
-            raw = raw[start+3..start+3+end].trim().to_string();
-        }
-    }
-    if let Ok(v) = serde_json::from_str(&raw) { return Ok(v); }
-    if let Some(s) = raw.find('{') {
-        if let Some(e) = raw.rfind('}') {
-            if let Ok(v) = serde_json::from_str(&raw[s..=e]) { return Ok(v); }
-        }
-    }
-    Err("Invalid JSON".into())
-}
-
-fn repair_prompt(prompt_base: &str, bad_answer: &str, error: &str, batch_n: usize, total: usize, start: usize, end: usize) -> String {
-    format!("{}是后端 JSON 语法修复器。下面是模型返回的摘要归档 JSON，但语法无效。只修复语法，不新增事实，不扩写，不输出代码块，不寒暄。所有键名必须继续使用中文。批次：{}/{}\n章节范围：{}-{}\n解析错误：{}\n\n待修复内容：\n{}", prompt_base, batch_n, total, start, end, error, bad_answer)
-}
-
-fn call_llm_with_repair(system: &str, user: &str, validate_json: bool) -> Result<String, String> {
+fn call_llm(system: &str, user: &str) -> Result<String, String> {
     let msgs = vec![crate::engine::llm::Message::system(system), crate::engine::llm::Message::user(user)];
     let (content, _) = crate::engine::llm::chat_blocking(&msgs, None).map_err(|e| e.to_string())?;
     let ans = content.unwrap_or_default();
     if ans.trim().is_empty() { return Err("Empty response".into()); }
-
-    if validate_json {
-        if let Err(e) = extract_json(&ans) {
-            let repair_user = repair_prompt(system, &ans, &e, 0, 1, 0, 0);
-            let rmsgs = vec![crate::engine::llm::Message::system(system), crate::engine::llm::Message::user(&repair_user)];
-            let (rcontent, _) = crate::engine::llm::chat_blocking(&rmsgs, None).map_err(|e| e.to_string())?;
-            return Ok(rcontent.unwrap_or(ans));
-        }
-    }
     Ok(ans)
 }
 
@@ -91,7 +61,6 @@ pub fn run_pipeline(
         let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let sys = prompt.to_string();
 
-        let is_json_pipeline = pipeline == "summary";
         std::thread::scope(|scope| {
             let mut handles: Vec<std::thread::ScopedJoinHandle<()>> = Vec::new();
             for (batch_idx, batch_chunk) in chapters.chunks(MAX_BATCH_CHAPTERS).enumerate() {
@@ -107,7 +76,7 @@ pub fn run_pipeline(
                     let end = start + chunk.len() - 1;
                     let chapter_block: String = chunk.iter().map(|(t, c)| format!("【{t}】\n\n{c}")).collect::<Vec<_>>().join("\n\n---\n\n");
                     let user = format!("书名：{}\n批次：{}/{}\n章节范围：{}-{}\n\n原文章节：\n{}", bid, batch_num, total, start, end, chapter_block);
-                    match call_llm_with_repair(&s, &user, is_json_pipeline) {
+                    match call_llm(&s, &user) {
                         Ok(ans) => { r.lock().unwrap().push((batch_num, ans)); }
                         Err(err) => { e.lock().unwrap().push(format!("Batch {}: {}", batch_num, err)); }
                     }
