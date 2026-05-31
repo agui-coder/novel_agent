@@ -85,6 +85,12 @@ pub struct ToolFunction {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct ThinkingOptions {
+    #[serde(rename = "type")]
+    thinking_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
@@ -94,7 +100,7 @@ struct ChatRequest {
     tool_choice: Option<String>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<bool>,
+    thinking: Option<ThinkingOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
 }
@@ -175,7 +181,7 @@ pub fn chat_blocking(
         let req = ChatRequest {
             model: model(), messages: messages.to_vec(), tools: tools.map(|t| t.to_vec()),
             tool_choice: tools.map(|_| "auto".into()), stream: false,
-            thinking: Some(true), reasoning_effort: Some("high".into()),
+            thinking: Some(ThinkingOptions { thinking_type: "enabled".into() }), reasoning_effort: Some("high".into()),
         };
 
         let resp = match client.post(format!("{}/chat/completions", api_base()))
@@ -237,7 +243,7 @@ pub fn chat_streaming(
         let req = ChatRequest {
             model: model(), messages: messages.to_vec(), tools: tools.map(|t| t.to_vec()),
             tool_choice: tools.map(|_| "auto".into()), stream: true,
-            thinking: Some(true), reasoning_effort: Some("high".into()),
+            thinking: Some(ThinkingOptions { thinking_type: "enabled".into() }), reasoning_effort: Some("high".into()),
         };
 
         let resp = match client
