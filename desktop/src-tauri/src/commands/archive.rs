@@ -2,7 +2,19 @@ use crate::storage::etag;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+
+pub fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let temp_name = format!(".tmp_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("t"));
+    let temp_path = dir.join(&temp_name);
+    let mut f = fs::File::create(&temp_path).map_err(|e| format!("Create temp: {}", e))?;
+    f.write_all(content.as_bytes()).map_err(|e| format!("Write temp: {}", e))?;
+    f.flush().map_err(|e| format!("Flush: {}", e))?;
+    fs::rename(&temp_path, path).map_err(|e| format!("Rename: {}", e))?;
+    Ok(())
+}
 use tauri::State;
 
 // ── Path safety ────────────────────────────────────────────
@@ -283,7 +295,7 @@ pub fn update_file(
     }
 
     // Write file
-    fs::write(&file_path, &content).map_err(|e| format!("Write error: {}", e))?;
+    atomic_write(&file_path, &content)?;
     let new_etag = etag::compute_etag(&content);
 
     // Git commit
@@ -345,7 +357,7 @@ pub fn append_file(
         existing.push('\n');
     }
 
-    fs::write(&file_path, &existing).map_err(|e| format!("Write error: {}", e))?;
+    atomic_write(&file_path, &existing)?;
     let new_etag = etag::compute_etag(&existing);
 
     let msg = message.unwrap_or_else(|| format!("append to {}", normalized_rel));
@@ -620,7 +632,7 @@ pub fn prepend_file(
     if let Some(ref be) = base_etag { if file_path.exists() && *be != etag::compute_file_etag(&file_path)? { return Err("ETag mismatch".into()); } }
     let existing = if file_path.exists() { std::fs::read_to_string(&file_path).unwrap_or_default() } else { String::new() };
     let new_content = format!("{}\n{}", content.trim_end(), existing);
-    std::fs::write(&file_path, &new_content).map_err(|e| format!("Write: {}", e))?;
+    atomic_write(&file_path, &new_content)?;
     let new_etag = etag::compute_etag(&new_content);
     git_commit(&book_dir, &normalized_rel, "[AI_Update] prepend")?;
     Ok(WriteFileResult { status: "success".into(), book_id: id, file_name, new_etag, new_size: new_content.len() })

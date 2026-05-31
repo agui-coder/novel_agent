@@ -346,7 +346,7 @@ fn handle_append_draft(storage_root: &str, _book_id: &str, args: &serde_json::Va
     if !existing.is_empty() && !existing.ends_with('\n') { existing.push('\n'); }
     existing.push_str(content);
     if !existing.ends_with('\n') { existing.push('\n'); }
-    fs::write(&file_path, &existing).map_err(|e| format!("Write: {}", e))?;
+    crate::commands::archive::atomic_write(&file_path, &existing)?;
     git_commit(&book_dir, &normalized_rel, "[AI_Update] draft append")?;
 
     let new_etag = etag::compute_etag(&existing);
@@ -373,7 +373,7 @@ fn handle_replace_draft(storage_root: &str, _book_id: &str, args: &serde_json::V
         }
     }
 
-    fs::write(&file_path, content).map_err(|e| format!("Write: {}", e))?;
+    crate::commands::archive::atomic_write(&file_path, content)?;
     git_commit(&book_dir, &normalized_rel, "[AI_Update] draft replace")?;
 
     Ok(serde_json::json!({"status": "success", "file_name": file_name, "new_size": content.len()}).to_string())
