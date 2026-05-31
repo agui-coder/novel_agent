@@ -120,18 +120,15 @@ pub fn run_agent_streaming(
         if let Some(ref tc_list) = tool_calls {
             if !tc_list.is_empty() {
                 for tc in tc_list { sender.send(AgentEvent::stage(&format!("Tool: {}", &tc.function.name), "tool_call", "started")).ok(); }
-                let mut results = Vec::new();
+                // One assistant message with all tool calls, then one result per call
+                messages.push(Message::assistant_with_tools(tc_list.clone()));
                 for tc in tc_list {
                     let tn = &tc.function.name;
                     let args: serde_json::Value = serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({}));
                     let r = tools.execute(tn, book_id, &args);
                     let rs = if r.is_error { format!("ERROR: {}", r.content) } else { r.content.clone() };
-                    results.push((tc.clone(), tn.clone(), r.is_error, rs));
+                    messages.push(Message::tool_result(&tc.id, tn, &rs));
                     sender.send(AgentEvent::stage(&format!("Tool done: {}", tn), "tool_result", "finished")).ok();
-                }
-                for (tc, tn, _, rs) in results {
-                    messages.push(Message::assistant_with_tools(vec![tc]));
-                    messages.push(Message::tool_result("", &tn, &rs));
                 }
                 continue;
             }
