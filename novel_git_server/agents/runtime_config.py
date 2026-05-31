@@ -54,18 +54,33 @@ def create_blueprint(
         view = _redacted_view()
         model_config = build_batch_model_config()
         model_key = "OPENAI_COMPATIBLE_API_KEY" if model_config.provider == "openai_compatible" else "DEEPSEEK_API_KEY"
-        missing_required = [
-            key
-            for key in (
-                "DIFY_WORLD_MODEL_API_KEY",
-                "DIFY_STYLE_GUIDE_API_KEY",
-                "DIFY_OUTLINE_API_KEY",
-                "DIFY_CONTINUATION_API_KEY",
-                "DIFY_REVIEW_API_KEY",
-                model_key,
-            )
-            if not view["config"].get(key, {}).get("configured")
-        ]
+
+        try:
+            from engine.adapter import ENGINE_AVAILABLE  # noqa: F401
+        except ImportError:
+            engine_available = False
+        else:
+            engine_available = True
+
+        if engine_available:
+            missing_required = [
+                key
+                for key in (model_key,)
+                if not view["config"].get(key, {}).get("configured")
+            ]
+        else:
+            missing_required = [
+                key
+                for key in (
+                    "DIFY_WORLD_MODEL_API_KEY",
+                    "DIFY_STYLE_GUIDE_API_KEY",
+                    "DIFY_OUTLINE_API_KEY",
+                    "DIFY_CONTINUATION_API_KEY",
+                    "DIFY_REVIEW_API_KEY",
+                    model_key,
+                )
+                if not view["config"].get(key, {}).get("configured")
+            ]
         return (
             jsonify(
                 {

@@ -31,8 +31,13 @@ from utils.book_storage import (
     get_book_metadata,
 )
 from utils.chapter_length import split_chapter_spans
-from utils.dify_client import DifyClientError, chat_messages, chat_messages_stream, stop_chat_message
-from utils.dify_registry import DifyAgentRoute
+try:
+    from engine.adapter import EngineError, chat_messages, chat_messages_stream, stop_chat_message
+    ENGINE_AVAILABLE = True
+except ImportError:
+    from utils.dify_client import EngineError as EngineError, chat_messages, chat_messages_stream, stop_chat_message
+    ENGINE_AVAILABLE = False
+from utils.dify_registry import DifyAgentRoute  # retained for route config compatibility
 from utils.git_utils import ensure_repo, format_git_error, is_nothing_to_commit_error, run_git
 from utils.prose_delivery_state import (
     create_or_refresh_prose_delivery_state,
@@ -1198,7 +1203,7 @@ def create_blueprint(
                 dify_api_key=dify_route.api_key,
                 dify_timeout_seconds=dify_route.timeout_seconds,
             )
-        except DifyClientError as exc:
+        except EngineError as exc:
             details = str(exc)
             if exc.response_body:
                 details = f"{details}; response={exc.response_body}"
@@ -1296,7 +1301,7 @@ def create_blueprint(
                 user=dify_user,
                 timeout_seconds=max(1, int(dify_route.timeout_seconds)),
             )
-        except DifyClientError as exc:
+        except EngineError as exc:
             details = str(exc)
             if exc.response_body:
                 details = f"{details}; response={exc.response_body}"
@@ -2148,7 +2153,7 @@ def create_blueprint(
                     sync_message=pipeline_sync_message,
                     sync_result=pipeline_sync_result,
                 )
-            except DifyClientError as exc:
+            except EngineError as exc:
                 message = str(exc)
                 if exc.response_body:
                     message = f"{message}; response={exc.response_body}"
