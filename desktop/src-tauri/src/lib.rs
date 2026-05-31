@@ -76,11 +76,6 @@ pub fn run() {
             commands::rolling::rolling_state,
             commands::import::import_preview,
             commands::import::import_confirm,
-            commands::pipeline::run_pipeline,
-            commands::style::style_init,
-            commands::rolling::rolling_state,
-            commands::import::import_preview,
-            commands::import::import_confirm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

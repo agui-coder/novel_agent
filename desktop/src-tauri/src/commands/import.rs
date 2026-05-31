@@ -1,6 +1,7 @@
 use crate::AppState;
 use crate::storage;
 use serde::Serialize;
+use sha2::Digest;
 use std::fs;
 use std::path::Path;
 use tauri::State;
@@ -129,11 +130,10 @@ pub fn import_confirm(
     if chapters.is_empty() { return Err("No chapters to import".into()); }
 
     let id = book_id.unwrap_or_else(|| {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        book_name.trim().to_lowercase().hash(&mut h);
-        let slug = book_name.trim().to_lowercase().replace(' ', "_").chars().filter(|c| c.is_alphanumeric() || *c == '_').take(30).collect::<String>();
-        format!("{}_{:08x}", slug, h.finish())
+        let normalized = book_name.trim().to_lowercase();
+        let hash_hex = hex::encode(sha2::Sha256::digest(normalized.as_bytes()));
+        let slug = normalized.replace(' ', "_").chars().filter(|c| c.is_alphanumeric() || *c == '_').take(30).collect::<String>();
+        format!("{}_{}", slug, &hash_hex[..8])
     });
     let book_dir = Path::new(&state.storage_root).join(&id);
     let chapters_dir = book_dir.join("chapters");

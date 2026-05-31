@@ -12,15 +12,21 @@ fn config_path() -> std::path::PathBuf {
     std::path::Path::new(&base).join("novel-agent").join("config.json")
 }
 
+use std::sync::Mutex;
+static CONFIG_CACHE: Mutex<Option<Option<serde_json::Value>>> = Mutex::new(None);
+
 fn read_config() -> Option<serde_json::Value> {
-    let path = config_path();
-    if path.exists() {
-        let content = std::fs::read_to_string(&path).ok()?;
-        serde_json::from_str(&content).ok()
-    } else {
-        None
+    let mut guard = CONFIG_CACHE.lock().unwrap();
+    if guard.is_none() {
+        let path = config_path();
+        *guard = Some(if path.exists() {
+            let content = std::fs::read_to_string(&path).ok()?;
+            serde_json::from_str(&content).ok()
+        } else { None });
     }
+    guard.as_ref().unwrap().clone()
 }
+pub fn invalidate_config_cache() { *CONFIG_CACHE.lock().unwrap() = None; }
 
 fn config_val(key: &str) -> Option<String> {
     read_config()
@@ -272,7 +278,7 @@ pub fn chat_streaming(
         }
 
         let body = resp.text().map_err(|e| format!("Read body: {}", e))?;
-        let mut tool_call_buffers: std::collections::HashMap<usize, (String, String)> = std::collections::HashMap::new();
+        let mut tool_call_buffers: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new(); // (id, name, arguments)
 
         for line_str in body.lines().map(|l| l.trim().to_string()) {
             if line_str.is_empty() || line_str == "data: [DONE]" { continue; }
@@ -284,18 +290,13 @@ pub fn chat_streaming(
                                 let entry = tool_call_buffers.entry(tc.index).or_default();
                                 if let Some(ref id) = tc.id { entry.0 = id.clone(); }
                                 if let Some(ref f) = tc.function {
-                                    if let Some(ref n) = f.name { entry.1 = n.clone(); } else { entry.1 = entry.1.clone(); }
-                                    if let Some(ref a) = f.arguments { entry.1.push_str(a); }
+                                    if let Some(ref n) = f.name { entry.1 = n.clone(); }
+                                    if let Some(ref a) = f.arguments { entry.2.push_str(a); }
                                 }
                             }
                         }
                         if let Some(ref content) = choice.delta.content {
-                            if !content.is_empty() {
-                                sender.send(content.clone()).ok();
-                            }
-                        }
-                        if choice.finish_reason.as_deref() == Some("stop") {
-                            // done
+                            if !content.is_empty() { sender.send(content.clone()).ok(); }
                         }
                     }
                 }
@@ -304,8 +305,8 @@ pub fn chat_streaming(
 
         // Build tool calls from accumulated buffers
         if !tool_call_buffers.is_empty() {
-            let calls: Vec<ToolCall> = tool_call_buffers.into_values().map(|(id, args)| {
-                ToolCall { id, call_type: "function".into(), function: FunctionCall { name: args.clone(), arguments: args } }
+            let calls: Vec<ToolCall> = tool_call_buffers.into_values().map(|(id, name, arguments)| {
+                ToolCall { id, call_type: "function".into(), function: FunctionCall { name, arguments } }
             }).collect();
             return Ok(Some(calls));
         }

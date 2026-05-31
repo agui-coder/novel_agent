@@ -24,6 +24,7 @@ pub fn get_config() -> Result<Value, String> {
 
 #[tauri::command]
 pub fn save_config(values: Value) -> Result<Value, String> {
+    crate::engine::llm::invalidate_config_cache();
     let path = config_path();
     let mut config = if path.exists() {
         let content = fs::read_to_string(&path).unwrap_or_default();
