@@ -32,8 +32,7 @@ import { WorkbenchActionDock } from './components/WorkbenchActionDock';
 
 import { fetchHotFiles, fetchMainlineFile, fetchRepoIntegrity, repairBookLayout, updateMainlineFile } from './api/checkout';
 
-import { buildRollingContinuationPayload, buildRollingOutlineHandoffPayload, fetchRollingWorkbenchState, runDeductionStream, stopDeductionStream, runBatchInit, runStyleInit, type RollingWorkbenchState } from './api/orchestration';
-import { type DraftConfirmResponse, type MaterializedChapter, type PostConfirmWorldPayload } from './api/draft';
+import { runDeductionStream, stopDeductionStream } from './api/orchestration';
 import { type ProseReviewFinding } from './api/proseDelivery';
 import { createConversation } from './api/session';
 import { ApiError } from './api/client';
@@ -48,11 +47,10 @@ import { mapConversationMessages, normalizeChangedFilesPayload } from './lib/con
 import { MAX_SUPPRESSED_DEBUG_LOGS, shouldSuppressBackendError, type SuppressedBackendErrorLog } from './lib/errorSuppression';
 import { buildWorkbenchActions } from './lib/workbenchActions';
 import { isSameConversationScope } from './lib/conversationScope';
-import { formatChapterArchiveSummary, formatChapterList } from './lib/chapterListFormat';
-import { REASONING_FLUSH_DELAY_MS, ROLLING_STREAM_PREVIEW_LIMIT, ROLLING_STREAM_REASONING_LIMIT, compactList, compactBriefText, compactProgressText, upsertProgressLine } from './lib/textCompact';
-import { buildRollingBriefLines } from './lib/rollingBrief';
-import { OUTLINE_LANDING_TARGET_LABELS, excerptOutlineAssistantMessage, buildOutlineLandingIntent } from './lib/outlineLanding';
-import { RailIcon } from './components/RailIcon';
+import { REASONING_FLUSH_DELAY_MS } from './lib/textCompact';
+import { buildOutlineLandingIntent } from './lib/outlineLanding';
+import { TopBar } from './components/TopBar';
+import { ActivityBar } from './components/ActivityBar';
 
 export default function App() {
     const store = useAppStore();
@@ -1158,92 +1156,24 @@ export default function App() {
     const explorerFiles = store.hotFiles.length > 0 ? store.hotFiles : DEFAULT_HOT_FILES;
     const explorerFileKey = explorerFiles.map((file) => `${file.fileType}:${file.fileName}`).join('|');
     const topBar = (
-        <div className="flex w-full items-center gap-4">
-            <button
-                type="button"
-                onClick={handleBackToBookshelf}
-                className="flex shrink-0 items-center gap-1.5 rounded-[10px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.016)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-dark-text-muted)] transition-colors hover:border-[rgba(115,134,255,0.32)] hover:text-[var(--color-dark-text-main)]"
-            >
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-3.5 w-3.5">
-                    <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l3 3v10.5a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 15.5v-11Z" />
-                </svg>
-                <span>书架</span>
-            </button>
-            <div className="min-w-0 flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[rgba(115,134,255,0.14)] text-[var(--color-dark-text-main)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.7">
-                        <path d="M10 2.8 16.2 6v8L10 17.2 3.8 14V6 10" />
-                        <path d="M10 2.8v6.1L3.8 10" />
-                        <path d="M16.2 6 10 8.9" />
-                    </svg>
-                </div>
-                <div className="min-w-0">
-                    <div className="truncate text-[13px] font-semibold text-[var(--color-dark-text-main)]">
-                        {store.bookRef.value || copy.workbench.noBookSelected}
-                    </div>
-                </div>
-            </div>
-            <button
-                type="button"
-                className="novel-quick-open flex min-w-0 max-w-[360px] flex-1 items-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.012)] px-3 py-2 text-left text-[12px] text-[var(--color-dark-text-faint)] transition-colors hover:border-[rgba(255,255,255,0.1)] hover:text-[var(--color-dark-text-main)]"
-            >
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4 shrink-0">
-                    <circle cx="8.5" cy="8.5" r="4.5" />
-                    <path d="m12 12 4 4" />
-                </svg>
-                <span className="truncate">{copy.workbench.quickOpen}</span>
-            </button>
-            <div className="ml-auto flex items-center gap-2 text-[10px] font-mono text-[var(--color-dark-text-faint)]">
-                <span className="rounded-[8px] border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.012)] px-2 py-1">
-                    {isGitMode ? copy.workbench.gitRail : isReviewMode ? copy.workbench.reviewState : copy.workbench.editorRail}
-                </span>
-                <span className="truncate">{store.activeFile}</span>
-            </div>
-        </div>
+        <TopBar
+            bookName={store.bookRef.value}
+            activeFile={store.activeFile}
+            workbenchMode={store.workbenchMode}
+            isGitMode={isGitMode}
+            isReviewMode={isReviewMode}
+            uiLanguage={store.uiLanguage}
+            onBackToBookshelf={handleBackToBookshelf}
+        />
     );
     const activityBar = (
-        <div className="flex h-full flex-col items-center justify-between px-2 py-3">
-            <div className="flex flex-col items-center gap-2">
-                <button
-                    type="button"
-                    onClick={() => handleWorkbenchModeChange('editor')}
-                    className={`flex h-11 w-11 items-center justify-center rounded-[12px] border transition-colors ${
-                        editorRailActive
-                            ? 'border-[rgba(115,134,255,0.46)] bg-[rgba(115,134,255,0.14)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
-                            : 'border-transparent bg-transparent hover:border-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.02)]'
-                    }`}
-                    aria-label={copy.workbench.editorRail}
-                >
-                    <RailIcon
-                        active={editorRailActive}
-                        path={<path d="M5.25 3.75h6.5l3 3v9.5H5.25zM11.75 3.75v3h3" />}
-                    />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => handleWorkbenchModeChange('git')}
-                    className={`flex h-11 w-11 items-center justify-center rounded-[12px] border transition-colors ${
-                        isGitMode
-                            ? 'border-[rgba(115,134,255,0.46)] bg-[rgba(115,134,255,0.14)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
-                            : 'border-transparent bg-transparent hover:border-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.02)]'
-                    }`}
-                    aria-label={copy.workbench.gitRail}
-                >
-                    <RailIcon
-                        active={isGitMode}
-                        path={
-                            <>
-                                <circle cx="6" cy="5.5" r="1.75" />
-                                <circle cx="14" cy="10" r="1.75" />
-                                <circle cx="6" cy="14.5" r="1.75" />
-                                <path d="M7.5 6.4 12.5 9.1M7.5 13.6l5-2.7" />
-                            </>
-                        }
-                    />
-                </button>
-            </div>
-            <div className="h-9 w-9 rounded-[10px] border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.012)]" />
-        </div>
+        <ActivityBar
+            workbenchMode={store.workbenchMode}
+            isGitMode={isGitMode}
+            editorRailActive={editorRailActive}
+            uiLanguage={store.uiLanguage}
+            onModeChange={handleWorkbenchModeChange}
+        />
     );
     const workbenchLeftPanel = (
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
