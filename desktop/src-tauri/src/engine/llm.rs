@@ -12,8 +12,11 @@ fn config_path() -> std::path::PathBuf {
     std::path::Path::new(&base).join("novel-agent").join("config.json")
 }
 
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 static CONFIG_CACHE: Mutex<Option<Option<serde_json::Value>>> = Mutex::new(None);
+static HTTP_CLIENT: LazyLock<reqwest::blocking::Client> = LazyLock::new(|| {
+    reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(120)).build().expect("Failed to build HTTP client")
+});
 
 fn read_config() -> Option<serde_json::Value> {
     let mut guard = CONFIG_CACHE.lock().unwrap();

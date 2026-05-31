@@ -14,18 +14,20 @@ pub struct ToolResult {
     pub is_error: bool,
 }
 
-pub type ToolFn = fn(&str, &serde_json::Value) -> Result<String, String>;
+pub type ToolFn = fn(&str, &str, &serde_json::Value) -> Result<String, String>;
 
 pub struct ToolRegistry {
     schemas: Vec<Tool>,
     handlers: HashMap<String, ToolFn>,
+    storage_root: String,
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    pub fn new(storage_root: &str) -> Self {
         let mut registry = ToolRegistry {
             schemas: Vec::new(),
             handlers: HashMap::new(),
+            storage_root: storage_root.to_string(),
         };
 
         registry.register(
@@ -199,7 +201,7 @@ impl ToolRegistry {
 
     pub fn execute(&self, name: &str, book_id: &str, args: &serde_json::Value) -> ToolResult {
         match self.handlers.get(name) {
-            Some(handler) => match handler(book_id, args) {
+            Some(handler) => match handler(&self.storage_root, book_id, args) {
                 Ok(content) => ToolResult { content, is_error: false },
                 Err(e) => ToolResult { content: e, is_error: true },
             },
@@ -232,15 +234,9 @@ fn get_book_dir(storage_root: &str, args: &serde_json::Value) -> Result<std::pat
     Ok(Path::new(storage_root).join(&id))
 }
 
-// We need storage_root passed in context. For now, we use a global.
-use std::sync::OnceLock;
-static STORAGE_ROOT: OnceLock<String> = OnceLock::new();
-pub fn set_storage_root(path: &str) { STORAGE_ROOT.set(path.into()).ok(); }
-fn get_storage_root() -> &'static str { STORAGE_ROOT.get().map(|s| s.as_str()).unwrap_or(".") }
-
-fn handle_get_outline(book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_get_outline(storage_root: &str, book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (content, etag_val, exists) = read_file(&book_dir, file_name)?;
 
     let mut outline = Vec::new();
@@ -261,10 +257,10 @@ fn handle_get_outline(book_id: &str, args: &serde_json::Value) -> Result<String,
     }).to_string())
 }
 
-fn handle_get_section(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_get_section(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
     let section_path = args.get("section_path").and_then(|v| v.as_str()).unwrap_or("");
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (content, etag_val, exists) = read_file(&book_dir, file_name)?;
 
     let parts: Vec<&str> = section_path.split('/').collect();
@@ -299,11 +295,11 @@ fn handle_get_section(_book_id: &str, args: &serde_json::Value) -> Result<String
     }).to_string())
 }
 
-fn handle_get_range(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_get_range(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("summary.md");
     let start = args.get("start_line").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
     let end = args.get("end_line").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (content, etag_val, _exists) = read_file(&book_dir, file_name)?;
 
     let lines: Vec<&str> = content.lines().collect();
@@ -318,9 +314,9 @@ fn handle_get_range(_book_id: &str, args: &serde_json::Value) -> Result<String, 
     }).to_string())
 }
 
-fn handle_get_core(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_get_core(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("world_model.md");
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (content, etag_val, exists) = read_file(&book_dir, file_name)?;
     Ok(serde_json::json!({
         "status": "success", "file_name": file_name, "etag": etag_val,
@@ -328,13 +324,13 @@ fn handle_get_core(_book_id: &str, args: &serde_json::Value) -> Result<String, S
     }).to_string())
 }
 
-fn handle_append_draft(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_append_draft(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
     let section_path = args.get("section_path").and_then(|v| v.as_str()).unwrap_or("");
     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
     let base_etag = args.get("base_etag").and_then(|v| v.as_str());
 
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (file_path, normalized_rel) = resolve_file_path(&book_dir, file_name)?;
 
     if let Some(be) = base_etag {
@@ -360,12 +356,12 @@ fn handle_append_draft(_book_id: &str, args: &serde_json::Value) -> Result<Strin
     }).to_string())
 }
 
-fn handle_replace_draft(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_replace_draft(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
     let base_etag = args.get("base_etag").and_then(|v| v.as_str());
 
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (file_path, normalized_rel) = resolve_file_path(&book_dir, file_name)?;
 
     if let Some(be) = base_etag {
@@ -383,11 +379,11 @@ fn handle_replace_draft(_book_id: &str, args: &serde_json::Value) -> Result<Stri
     Ok(serde_json::json!({"status": "success", "file_name": file_name, "new_size": content.len()}).to_string())
 }
 
-fn handle_validate_lengths(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_validate_lengths(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let file_name = args.get("file_name").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
     let min_c = args.get("min_chars").and_then(|v| v.as_u64()).unwrap_or(2200) as usize;
     let max_c = args.get("max_chars").and_then(|v| v.as_u64()).unwrap_or(3200) as usize;
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let (content, _etag, _) = read_file(&book_dir, file_name)?;
 
     let mut chapters = Vec::new();
@@ -433,10 +429,10 @@ fn handle_validate_lengths(_book_id: &str, args: &serde_json::Value) -> Result<S
     }).to_string())
 }
 
-fn handle_extract_highlights(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+fn handle_extract_highlights(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
     let chapter_index = args.get("chapter_index").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
     let keywords = args.get("keywords").and_then(|v| v.as_str()).unwrap_or("");
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+    let book_dir = get_book_dir(storage_root, args)?;
     let chapters_dir = book_dir.join("chapters");
 
     let prefix = format!("{:04}", chapter_index);
@@ -472,8 +468,8 @@ fn handle_extract_highlights(_book_id: &str, args: &serde_json::Value) -> Result
     }).to_string())
 }
 
-fn handle_style_diagnostics(_book_id: &str, args: &serde_json::Value) -> Result<String, String> {
-    let book_dir = get_book_dir(get_storage_root(), args)?;
+fn handle_style_diagnostics(storage_root: &str, _book_id: &str, args: &serde_json::Value) -> Result<String, String> {
+    let book_dir = get_book_dir(storage_root, args)?;
     let draft_file = args.get("draft_file").and_then(|v| v.as_str()).unwrap_or("chapter_draft.md");
     let source_count = args.get("source_count").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
 

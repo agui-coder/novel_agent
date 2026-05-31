@@ -46,8 +46,9 @@ pub fn deduce_stream(app: tauri::AppHandle, state: State<'_, AppState>, book_id:
     let (tx, rx) = mpsc::channel::<agent::AgentEvent>();
     std::thread::spawn(move || { for e in rx { app.emit("deduce:event", &e).ok(); } });
     let tid = task_id.clone();
+    let sr = state.storage_root.clone();
     std::thread::spawn(move || {
-        let tools = ToolRegistry::new();
+        let tools = ToolRegistry::new(&sr);
         if let Err(e) = agent::run_agent_streaming(at, &id, &intent, &active_file, &tools, cfg.max_iter, &tx, Some(&cancel), &[]) { tx.send(agent::AgentEvent::error(&e)).ok(); }
         CANCEL_FLAGS.lock().unwrap().remove(&tid);
     });
@@ -58,7 +59,9 @@ pub fn deduce_stream(app: tauri::AppHandle, state: State<'_, AppState>, book_id:
 pub fn deduce_blocking(state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>, active_file: String, intent: String, file_type: Option<String>) -> Result<DeduceBlockingResult, String> {
     let (id, at, cfg) = resolve(&state.storage_root, book_id, book_name, &active_file, &intent, file_type)?;
     let task_id = uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("t").to_string();
-    let (tx, rx) = mpsc::channel(); let tools = ToolRegistry::new();
+    let (tx, rx) = mpsc::channel();
+    let sr = state.storage_root.clone();
+    let tools = ToolRegistry::new(&sr);
     agent::run_agent_streaming(at, &id, &intent, &active_file, &tools, cfg.max_iter, &tx, None, &[])?;
     let mut answer = String::new();
     for e in rx {
