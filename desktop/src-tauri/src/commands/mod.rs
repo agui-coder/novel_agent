@@ -1,6 +1,11 @@
+pub mod ai;
+pub mod style;
 pub mod archive;
 pub mod books;
+pub mod config;
 pub mod draft;
 pub mod git;
-pub mod sidecar_cmd;
 pub mod tools;
+pub mod pipeline;
+pub mod import;
+pub mod rolling;

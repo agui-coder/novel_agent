@@ -1,5 +1,5 @@
 mod commands;
-mod sidecar;
+mod engine;
 mod storage;
 
 use std::sync::Mutex;
@@ -7,12 +7,11 @@ use tauri::Manager;
 
 pub struct AppState {
     pub storage_root: String,
-    pub sidecar_handle: Mutex<Option<sidecar::SidecarHandle>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    let _ = env_logger::try_init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -22,7 +21,6 @@ pub fn run() {
             let storage_root = storage::resolve_storage_root(&app.path().resource_dir()?);
             app.manage(AppState {
                 storage_root,
-                sidecar_handle: Mutex::new(None),
             });
             log::info!("Novel Agent started");
             Ok(())
@@ -31,6 +29,7 @@ pub fn run() {
             commands::books::init_book,
             commands::books::search_books,
             commands::books::ping_book,
+            commands::books::delete_book,
             commands::archive::get_file,
             commands::archive::update_file,
             commands::archive::append_file,
@@ -38,6 +37,12 @@ pub fn run() {
             commands::archive::get_markdown_outline,
             commands::archive::get_markdown_section,
             commands::archive::get_core_archive,
+            commands::archive::checkout,
+            commands::archive::repo_integrity,
+            commands::archive::repair_layout,
+            commands::archive::list_hot_files,
+            commands::archive::prepend_file,
+            commands::archive::add_chapter,
             commands::draft::draft_append_section,
             commands::draft::draft_replace_section,
             commands::draft::draft_sync_all,
@@ -47,14 +52,35 @@ pub fn run() {
             commands::git::git_diff,
             commands::git::git_branch_list,
             commands::git::git_checkout_branch,
+            commands::git::git_working_tree,
+            commands::git::git_stage,
+            commands::git::git_stage_all,
+            commands::git::git_unstage,
+            commands::git::git_commit_staged,
+            commands::git::git_commit_files,
+            commands::git::git_merge,
+            commands::git::git_rename_branch,
+            commands::git::git_hard_rollback,
             commands::tools::read_chapter,
             commands::tools::search_chapter_index,
             commands::tools::extract_chapter_highlights,
             commands::tools::validate_chapter_lengths,
-            commands::sidecar_cmd::start_sidecar,
-            commands::sidecar_cmd::stop_sidecar,
-            commands::sidecar_cmd::sidecar_deduce,
-            commands::sidecar_cmd::sidecar_deduce_stream,
+            commands::tools::adaptive_slice,
+            commands::config::get_config,
+            commands::config::save_config,
+            commands::ai::deduce_stream,
+            commands::ai::deduce_blocking,
+            commands::ai::stop_generation,
+            commands::pipeline::run_pipeline,
+            commands::style::style_init,
+            commands::rolling::rolling_state,
+            commands::import::import_preview,
+            commands::import::import_confirm,
+            commands::pipeline::run_pipeline,
+            commands::style::style_init,
+            commands::rolling::rolling_state,
+            commands::import::import_preview,
+            commands::import::import_confirm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

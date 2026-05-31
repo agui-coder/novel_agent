@@ -278,3 +278,37 @@ pub fn validate_chapter_lengths(
         chapters,
     })
 }
+
+// ── Adaptive text slice ─────────────────────────────────────
+
+#[tauri::command]
+pub fn adaptive_slice(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+    chapter_index: u32,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let chapters_dir = book_dir.join("chapters");
+    let prefix = format!("{:04}", chapter_index);
+    let candidates: Vec<_> = std::fs::read_dir(&chapters_dir).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with(&prefix)).collect();
+    if candidates.is_empty() { return Err(format!("Chapter {} not found", chapter_index)); }
+    let content = std::fs::read_to_string(candidates[0].path()).map_err(|e| format!("Read: {}", e))?;
+    let target = 2000;
+    let chars: Vec<char> = content.chars().collect();
+    let total = chars.len();
+    if total <= target { return Ok(serde_json::json!({"slices":[{"start":0,"end":total,"content":&content}],"total_chars":total,"slice_count":1})); }
+    let slice_count = ((total as f64) / (target as f64)).ceil() as usize;
+    let mut slices = Vec::new();
+    for i in 0..slice_count {
+        let start = i * target;
+        let mut end = ((i + 1) * target).min(total);
+        if i < slice_count - 1 {
+            for offset in (end.saturating_sub(200)..end).rev() {
+                if offset < total && "。！？\n".contains(chars[offset]) { end = offset + 1; break; }
+            }
+        }
+        let slice_text: String = chars[start..end].iter().collect();
+        slices.push(serde_json::json!({"start":start,"end":end,"content":&slice_text}));
+    }
+    Ok(serde_json::json!({"slices":slices,"total_chars":total,"slice_count":slice_count}))
+}

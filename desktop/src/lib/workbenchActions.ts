@@ -166,7 +166,7 @@ export function buildWorkbenchActions(
                 label: context.worldInitProgress.label,
                 lines: context.worldInitProgress.lines,
             },
-            meta: '/api/world/init_batch_pipeline',
+            meta: 'run_pipeline',
             controls: [
                 {
                     id: 'check-or-fill',
@@ -211,7 +211,7 @@ export function buildWorkbenchActions(
                 label: context.styleInitProgress.label,
                 lines: context.styleInitProgress.lines,
             },
-            meta: '/api/style/init_pipeline',
+            meta: 'style_init',
             controls: [
                 {
                     id: 'check-or-fill',
@@ -287,7 +287,7 @@ export function buildWorkbenchActions(
                 label: context.rollingProgress.label,
                 lines: context.rollingProgress.lines,
             },
-            meta: '/api/rolling/state',
+            meta: 'rolling_state',
             controls: [
                 ...(rollingState?.next_action === 'replenish_outline' ? [{
                     id: 'replenish-outline',

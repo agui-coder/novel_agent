@@ -102,14 +102,20 @@ export async function fetchGitStatus(bookRef: BookRef): Promise<GitStatusSummary
     return { currentBranch: r.current, mainlineBranch: 'main', headCommit: '', isDirty: false, stagedCount: 0, unstagedCount: 0, untrackedCount: 0 };
 }
 
-export async function fetchGitWorkingTree(_bookRef: BookRef): Promise<{
+export async function fetchGitWorkingTree(bookRef: BookRef): Promise<{
     isDirty: boolean; stagedCount: number; unstagedCount: number; untrackedCount: number; entries: GitWorkingTreeEntry[];
 }> {
-    return { isDirty: false, stagedCount: 0, unstagedCount: 0, untrackedCount: 0, entries: [] };
+    const r = await invokeApi<{
+        status: string; book_id: string; is_dirty: boolean; staged_count: number; unstaged_count: number; untracked_count: number; entries: Array<{ path: string; staged: boolean; unstaged: boolean; is_untracked: boolean; index_status: string; worktree_status: string }>;
+    }>('git_working_tree', bookRefToArgs(bookRef));
+    return { isDirty: r.is_dirty, stagedCount: r.staged_count, unstagedCount: r.unstaged_count, untrackedCount: r.untracked_count, entries: r.entries.map(e => ({ path: e.path, previousPath: null, indexStatus: e.index_status, worktreeStatus: e.worktree_status, staged: e.staged, unstaged: e.unstaged, isUntracked: e.is_untracked })) };
 }
 
-export async function fetchGitCommitFiles(_bookRef: BookRef, _commitId: string): Promise<GitCommitFile[]> {
-    return [];
+export async function fetchGitCommitFiles(bookRef: BookRef, commitId: string): Promise<GitCommitFile[]> {
+    const r = await invokeApi<{ status: string; book_id: string; commit_id: string; files: Array<{ path: string; status: string }> }>(
+        'git_commit_files', { ...bookRefToArgs(bookRef), commitId }
+    );
+    return r.files.map(f => ({ path: f.path, previousPath: null, status: f.status }));
 }
 
 export async function fetchGitFileView(bookRef: BookRef, filePath: string, _ref?: string): Promise<GitFilePayload> {
@@ -119,18 +125,35 @@ export async function fetchGitFileView(bookRef: BookRef, filePath: string, _ref?
     return { path: filePath, source: 'rust', content: data.content };
 }
 
-export async function mergeGitBranch(_bookRef: BookRef, _payload: { sourceBranch: string; noFf?: boolean; message?: string }) {
-    return { status: 'success', book_id: '', merge_type: 'up_to_date', source_branch: _payload.sourceBranch, commit_id: '', current_branch: 'main' };
+export async function mergeGitBranch(bookRef: BookRef, payload: { sourceBranch: string; noFf?: boolean; message?: string }) {
+    const r = await invokeApi<{ status: string; book_id: string; current_branch: string; source_branch: string; commit_id: string }>(
+        'git_merge', { ...bookRefToArgs(bookRef), sourceBranch: payload.sourceBranch, message: payload.message }
+    );
+    return { status: 'success', book_id: r.book_id, merge_type: 'merge_commit', source_branch: r.source_branch, commit_id: r.commit_id, current_branch: r.current_branch };
 }
-export async function renameGitBranch(_bookRef: BookRef, _payload: { oldName: string; newName: string }) {
-    return { status: 'success', book_id: '', current_branch: 'main', head_commit: '', old_name: _payload.oldName, new_name: _payload.newName, mainline_branch: 'main' };
+export async function renameGitBranch(bookRef: BookRef, payload: { oldName: string; newName: string }) {
+    const r = await invokeApi<{ status: string; book_id: string; old_name: string; new_name: string }>(
+        'git_rename_branch', { ...bookRefToArgs(bookRef), oldName: payload.oldName, newName: payload.newName }
+    );
+    return { status: 'success', book_id: r.book_id, current_branch: 'main', head_commit: '', old_name: r.old_name, new_name: r.new_name, mainline_branch: 'main' };
 }
-export async function hardRollbackGitBranch(_bookRef: BookRef, _payload: { targetCommit: string; deleteOtherBranches?: boolean }) {
-    return { status: 'success', book_id: '', current_branch: 'main', head_commit: '', target_commit: _payload.targetCommit, delete_other_branches: false, deleted_branches: [], skipped_branches: [] };
+export async function hardRollbackGitBranch(bookRef: BookRef, payload: { targetCommit: string; deleteOtherBranches?: boolean }) {
+    const r = await invokeApi<{ status: string; book_id: string; target_commit: string }>(
+        'git_hard_rollback', { ...bookRefToArgs(bookRef), targetCommit: payload.targetCommit }
+    );
+    return { status: 'success', book_id: r.book_id, current_branch: 'main', head_commit: '', target_commit: r.target_commit, delete_other_branches: false, deleted_branches: [], skipped_branches: [] };
 }
-export async function stageGitFile(_bookRef: BookRef, _path: string): Promise<void> {}
-export async function unstageGitFile(_bookRef: BookRef, _path: string): Promise<void> {}
-export async function stageAllGitFiles(_bookRef: BookRef): Promise<void> {}
-export async function commitGitStagedFiles(_bookRef: BookRef, _message: string) {
-    return { status: 'success', commit_id: '', current_branch: 'main' };
+export async function stageGitFile(bookRef: BookRef, path: string): Promise<void> {
+    await invokeApi('git_stage', { ...bookRefToArgs(bookRef), path });
+}
+export async function unstageGitFile(bookRef: BookRef, path: string): Promise<void> {
+    await invokeApi('git_unstage', { ...bookRefToArgs(bookRef), path });
+}
+export async function stageAllGitFiles(bookRef: BookRef): Promise<void> {
+    await invokeApi('git_stage_all', bookRefToArgs(bookRef));
+}
+export async function commitGitStagedFiles(bookRef: BookRef, message: string) {
+    const r = await invokeApi<{ status: string; commit_id: string; current_branch: string }>(
+        'git_commit_staged', { ...bookRefToArgs(bookRef), message });
+    return { status: 'success', commit_id: r.commit_id, current_branch: r.current_branch, files: [] as string[] };
 }

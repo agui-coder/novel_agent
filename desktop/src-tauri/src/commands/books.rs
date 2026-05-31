@@ -105,3 +105,16 @@ pub fn ping_book(state: State<AppState>, book_id: String) -> Result<PingResult, 
         layout_issues: issues,
     })
 }
+
+#[tauri::command]
+pub fn delete_book(state: State<AppState>, book_id: String) -> Result<serde_json::Value, String> {
+    if book_id.trim().is_empty() { return Err("book_id required".into()); }
+    let book_dir = std::path::Path::new(&state.storage_root).join(book_id.trim());
+    if !book_dir.exists() { return Err("Book not found".into()); }
+    // Safety: verify book_dir is under storage_root
+    let canon_storage = std::path::Path::new(&state.storage_root).canonicalize().unwrap_or_default();
+    let canon_book = book_dir.canonicalize().unwrap_or_default();
+    if !canon_book.starts_with(&canon_storage) { return Err("Path escape denied".into()); }
+    std::fs::remove_dir_all(&book_dir).map_err(|e| format!("Delete error: {}", e))?;
+    Ok(serde_json::json!({"status": "success", "book_id": book_id.trim()}))
+}

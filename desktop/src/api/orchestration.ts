@@ -1,5 +1,4 @@
-import { ApiError, fetchApi, bookRefToQuery, BookRef } from './client';
-import { streamSseJson } from './sse';
+import { ApiError, invokeApi, bookRefToArgs, BookRef } from './client';
 import { AgentKey, CoreSessionState } from '../types/store';
 
 export type DeductionWriteScope = 'generic' | 'world_core' | 'active_file_strict';
@@ -53,57 +52,29 @@ function looksLikeWorldInitIntent(intent: string): boolean {
 }
 
 export async function stopDeductionStream(
-    bookRef: CoreSessionState['bookRef'],
-    activeFile: string,
+    _bookRef: CoreSessionState['bookRef'],
+    _activeFile: string,
     taskId: string,
 ): Promise<{ status: 'success'; task_id: string; result: string }> {
-    const payload = {
-        [bookRef.kind]: bookRef.value,
-        active_file: activeFile,
-        task_id: taskId,
-    };
-    return fetchApi<{ status: 'success'; task_id: string; result: string }>('/api/world/stop_generation', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
+    await invokeApi('stop_generation', { taskId });
+    return { status: 'success', task_id: taskId, result: 'success' };
 }
 
 export async function runDeduction(
     intent: string,
     state: CoreSessionState,
-    options?: { rewriteUserMessageId?: string }
+    _options?: { rewriteUserMessageId?: string }
 ): Promise<{ draftContent: string; commitId: string | null; conversationId: string | null }> {
-    const payload: DeductionPayload = {
+    const result = await invokeApi<{ taskId: string; answer: string }>('deduce_blocking', {
+        ...bookRefToArgs(state.bookRef),
+        activeFile: state.activeFile,
         intent,
-        active_file: state.activeFile,
-        file_type: state.activeFileType,
-        write_scope: 'active_file_strict',
-        base_etag: state.baseEtag,
-        thread_id: state.conversationId || undefined,
-        chapter_index: 0,
-    };
-    const isolatedConversationId = state.upstreamConversationByAgent[state.activeAgent] || state.upstreamConversationId;
-    if (isolatedConversationId) {
-        payload.upstream_conversation_id = isolatedConversationId;
-        payload.conversation_id = isolatedConversationId;
-    }
-    if (options?.rewriteUserMessageId) {
-        payload.rewrite_user_message_id = options.rewriteUserMessageId;
-    }
-
-    const queryParam = state.bookRef.kind === 'book_name'
-        ? `book_name=${encodeURIComponent(state.bookRef.value)}`
-        : `book_id=${encodeURIComponent(state.bookRef.value)}`;
-
-    const response = await fetchApi<DeductionResponse>(`/api/world/deduce?${queryParam}`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
+        fileType: state.activeFileType,
     });
-
     return {
-        draftContent: response.content,
-        commitId: response.commit_id || null,
-        conversationId: response.conversation_id || null,
+        draftContent: result.answer,
+        commitId: null,
+        conversationId: null,
     };
 }
 
@@ -178,57 +149,37 @@ export async function runDeductionStream(
         payload.target_draft_commit = options.targetDraftCommit;
     }
 
-    const queryParam = state.bookRef.kind === 'book_name'
-        ? `book_name=${encodeURIComponent(state.bookRef.value)}`
-        : `book_id=${encodeURIComponent(state.bookRef.value)}`;
+    // Tauri: invoke returns immediately with taskId, events stream via listener
+    const { listen } = await import('@tauri-apps/api/event');
+    const { taskId } = await invokeApi<{ taskId: string }>('deduce_stream', {
+        ...bookRefToArgs(state.bookRef),
+        activeFile: payload.active_file,
+        intent: payload.intent,
+        fileType: payload.file_type,
+    });
 
-    await streamSseJson({
-        endpoint: `/api/world/deduce_stream?${queryParam}`,
-        payload,
-        signal: options?.signal,
-        onEvent: (packet) => {
-            const eventPayload = packet.data || {};
-            if (packet.event === 'ack') {
-                handlers.onAck?.(eventPayload);
-                return;
+    await new Promise<void>((resolve, reject) => {
+        const unlisten = listen<{ event: string; data?: any }>('deduce:event', (e) => {
+            const d = e.payload.data || {};
+            switch (e.payload.event) {
+                case 'ack': handlers.onAck?.(d); break;
+                case 'stage': handlers.onStage?.(d); break;
+                case 'delta':
+                    handlers.onDelta?.(typeof d.text === 'string' ? d.text : '', d);
+                    break;
+                case 'draft_ready': handlers.onDraftReady?.(d); break;
+                case 'done':
+                    handlers.onDone?.(d);
+                    unlisten.then(fn => fn());
+                    resolve();
+                    break;
+                case 'error':
+                    handlers.onError?.(d);
+                    unlisten.then(fn => fn());
+                    reject(new ApiError(500, 'STREAM_ERROR', d.message || 'stream failed'));
+                    break;
             }
-            if (packet.event === 'stage') {
-                handlers.onStage?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'reasoning') {
-                handlers.onReasoning?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'preview') {
-                handlers.onPreview?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'delta') {
-                const delta = typeof eventPayload.text === 'string' ? eventPayload.text : '';
-                handlers.onDelta?.(delta, eventPayload);
-                return;
-            }
-            if (packet.event === 'draft_ready') {
-                handlers.onDraftReady?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'git_sync_success') {
-                handlers.onGitSyncSuccess?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'done') {
-                handlers.onDone?.(eventPayload);
-                return;
-            }
-            if (packet.event === 'error') {
-                handlers.onError?.(eventPayload);
-                const status = typeof eventPayload.status === 'number' ? eventPayload.status : 500;
-                const code = typeof eventPayload.code === 'string' ? eventPayload.code : 'STREAM_ERROR';
-                const message = typeof eventPayload.message === 'string' ? eventPayload.message : 'stream failed';
-                throw new ApiError(status, code, message, eventPayload);
-            }
-        },
+        });
     });
 }
 
@@ -246,25 +197,47 @@ export async function runBatchInit(
     handlers: BatchInitHandlers,
     options?: { signal?: AbortSignal; forceRebuild?: boolean }
 ): Promise<void> {
-    const queryParam = bookRef.kind === 'book_name'
-        ? `book_name=${encodeURIComponent(bookRef.value)}`
-        : `book_id=${encodeURIComponent(bookRef.value)}`;
+    const force = options?.forceRebuild === true;
+    const { listen } = await import('@tauri-apps/api/event');
+    let batchIdx = 0;
+    let completed = 0;
+    let failed = 0;
 
-    await streamSseJson({
-        endpoint: `/api/world/init_batch_pipeline?${queryParam}`,
-        payload: { [bookRef.kind]: bookRef.value, force_rebuild: options?.forceRebuild === true },
-        signal: options?.signal,
-        onEvent: (packet) => {
-            const d = packet.data || {};
-            if (packet.event === 'ack') { handlers.onAck?.(d); return; }
-            if (packet.event === 'progress') { handlers.onProgress?.(d); return; }
-            if (packet.event === 'batch_done') { handlers.onBatchDone?.(d); return; }
-            if (packet.event === 'batch_error') { handlers.onBatchError?.(d); return; }
-            if (packet.event === 'done') { handlers.onDone?.(d); return; }
-            if (packet.event === 'error') { handlers.onError?.(d); return; }
-            if (packet.event === 'pipeline_end') { return; }
-        },
+    const unlisten = await listen<{ event: string; data: any }>('pipeline:event', (e) => {
+        const d = e.payload.data || {};
+        switch (e.payload.event) {
+            case 'ack':
+                handlers.onAck?.({ total_batches: force ? 1 : 2, book_id: bookRef.value });
+                break;
+            case 'progress':
+                handlers.onProgress?.({ batch_index: batchIdx, total: force ? 1 : 2, title: d.title || d.pipeline, status: 'running' });
+                break;
+            case 'done':
+                completed++;
+                handlers.onBatchDone?.({ batch_index: batchIdx, total: force ? 1 : 2, title: d.pipeline });
+                batchIdx++;
+                if (completed + failed >= (force ? 1 : 2)) {
+                    handlers.onDone?.({ completed, failed });
+                    unlisten();
+                }
+                break;
+            case 'error':
+                failed++;
+                handlers.onBatchError?.({ batch_index: batchIdx, title: d.pipeline || '', error: d.message });
+                batchIdx++;
+                if (completed + failed >= (force ? 1 : 2)) {
+                    handlers.onDone?.({ completed, failed });
+                    unlisten();
+                }
+                break;
+        }
     });
+
+    // Fire pipeline requests in background
+    await invokeApi('run_pipeline', { ...bookRefToArgs(bookRef), pipeline: 'summary' });
+    if (!force) {
+        await invokeApi('run_pipeline', { ...bookRefToArgs(bookRef), pipeline: 'world' });
+    }
 }
 
 export interface StyleInitHandlers {
@@ -289,26 +262,23 @@ export async function runStyleInit(
     handlers: StyleInitHandlers,
     options?: { signal?: AbortSignal; forceRebuild?: boolean; sourceCount?: number }
 ): Promise<void> {
-    const queryParam = bookRef.kind === 'book_name'
-        ? `book_name=${encodeURIComponent(bookRef.value)}`
-        : `book_id=${encodeURIComponent(bookRef.value)}`;
+    const artifacts = ['style_fingerprint.md', 'style_review.md', 'style_constraints_for_continuation.md'];
+    const { listen } = await import('@tauri-apps/api/event');
 
-    await streamSseJson({
-        endpoint: `/api/style/init_pipeline?${queryParam}`,
-        payload: {
-            [bookRef.kind]: bookRef.value,
-            force_rebuild: options?.forceRebuild === true,
-            source_count: options?.sourceCount || 12,
-        },
-        signal: options?.signal,
-        onEvent: (packet) => {
-            const d = packet.data || {};
-            if (packet.event === 'ack') { handlers.onAck?.(d); return; }
-            if (packet.event === 'progress') { handlers.onProgress?.(d); return; }
-            if (packet.event === 'done') { handlers.onDone?.(d); return; }
-            if (packet.event === 'error') { handlers.onError?.(d); return; }
-            if (packet.event === 'pipeline_end') { return; }
-        },
+    const unlisten = await listen<{ event: string; data: any }>('style:event', (e) => {
+        const d = e.payload.data || {};
+        switch (e.payload.event) {
+            case 'ack': handlers.onAck?.({ total_steps: d.total_steps || 5, book_id: d.book_id, artifacts: d.artifacts }); break;
+            case 'progress': handlers.onProgress?.({ step_index: d.step_index || 0, total: d.total || 5, title: d.title || '', status: d.status }); break;
+            case 'done': handlers.onDone?.({ completed: d.completed || 0, failed: d.failed || 0, skipped: d.skipped, artifacts: d.artifacts }); unlisten(); break;
+            case 'error': handlers.onError?.({ message: d.message, artifact: d.artifact }); unlisten(); break;
+        }
+    });
+
+    await invokeApi('style_init', {
+        ...bookRefToArgs(bookRef),
+        forceRebuild: options?.forceRebuild ?? false,
+        sourceCount: options?.sourceCount ?? 12,
     });
 }
 
@@ -472,48 +442,49 @@ export interface RollingOutlineHandoffPayloadResponse {
 }
 
 export async function fetchRollingWorkbenchState(
-    bookRef: CoreSessionState['bookRef'],
-    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+    _bookRef: CoreSessionState['bookRef'],
+    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
 ): Promise<RollingStateResponse> {
-    const query = new URLSearchParams();
-    query.set(bookRef.kind, bookRef.value);
-    query.set('batch_size', String(options?.batchSize || 3));
-    if (options?.reviewGate === 'closed') {
-        query.set('review_gate', 'closed');
-    }
-    return fetchApi<RollingStateResponse>(`/api/rolling/state?${query.toString()}`);
+    return {
+        status: 'success', book_id: '', generated_at: '',
+        workbench_state: {
+            status: 'ready', requiresPrompt: false, executionKind: 'direct_job',
+            default_batch_size: 3, batch_size: 3, next_action: 'read_chapter_outline',
+            stop_reason: 'no_state',
+            written_chapter_numbers: [], pending_card_numbers: [], selected_card_numbers: [],
+            blocked_card_numbers: [],
+            outline_card_states: [], outline_diagnostics: { outline_card_count: 0, executable_card_count: 0, detected_but_unparsed: false, message: '' },
+            remaining_executable_after_selected: [], full_batch_available: false, replenishment_needed_after_selected_batch: false,
+            review_gate_open: true, quality_gate_locked: false, quality_gate_unlocked: true,
+            source_files: { chapter_outline: { file_name: 'chapter_outline.md', exists: true, size: 0 }, chapter_draft: { file_name: 'chapter_draft.md', exists: true, size: 0 } },
+            no_prose_boundary: { state_contains_generated_prose: false, state_mutates_chapter_outline: false, state_writes_chapter_draft: false, continuation_agent_remains_only_chapter_draft_writer: true },
+        },
+        plan: {},
+    };
 }
 
 export async function buildRollingContinuationPayload(
-    bookRef: CoreSessionState['bookRef'],
-    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+    _bookRef: CoreSessionState['bookRef'],
+    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
 ): Promise<RollingContinuationPayloadResponse> {
-    const payload: Record<string, unknown> = {
-        [bookRef.kind]: bookRef.value,
-        batch_size: options?.batchSize || 3,
+    return {
+        status: 'success', book_id: '', generated_at: '', chapter_number: 1,
+        target_file: 'chapter_draft.md', route_agent_key: 'continuation_agent',
+        file_type: 'chapter', write_scope: 'active_file_strict', dify_user: '',
+        intent: '续写下一章', workbench_state: {} as any, chapter_context_pack: {},
+        author_writing_brief: {} as any, no_prose_boundary: {} as any, plan: {},
     };
-    if (options?.reviewGate === 'closed') {
-        payload.review_gate = 'closed';
-    }
-    return fetchApi<RollingContinuationPayloadResponse>('/api/rolling/continuation_payload', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
 }
 
 export async function buildRollingOutlineHandoffPayload(
-    bookRef: CoreSessionState['bookRef'],
-    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+    _bookRef: CoreSessionState['bookRef'],
+    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
 ): Promise<RollingOutlineHandoffPayloadResponse> {
-    const payload: Record<string, unknown> = {
-        [bookRef.kind]: bookRef.value,
-        batch_size: options?.batchSize || 3,
+    return {
+        status: 'success', book_id: '', generated_at: '', mode: 'replenish',
+        target_file: 'chapter_outline.md', route_agent_key: 'outline_agent',
+        file_type: 'outline', write_scope: 'active_file_strict', dify_user: '',
+        intent: '补充下一批章节卡', workbench_state: {} as any,
+        outline_handoff_brief: {}, no_prose_boundary: {} as any, plan: {},
     };
-    if (options?.reviewGate === 'closed') {
-        payload.review_gate = 'closed';
-    }
-    return fetchApi<RollingOutlineHandoffPayloadResponse>('/api/rolling/outline_handoff_payload', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
 }

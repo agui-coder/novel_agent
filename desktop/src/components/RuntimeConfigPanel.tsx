@@ -14,23 +14,18 @@ interface RuntimeConfigPanelProps {
 }
 
 const GROUP_LABELS: Record<string, string> = {
-    dify_service: 'Dify 服务',
-    dify_agents: 'Dify Agent 密钥',
-    model_provider: '本地模型供应商',
+    llm: 'AI 模型配置',
 };
 
 const GROUP_HELP: Record<string, string> = {
-    dify_service: '配置 Flask 调用 Dify Service API 的地址和超时时间。',
-    dify_agents: '每个 Agent 使用独立 App API key。保存后后端会热刷新，下一次调用立即生效。',
-    model_provider: '供摘要、世界观、文风等本地批处理管线使用。可选择 DeepSeek 或任意 OpenAI-compatible 接口。',
+    llm: '选择 AI 提供商并填入 API Key。配置保存在本地，不会上传。',
 };
 
 const FIELD_HELP: Record<string, string> = {
-    MODEL_PROVIDER: 'deepseek 使用旧 DeepSeek 配置；openai_compatible 使用下面的兼容接口配置。',
-    OPENAI_COMPATIBLE_BASE_URL: '例如 https://api.openai.com/v1、OpenRouter/SiliconFlow/本地 vLLM 的 /v1 地址。',
-    OPENAI_COMPATIBLE_MODEL: '第三方兼容接口里的模型名，例如 gpt-4.1-mini、deepseek-chat、qwen-plus 等。',
-    OPENAI_COMPATIBLE_API_KEY: '第三方兼容接口的 API key。不会进入聊天记录或书库文件。',
-    SUMMARY_ARCHIVE_MODEL: '可选。只覆盖导入摘要管线使用的模型，留空则使用默认批处理模型。',
+    provider: 'DeepSeek 和 OpenAI 都兼容。选自定义后可填任意 OpenAI 兼容接口。',
+    api_key: 'API Key 保存在本地 %APPDATA% 目录，不进入书库文件。',
+    model: '模型名称。DeepSeek 推荐 deepseek-chat 或 deepseek-reasoner。',
+    api_base_url: 'API 地址，一般不需要改。自定义时可填 OpenRouter/SiliconFlow 等地址。',
 };
 
 function groupLabel(group: string): string {
@@ -51,7 +46,7 @@ function displayValue(item: RuntimeConfigItem): string {
 
 function emptyDraft(config: RuntimeConfigResponse | null): Record<string, string> {
     if (!config) return {};
-    return Object.fromEntries(config.items.map((item) => [item.key, '']));
+    return Object.fromEntries(config.items.map((item) => [item.key, item.value || '']));
 }
 
 function hasDraftValue(draft: Record<string, string>): boolean {
@@ -59,7 +54,9 @@ function hasDraftValue(draft: Record<string, string>): boolean {
 }
 
 function fieldPlaceholder(item: RuntimeConfigItem): string {
-    if (item.key === 'MODEL_PROVIDER') return 'deepseek 或 openai_compatible';
+    if (item.key === 'provider') return 'deepseek / openai / custom';
+    if (item.key === 'model') return 'deepseek-v4-flash';
+    if (item.key === 'api_base_url') return 'https://api.deepseek.com/v1';
     if (item.secret) return item.configured ? `${displayValue(item)}，留空则不修改` : '粘贴 API key';
     return displayValue(item) || '留空则不修改';
 }
@@ -257,15 +254,27 @@ export const RuntimeConfigPanel: React.FC<RuntimeConfigPanelProps> = ({
                                                         <div className="mt-1 font-mono text-[10px] text-[var(--color-dark-text-faint)]">{item.key}</div>
                                                     </div>
                                                     <div>
-                                                        <input
-                                                            type={fieldInputType(item)}
-                                                            value={draft[item.key] || ''}
-                                                            onChange={(event) => updateDraft(item.key, event.target.value)}
-                                                            placeholder={fieldPlaceholder(item)}
-                                                            autoComplete="off"
-                                                            spellCheck={false}
-                                                            className="w-full rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[#171b22] px-3 py-2 font-mono text-xs text-[var(--color-dark-text-main)] outline-none focus:border-[rgba(115,134,255,0.58)]"
-                                                        />
+                                                        {item.options ? (
+                                                            <select
+                                                                value={draft[item.key] || item.value || ''}
+                                                                onChange={(event) => updateDraft(item.key, event.target.value)}
+                                                                className="w-full rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[#171b22] px-3 py-2 font-mono text-xs text-[var(--color-dark-text-main)] outline-none focus:border-[rgba(115,134,255,0.58)]"
+                                                            >
+                                                                {item.options.map((opt) => (
+                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <input
+                                                                type={fieldInputType(item)}
+                                                                value={draft[item.key] || ''}
+                                                                onChange={(event) => updateDraft(item.key, event.target.value)}
+                                                                placeholder={fieldPlaceholder(item)}
+                                                                autoComplete="off"
+                                                                spellCheck={false}
+                                                                className="w-full rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[#171b22] px-3 py-2 font-mono text-xs text-[var(--color-dark-text-main)] outline-none focus:border-[rgba(115,134,255,0.58)]"
+                                                            />
+                                                        )}
                                                         <div className="mt-1 text-[10px] text-[var(--color-dark-text-faint)]">
                                                             当前：{item.configured ? displayValue(item) || '已配置' : '未配置'} / 来源：{sourceLabel(item)}
                                                         </div>

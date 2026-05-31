@@ -13,13 +13,9 @@ export class ApiError extends Error {
 }
 
 const BASE_URL = '';
-const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 20000);
-const DEDUCTION_TIMEOUT_MS = Number(import.meta.env.VITE_DEDUCTION_TIMEOUT_MS || 90000);
-const TOMATO_IMPORT_TIMEOUT_MS = Number(import.meta.env.VITE_TOMATO_IMPORT_TIMEOUT_MS || 600000);
+const DEFAULT_TIMEOUT_MS = 30000;
 
-function getTimeoutMs(endpoint: string): number {
-    if (endpoint.startsWith('/api/world/deduce')) return DEDUCTION_TIMEOUT_MS;
-    if (endpoint.startsWith('/books/tomato/online_import')) return TOMATO_IMPORT_TIMEOUT_MS;
+function getTimeoutMs(_endpoint: string): number {
     return DEFAULT_TIMEOUT_MS;
 }
 

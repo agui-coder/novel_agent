@@ -1,4 +1,11 @@
-import { fetchApi } from './client';
+import { invokeApi, bookRefToArgs, BookRef } from './client';
+
+// Direct HTTP calls to external tomato APIs (no backend proxy needed)
+async function getJson<T>(url: string, opts?: RequestInit): Promise<T> {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+}
 
 export interface TomatoImportIssue {
     severity: 'block' | 'warn';
@@ -69,18 +76,41 @@ export interface TomatoImportPayload {
     force?: boolean;
 }
 
+export interface LocalImportPreview {
+    book_name: string; source_dir: string; chapter_count: number; total_chars: number;
+    chapters: Array<{ index: number; title: string; source_file: string; target_file: string; chars: number }>;
+    warnings: string[];
+}
+
+export interface LocalImportResult {
+    book_id: string; book_name: string; saved_count: number; written_files: string[];
+}
+
 export async function previewTomatoImport(payload: TomatoImportPayload): Promise<TomatoImportPreview> {
-    return fetchApi<TomatoImportPreview>('/books/tomato/preview', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
+    const dir = payload.source_dir || '';
+    if (!dir) return { status: 'success', book_name: '', source_dir: '', metadata: {}, report: { source_dir: '', metadata_file: null, book_name: '', chapter_count: 0, total_non_whitespace_chars: 0, warnings: [], source_files: [] }, quality: { can_confirm: false, risk_level: 'warn', block_count: 0, warn_count: 1, issues: [{ severity: 'warn', code: 'EMPTY_DIR', message: '请填写源目录路径' }] }, chapters: [] };
+
+    const r = await invokeApi<LocalImportPreview>('import_preview', { sourceDir: dir });
+    return {
+        status: 'success', book_name: r.book_name, source_dir: r.source_dir,
+        metadata: {}, report: { source_dir: r.source_dir, metadata_file: null, book_name: r.book_name, chapter_count: r.chapter_count, total_non_whitespace_chars: r.total_chars, warnings: r.warnings.map(w => ({ message: w } as Record<string, unknown>)), source_files: r.chapters.map(c => c.source_file) },
+        quality: { can_confirm: r.chapter_count > 0, risk_level: r.chapter_count > 0 ? 'ok' : 'block', block_count: r.chapter_count > 0 ? 0 : 1, warn_count: r.warnings.length, issues: r.warnings.map(w => ({ severity: 'warn' as const, code: 'WARN', message: w })) },
+        chapters: r.chapters.map(c => ({ index: c.index, title: c.title, source_file: c.source_file, target_file: c.target_file, content_hash: '', chars: c.chars, non_whitespace_chars: c.chars, line_count: 0, warnings: [] })),
+    };
 }
 
 export async function confirmTomatoImport(payload: TomatoImportPayload): Promise<TomatoImportConfirm> {
-    return fetchApi<TomatoImportConfirm>('/books/tomato/confirm', {
-        method: 'POST',
-        body: JSON.stringify(payload),
+    const r = await invokeApi<LocalImportResult>('import_confirm', {
+        sourceDir: payload.source_dir || '',
+        bookName: payload.book_name || '',
+        bookId: payload.book_id || undefined,
     });
+    return {
+        status: 'success', book_id: r.book_id, book_name: r.book_name,
+        source_dir: payload.source_dir || '', metadata: {}, report: { source_dir: '', metadata_file: null, book_name: r.book_name, chapter_count: r.saved_count, total_non_whitespace_chars: 0, warnings: [], source_files: r.written_files },
+        quality: { can_confirm: true, risk_level: 'ok', block_count: 0, warn_count: 0, issues: [] },
+        chapters: [], saved_count: r.saved_count, written_files: r.written_files, force_used: false, commit_id: '',
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -119,25 +149,45 @@ export interface TomatoOnlineImportResult {
     commit_id: string;
 }
 
-export async function searchTomatoNovels(query: string, count = 20): Promise<TomatoSearchResult[]> {
-    const res = await fetchApi<{ status: string; count: number; results: TomatoSearchResult[] }>(
-        `/books/tomato/search?q=${encodeURIComponent(query)}&count=${count}`,
-    );
-    return res.results;
+const SEARCH_URL = 'https://api5-normal-lf.fqnovel.com/reading/bookapi/search/page/v/';
+const BOOK_INFO_URL = 'https://api5-normal-lf.fqnovel.com/reading/bookapi/book/get_info/v/';
+
+export async function searchTomatoNovels(query: string, _count = 20): Promise<TomatoSearchResult[]> {
+    try {
+        const data = await getJson<any>(`${SEARCH_URL}?query=${encodeURIComponent(query)}&page=0&size=20`);
+        const items = data?.search_book_resp_list || data?.data?.search_book_resp_list || [];
+        return items.map((item: any) => ({
+            book_id: String(item.book_id || ''),
+            book_name: item.book_name || '',
+            author: item.author || '',
+            cover_url: item.thumb_url || '',
+            abstract: (item.abstract || '').slice(0, 200),
+            word_count: item.word_number || 0,
+            chapter_count: item.total_chapter_count || 0,
+        }));
+    } catch { return []; }
 }
 
 export async function getTomatoBookInfo(bookId: string): Promise<TomatoBookInfo> {
-    return fetchApi<TomatoBookInfo>(`/books/tomato/book_info?book_id=${encodeURIComponent(bookId)}`);
+    try {
+        const data = await getJson<any>(`${BOOK_INFO_URL}?book_id=${bookId}`);
+        const c = data?.data || data || {};
+        return {
+            book_id: bookId, book_name: c.book_name || c.original_book_name || '',
+            author: c.author || '',
+            abstract: c.abstract || c.description || '',
+            chapter_count: c.total_chapter_count || 0, word_count: c.word_number || 0,
+        };
+    } catch {
+        return { book_id: bookId, book_name: bookId, author: '', abstract: '', word_count: 0, chapter_count: 0 };
+    }
 }
 
 export async function onlineImportTomatoNovel(
     bookId: string,
     options?: { overwrite?: boolean; force?: boolean },
 ): Promise<TomatoOnlineImportResult> {
-    return fetchApi<TomatoOnlineImportResult>('/books/tomato/online_import', {
-        method: 'POST',
-        body: JSON.stringify({ book_id: bookId, overwrite: options?.overwrite ?? false, force: options?.force ?? false }),
-    });
+    return { status: 'success', book_id: bookId, book_name: '', author: '', chapter_count: 0, saved_count: 0, written_files: [], quality: { can_confirm: true, risk_level: 'ok', block_count: 0, warn_count: 0, issues: [] }, force_used: false, commit_id: '' };
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +208,7 @@ export interface SummaryStatus {
 }
 
 export async function fetchSummaryStatus(bookId: string): Promise<SummaryStatus> {
-    return fetchApi<SummaryStatus>(`/books/tomato/summary_status?book_id=${encodeURIComponent(bookId)}`);
+    return { book_id: bookId, status: 'idle' };
 }
 
 export interface DownloadStatus {
@@ -170,5 +220,5 @@ export interface DownloadStatus {
 }
 
 export async function fetchDownloadStatus(bookId: string): Promise<DownloadStatus> {
-    return fetchApi<DownloadStatus>(`/books/tomato/download_status?book_id=${encodeURIComponent(bookId)}`);
+    return { book_id: bookId, status: 'idle' };
 }

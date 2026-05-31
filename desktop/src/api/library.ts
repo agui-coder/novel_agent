@@ -20,7 +20,6 @@ export async function fetchBooksList(): Promise<BookListItem[]> {
 }
 
 export async function deleteBook(bookId: string): Promise<DeleteBookResult> {
-    // Use any result - delete not fully implemented in Rust yet
-    try { await invokeApi('ping_book', { bookId }); } catch { /* ignore */ }
-    return { status: 'success', book_id: bookId };
+    const result = await invokeApi<DeleteBookResult & { cleanup_pending?: boolean }>('delete_book', { bookId });
+    return { status: 'success', book_id: bookId, cleanup_pending: result.cleanup_pending };
 }

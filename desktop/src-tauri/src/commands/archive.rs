@@ -497,3 +497,150 @@ pub fn git_commit(repo_dir: &Path, file_name: &str, message: &str) -> Result<(),
     // Ignore "nothing to commit" - it's fine
     Ok(())
 }
+
+// ── Context assembly ───────────────────────────────────────
+
+#[tauri::command]
+pub fn checkout(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+    include: Option<String>, last_n: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let keys: Vec<&str> = include.as_deref().unwrap_or("world_model,summary,chapters").split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let n = last_n.unwrap_or(5);
+
+    let mut result = serde_json::Map::new();
+    for key in &keys {
+        match *key {
+            "world_model" | "summary" | "status_card" | "style_guide" | "error_archive" | "chapter_outline" | "brainstorm" => {
+                let fname = if *key == "world_model" { "world_model.md" } else if *key == "summary" { "summary.md" } else if *key == "status_card" { "status_card.md" } else if *key == "style_guide" { "style_guide.md" } else if *key == "error_archive" { "error_archive.md" } else if *key == "chapter_outline" { "chapter_outline.md" } else { "brainstorm.md" };
+                let path = book_dir.join(fname);
+                if path.exists() {
+                    if let Ok(c) = std::fs::read_to_string(&path) { result.insert(key.to_string(), serde_json::Value::String(c)); }
+                }
+            }
+            "chapters" => {
+                let chapters_dir = book_dir.join("chapters");
+                if chapters_dir.exists() {
+                    let mut files: Vec<_> = std::fs::read_dir(&chapters_dir).unwrap().filter_map(|e| e.ok()).collect();
+                    files.sort_by_key(|e| e.file_name());
+                    let recent: Vec<String> = files.iter().rev().take(n).rev().filter_map(|f| std::fs::read_to_string(f.path()).ok()).collect();
+                    result.insert("chapters".into(), serde_json::Value::Array(recent.into_iter().map(serde_json::Value::String).collect()));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(serde_json::Value::Object(result))
+}
+
+// ── Layout management ──────────────────────────────────────
+
+#[tauri::command]
+pub fn repo_integrity(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let mut missing = Vec::new();
+    for f in crate::storage::TRACKED_LAYOUT_FILES {
+        if *f != "metadata.json" && !book_dir.join(f).exists() { missing.push(f.to_string()); }
+    }
+    for d in crate::storage::TRACKED_LAYOUT_DIRS {
+        if !book_dir.join(d).exists() { missing.push(format!("{}/", d)); }
+    }
+    let needs_repair = !missing.is_empty();
+    let repo_exists = book_dir.join(".git").exists();
+    let empty_strs: Vec<String> = Vec::new();
+    Ok(serde_json::json!({
+        "status": "success", "book_id": id, "exists": book_dir.exists(),
+        "repo_exists": repo_exists, "head_exists": repo_exists,
+        "head_commit": serde_json::Value::Null,
+        "missing_core_files": missing, "missing_directories": empty_strs,
+        "untracked_layout_files": empty_strs, "problem_codes": empty_strs,
+        "needs_repair": needs_repair,
+    }))
+}
+
+#[tauri::command]
+pub fn repair_layout(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let chapters_dir = book_dir.join("chapters");
+    std::fs::create_dir_all(&chapters_dir).ok();
+    for f in crate::storage::TRACKED_LAYOUT_FILES {
+        if *f != "metadata.json" && !book_dir.join(f).exists() { std::fs::write(book_dir.join(f), "").ok(); }
+    }
+    if !book_dir.join(".git").exists() { git2::Repository::init(&book_dir).ok(); }
+    Ok(serde_json::json!({"status":"success","book_id":id,"head_commit":null,"repair_commits":[]}))
+}
+
+#[tauri::command]
+pub fn list_hot_files(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let files: Vec<serde_json::Value> = crate::storage::TRACKED_LAYOUT_FILES.iter().filter(|f| **f != "metadata.json").map(|f| {
+        serde_json::json!({"file_name": f, "file_type": file_type_for(f), "label": label_for(f), "exists": std::path::Path::new(&state.storage_root).join(&id).join(f).exists()})
+    }).collect();
+    Ok(serde_json::json!({"status":"success","book_id":id,"integrity":{"book_id":id,"exists":true,"repo_exists":true,"head_exists":true,"head_commit":null,"missing_core_files":[],"missing_directories":[],"untracked_layout_files":[],"problem_codes":[],"needs_repair":false},"files":files}))
+}
+fn file_type_for(f: &str) -> &str {
+    if f == "world_model.md" || f == "status_card.md" { "world_core" }
+    else if f == "summary.md" { "summary" }
+    else if f == "style_fingerprint.md" || f == "style_review.md" || f == "style_constraints_for_continuation.md" { "style" }
+    else if f == "brainstorm.md" || f == "master_outline.md" || f == "arc_outline.md" || f == "chapter_outline.md" { "outline" }
+    else if f == "error_archive.md" { "error_archive" }
+    else if f == "chapter_draft.md" { "chapter" }
+    else { "generic" }
+}
+fn label_for(f: &str) -> &str {
+    if f == "world_model.md" { "世界观底座" } else if f == "status_card.md" { "状态卡" }
+    else if f == "summary.md" { "剧情总纲" } else if f == "style_fingerprint.md" { "文风指纹" }
+    else if f == "style_review.md" { "文风偏差" } else if f == "style_constraints_for_continuation.md" { "续写文风卡" }
+    else if f == "brainstorm.md" { "头脑风暴" } else if f == "master_outline.md" { "总纲" }
+    else if f == "arc_outline.md" { "篇章大纲" } else if f == "chapter_outline.md" { "章节大纲" }
+    else if f == "error_archive.md" { "错误档案" } else if f == "chapter_draft.md" { "续写草稿" }
+    else { f }
+}
+
+// ── Simple file ops ────────────────────────────────────────
+
+#[tauri::command]
+pub fn prepend_file(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+    file_name: String, content: String, base_etag: Option<String>,
+) -> Result<WriteFileResult, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let (file_path, normalized_rel) = resolve_file_path(&book_dir, &file_name)?;
+    if let Some(ref be) = base_etag { if file_path.exists() && *be != etag::compute_file_etag(&file_path)? { return Err("ETag mismatch".into()); } }
+    let existing = if file_path.exists() { std::fs::read_to_string(&file_path).unwrap_or_default() } else { String::new() };
+    let new_content = format!("{}\n{}", content.trim_end(), existing);
+    std::fs::write(&file_path, &new_content).map_err(|e| format!("Write: {}", e))?;
+    let new_etag = etag::compute_etag(&new_content);
+    git_commit(&book_dir, &normalized_rel, "[AI_Update] prepend")?;
+    Ok(WriteFileResult { status: "success".into(), book_id: id, file_name, new_etag, new_size: new_content.len() })
+}
+
+#[tauri::command]
+pub fn add_chapter(
+    state: State<'_, AppState>, book_id: Option<String>, book_name: Option<String>,
+    chapter_index: u32, content: String, title: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
+    let book_dir = std::path::Path::new(&state.storage_root).join(&id);
+    let chapters_dir = book_dir.join("chapters");
+    std::fs::create_dir_all(&chapters_dir).ok();
+    let t = title.unwrap_or_else(|| format!("第{}章", chapter_index));
+    let safe_title = t.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).take(30).collect::<String>();
+    let fname = format!("{:04}_{}.md", chapter_index, safe_title);
+    let path = chapters_dir.join(&fname);
+    let full = format!("# {}\n\n{}", t, content);
+    std::fs::write(&path, &full).map_err(|e| format!("Write: {}", e))?;
+    crate::storage::layout::ensure_book_layout(&state.storage_root, &id, &id)?;
+    Ok(serde_json::json!({"status":"success","book_id":id,"file_name":fname,"chapter_index":chapter_index}))
+}

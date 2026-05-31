@@ -118,3 +118,55 @@ pub fn resolve_book_id(
     }
     Err("Book not found. Provide valid book_id or book_name.".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn setup_tmp() -> String {
+        let dir = std::env::temp_dir().join(format!("novel_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[test]
+
+    #[test]
+    fn test_find_book_id_by_name() {
+        let root = setup_tmp();
+        let book_dir = Path::new(&root).join("test_book_abc");
+        fs::create_dir_all(&book_dir).unwrap();
+        let meta = BookMetadata { book_id: "test_book_abc".into(), book_name: "测试书".into(), created: None };
+        fs::write(book_dir.join("metadata.json"), serde_json::to_string(&meta).unwrap()).unwrap();
+
+        let found = find_book_id(&root, "测试书");
+        assert_eq!(found, Some("test_book_abc".into()));
+
+        let not_found = find_book_id(&root, "不存在");
+        assert_eq!(not_found, None);
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn test_resolve_book_id_by_name() {
+        let root = setup_tmp();
+        let book_dir = Path::new(&root).join("found_by_name");
+        fs::create_dir_all(&book_dir).unwrap();
+        fs::write(book_dir.join("metadata.json"), r#"{"book_id":"found_by_name","book_name":"星辰大海"}"#).unwrap();
+
+        let id = resolve_book_id(&root, None, Some("星辰大海")).unwrap();
+        assert_eq!(id, "found_by_name");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn test_resolve_book_id_not_found() {
+        let root = setup_tmp();
+        let err = resolve_book_id(&root, Some("nonexistent"), None);
+        assert!(err.is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+}

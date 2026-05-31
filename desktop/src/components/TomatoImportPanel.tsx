@@ -25,6 +25,7 @@ export const TomatoImportPanel: React.FC<TomatoImportPanelProps> = ({
     onClose,
     onImported,
 }) => {
+    const [importMode, setImportMode] = useState<'local' | 'tomato'>('local');
     const [sourceDir, setSourceDir] = useState('');
     const [allowedRoot, setAllowedRoot] = useState('');
     const [bookId, setBookId] = useState('');
@@ -37,6 +38,7 @@ export const TomatoImportPanel: React.FC<TomatoImportPanelProps> = ({
 
     useEffect(() => {
         if (isOpen) {
+            setImportMode('local');
             setSourceDir('');
             setAllowedRoot('');
             setBookId('');
@@ -110,10 +112,24 @@ export const TomatoImportPanel: React.FC<TomatoImportPanelProps> = ({
             <div role="dialog" aria-modal="true" className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-[#111318] shadow-[0_24px_80px_rgba(0,0,0,0.5)]">
                 <div className="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-mono tracking-[0.16em] text-[var(--color-dark-text-faint)]">BOOK IMPORT</div>
-                        <h2 className="mt-1 text-lg font-semibold text-[var(--color-dark-text-main)]">番茄小说导入</h2>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="text-[11px] font-mono tracking-[0.16em] text-[var(--color-dark-text-faint)]">BOOK IMPORT</div>
+                            <div className="flex rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] p-0.5">
+                                <button onClick={() => { setImportMode('local'); setPreview(null); setError(null); }}
+                                    className={`rounded-[6px] px-3 py-1 text-[11px] font-semibold transition-colors ${importMode === 'local' ? 'bg-[rgba(115,134,255,0.18)] text-[var(--color-dark-text-main)]' : 'text-[var(--color-dark-text-muted)] hover:text-[var(--color-dark-text-main)]'}`}>
+                                    本地导入
+                                </button>
+                                <button onClick={() => { setImportMode('tomato'); setPreview(null); setError(null); }}
+                                    className={`rounded-[6px] px-3 py-1 text-[11px] font-semibold transition-colors ${importMode === 'tomato' ? 'bg-[rgba(115,134,255,0.18)] text-[var(--color-dark-text-main)]' : 'text-[var(--color-dark-text-muted)] hover:text-[var(--color-dark-text-main)]'}`}>
+                                    番茄导入
+                                </button>
+                            </div>
+                        </div>
+                        <h2 className="mt-1 text-lg font-semibold text-[var(--color-dark-text-main)]">{importMode === 'local' ? '本地文件导入' : '番茄小说导入'}</h2>
                         <p className="mt-1 text-xs leading-5 text-[var(--color-dark-text-muted)]">
-                            从 Tomato-Novel-Downloader 的 bulk_files 目录预览章节，确认后写入 storage 下的章节 Markdown。
+                            {importMode === 'local'
+                                ? '选择本地 TXT 或 Markdown 文件所在目录，自动识别章节切分，导入为项目章节。'
+                                : '从 Tomato-Novel-Downloader 的 bulk_files 目录预览章节，确认后写入 storage 下的章节 Markdown。'}
                         </p>
                     </div>
                     <button
