@@ -95,7 +95,7 @@ pub fn run_agent_streaming(
 
         // Use streaming to get real-time deltas + tool calls
         let (delta_tx, delta_rx) = std::sync::mpsc::channel::<String>();
-        let tool_calls = match llm::chat_streaming(&messages, Some(tools.schemas()), &delta_tx) {
+        let tool_calls = match llm::chat_streaming(&messages, Some(tools.schemas()), &delta_tx).map_err(|e| e.to_string()) {
             Ok(tc) => {
                 drop(delta_tx); // close sender so receiver loop ends
                 for chunk in delta_rx {
@@ -106,7 +106,7 @@ pub fn run_agent_streaming(
             }
             Err(e) => {
                 // Fallback to blocking
-                let (content, tc) = match llm::chat_blocking(&messages, Some(tools.schemas())) {
+                let (content, tc) = match llm::chat_blocking(&messages, Some(tools.schemas())).map_err(|e| e.to_string()) {
                     Ok((c, tc)) => (c, tc),
                     Err(e2) => { sender.send(AgentEvent::error(&e2)).ok(); return Err(e2); }
                 };

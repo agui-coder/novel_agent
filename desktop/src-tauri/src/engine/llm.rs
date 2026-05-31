@@ -1,3 +1,4 @@
+use crate::error::LlmError;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
@@ -159,41 +160,31 @@ struct StreamFunction {
 pub fn chat_blocking(
     messages: &[Message],
     tools: Option<&[Tool]>,
-) -> Result<(Option<String>, Option<Vec<ToolCall>>), String> {
+) -> Result<(Option<String>, Option<Vec<ToolCall>>), LlmError> {
     let max_retries = 3;
     let base_delay_ms = 1000;
-    let mut last_err = String::new();
+    let mut last_err = LlmError::EmptyResponse;
 
     for attempt in 0..=max_retries {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(base_delay_ms * (1 << (attempt - 1))));
         }
 
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Client build error: {}", e))?;
+        let client = &*HTTP_CLIENT;
 
         let req = ChatRequest {
-            model: model(),
-            messages: messages.to_vec(),
-            tools: tools.map(|t| t.to_vec()),
-            tool_choice: tools.map(|_| "auto".into()),
-            stream: false,
-            thinking: Some(true),
-            reasoning_effort: Some("high".into()),
+            model: model(), messages: messages.to_vec(), tools: tools.map(|t| t.to_vec()),
+            tool_choice: tools.map(|_| "auto".into()), stream: false,
+            thinking: Some(true), reasoning_effort: Some("high".into()),
         };
 
-        let resp = match client
-            .post(format!("{}/chat/completions", api_base()))
+        let resp = match client.post(format!("{}/chat/completions", api_base()))
             .header("Authorization", format!("Bearer {}", api_key()))
-            .header("Content-Type", "application/json")
-            .json(&req)
-            .send()
+            .header("Content-Type", "application/json").json(&req).send()
         {
             Ok(r) => r,
             Err(e) => {
-                last_err = format!("LLM request failed (attempt {}): {}", attempt + 1, e);
+                last_err = LlmError::Network(format!("Request failed (attempt {}): {}", attempt + 1, e));
                 if attempt < max_retries { continue; } else { return Err(last_err); }
             }
         };
@@ -201,8 +192,8 @@ pub fn chat_blocking(
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().unwrap_or_default();
-            last_err = format!("LLM API error ({}): {}", status, &body[..body.len().min(200)]);
-            // Retry on server errors (5xx) and rate limits (429)
+            let detail = body[..body.len().min(200)].to_string();
+            last_err = if status == 429 { LlmError::RateLimited(detail) } else { LlmError::Api(format!("HTTP {}: {}", status, detail)) };
             if (500..600).contains(&status) || status == 429 {
                 if attempt < max_retries { continue; }
             }
@@ -217,7 +208,7 @@ pub fn chat_blocking(
                 return Ok((content, tool_calls));
             }
             Err(e) => {
-                last_err = format!("Parse error (attempt {}): {}", attempt + 1, e);
+                last_err = LlmError::Parse(format!("Parse (attempt {}): {}", attempt + 1, e));
                 if attempt < max_retries { continue; }
             }
         }
@@ -231,56 +222,47 @@ pub fn chat_streaming(
     messages: &[Message],
     tools: Option<&[Tool]>,
     sender: &std::sync::mpsc::Sender<String>,
-) -> Result<Option<Vec<ToolCall>>, String> {
+) -> Result<Option<Vec<ToolCall>>, LlmError> {
     let max_retries = 2;
     let base_delay_ms = 1000;
-    let mut last_err = String::new();
+    let mut last_err = LlmError::EmptyResponse;
 
     for attempt in 0..=max_retries {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(base_delay_ms * (1 << (attempt - 1))));
         }
 
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(180))
-            .build()
-            .map_err(|e| format!("Client build error: {}", e))?;
+        let client = &*HTTP_CLIENT;
 
         let req = ChatRequest {
-            model: model(),
-            messages: messages.to_vec(),
-            tools: tools.map(|t| t.to_vec()),
-            tool_choice: tools.map(|_| "auto".into()),
-            stream: true,
-            thinking: Some(true),
-            reasoning_effort: Some("high".into()),
+            model: model(), messages: messages.to_vec(), tools: tools.map(|t| t.to_vec()),
+            tool_choice: tools.map(|_| "auto".into()), stream: true,
+            thinking: Some(true), reasoning_effort: Some("high".into()),
         };
 
         let resp = match client
             .post(format!("{}/chat/completions", api_base()))
             .header("Authorization", format!("Bearer {}", api_key()))
             .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .json(&req)
-            .send()
+            .header("Accept", "text/event-stream").json(&req).send()
         {
             Ok(r) => r,
             Err(e) => {
-                last_err = format!("Stream request failed: {}", e);
+                last_err = LlmError::Network(format!("Stream request failed: {}", e));
                 if attempt < max_retries { continue; } else { return Err(last_err); }
             }
         };
 
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
-            last_err = format!("Stream API error: {}", status);
+            last_err = if status == 429 { LlmError::RateLimited(format!("Stream: {}", status)) } else { LlmError::Api(format!("Stream HTTP {}", status)) };
             if (500..600).contains(&status) || status == 429 {
                 if attempt < max_retries { continue; }
             }
             return Err(last_err);
         }
 
-        let body = resp.text().map_err(|e| format!("Read body: {}", e))?;
+        let body = resp.text().map_err(|e| LlmError::Network(format!("Read body: {}", e)))?;
         let mut tool_call_buffers: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new(); // (id, name, arguments)
 
         for line_str in body.lines().map(|l| l.trim().to_string()) {

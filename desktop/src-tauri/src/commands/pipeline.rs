@@ -35,7 +35,7 @@ fn repair_prompt(prompt_base: &str, bad_answer: &str, error: &str, batch_n: usiz
 
 fn call_llm_with_repair(system: &str, user: &str) -> Result<String, String> {
     let msgs = vec![crate::engine::llm::Message::system(system), crate::engine::llm::Message::user(user)];
-    let (content, _) = crate::engine::llm::chat_blocking(&msgs, None)?;
+    let (content, _) = crate::engine::llm::chat_blocking(&msgs, None).map_err(|e| e.to_string())?;
     let ans = content.unwrap_or_default();
     if ans.trim().is_empty() { return Err("Empty response".into()); }
 
@@ -44,7 +44,7 @@ fn call_llm_with_repair(system: &str, user: &str) -> Result<String, String> {
         // One repair attempt
         let repair_user = repair_prompt(system, &ans, &e, 0, 1, 0, 0);
         let rmsgs = vec![crate::engine::llm::Message::system(system), crate::engine::llm::Message::user(&repair_user)];
-        let (rcontent, _) = crate::engine::llm::chat_blocking(&rmsgs, None)?;
+        let (rcontent, _) = crate::engine::llm::chat_blocking(&rmsgs, None).map_err(|e| e.to_string())?;
         let repaired = rcontent.unwrap_or(ans);
         return Ok(repaired);
     }
