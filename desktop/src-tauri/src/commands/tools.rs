@@ -290,7 +290,7 @@ pub fn adaptive_slice(
     let book_dir = std::path::Path::new(&state.storage_root).join(&id);
     let chapters_dir = book_dir.join("chapters");
     let prefix = format!("{:04}", chapter_index);
-    let candidates: Vec<_> = std::fs::read_dir(&chapters_dir).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with(&prefix)).collect();
+    let candidates: Vec<_> = std::fs::read_dir(&chapters_dir).map(|d| d.filter_map(|e| e.ok()).collect::<Vec<_>>()).unwrap_or_default().into_iter().filter(|e| e.file_name().to_string_lossy().starts_with(&prefix)).collect();
     if candidates.is_empty() { return Err(format!("Chapter {} not found", chapter_index)); }
     let content = std::fs::read_to_string(candidates[0].path()).map_err(|e| format!("Read: {}", e))?;
     let target = 2000;

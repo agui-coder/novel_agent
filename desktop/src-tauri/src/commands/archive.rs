@@ -652,7 +652,7 @@ pub fn add_chapter(
     let fname = format!("{:04}_{}.md", chapter_index, safe_title);
     let path = chapters_dir.join(&fname);
     let full = format!("# {}\n\n{}", t, content);
-    std::fs::write(&path, &full).map_err(|e| format!("Write: {}", e))?;
+    atomic_write(&path, &full)?;
     crate::storage::layout::ensure_book_layout(&state.storage_root, &id, &id)?;
     Ok(serde_json::json!({"status":"success","book_id":id,"file_name":fname,"chapter_index":chapter_index}))
 }

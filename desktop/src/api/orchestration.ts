@@ -441,50 +441,157 @@ export interface RollingOutlineHandoffPayloadResponse {
     plan: any;
 }
 
-export async function fetchRollingWorkbenchState(
-    _bookRef: CoreSessionState['bookRef'],
-    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
-): Promise<RollingStateResponse> {
+interface RustRollingPlan {
+    book_id: string;
+    next_action: string;
+    stop_reason: string;
+    batch_size: number;
+    written_chapter_numbers: number[];
+    pending_card_numbers: number[];
+    selected_card_numbers: number[];
+    blocked_card_numbers: number[];
+    card_count: number;
+    draft_chapter_count: number;
+    archive_chapter_count: number;
+    outline_cards: Array<{
+        number: number;
+        title: string;
+        status: string;
+        executable: boolean;
+        missing_fields: string[];
+    }>;
+}
+
+function mapRollingPlan(rp: RustRollingPlan): RollingWorkbenchState {
+    const executable_cards = rp.outline_cards.filter(c => c.executable);
+    const remaining = rp.pending_card_numbers.filter(n => !rp.selected_card_numbers.includes(n));
     return {
-        status: 'success', book_id: '', generated_at: '',
-        workbench_state: {
-            status: 'ready', requiresPrompt: false, executionKind: 'direct_job',
-            default_batch_size: 3, batch_size: 3, next_action: 'read_chapter_outline',
-            stop_reason: 'no_state',
-            written_chapter_numbers: [], pending_card_numbers: [], selected_card_numbers: [],
-            blocked_card_numbers: [],
-            outline_card_states: [], outline_diagnostics: { outline_card_count: 0, executable_card_count: 0, detected_but_unparsed: false, message: '' },
-            remaining_executable_after_selected: [], full_batch_available: false, replenishment_needed_after_selected_batch: false,
-            review_gate_open: true, quality_gate_locked: false, quality_gate_unlocked: true,
-            source_files: { chapter_outline: { file_name: 'chapter_outline.md', exists: true, size: 0 }, chapter_draft: { file_name: 'chapter_draft.md', exists: true, size: 0 } },
-            no_prose_boundary: { state_contains_generated_prose: false, state_mutates_chapter_outline: false, state_writes_chapter_draft: false, continuation_agent_remains_only_chapter_draft_writer: true },
+        status: 'ready',
+        requiresPrompt: false as const,
+        executionKind: 'direct_job',
+        default_batch_size: rp.batch_size,
+        batch_size: rp.batch_size,
+        next_action: rp.next_action === 'replenish_outline' ? 'replenish_outline' : 'continue_rolling',
+        stop_reason: rp.stop_reason || '',
+        written_chapter_numbers: rp.written_chapter_numbers,
+        pending_card_numbers: rp.pending_card_numbers,
+        selected_card_numbers: rp.selected_card_numbers,
+        blocked_card_numbers: rp.blocked_card_numbers,
+        outline_card_states: rp.outline_cards.map(c => ({
+            number: c.number, title: c.title, status: c.status as WorkbenchCardStatus,
+            executable: c.executable, missing_fields: c.missing_fields,
+            heading_line: 0, end_line: 0,
+        })),
+        outline_diagnostics: {
+            outline_card_count: rp.card_count,
+            executable_card_count: executable_cards.length,
+            detected_but_unparsed: false,
+            message: executable_cards.length === 0 ? '无可执行章节卡' : '',
         },
+        remaining_executable_after_selected: remaining,
+        full_batch_available: rp.selected_card_numbers.length >= rp.batch_size,
+        replenishment_needed_after_selected_batch: rp.selected_card_numbers.length < rp.batch_size && rp.pending_card_numbers.length === 0,
+        review_gate_open: true,
+        quality_gate_locked: false,
+        quality_gate_unlocked: true,
+        source_files: {
+            chapter_outline: { file_name: 'chapter_outline.md', exists: rp.card_count > 0, size: 0 },
+            chapter_draft: { file_name: 'chapter_draft.md', exists: rp.draft_chapter_count > 0, size: 0 },
+        },
+        no_prose_boundary: {
+            state_contains_generated_prose: false,
+            state_mutates_chapter_outline: false,
+            state_writes_chapter_draft: false,
+            continuation_agent_remains_only_chapter_draft_writer: true,
+        },
+    };
+}
+
+type WorkbenchCardStatus = 'selected' | 'pending' | 'blocked' | 'written' | 'ignored';
+
+export async function fetchRollingWorkbenchState(
+    bookRef: CoreSessionState['bookRef'],
+    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+): Promise<RollingStateResponse> {
+    const rp = await invokeApi<RustRollingPlan>('rolling_state', {
+        ...bookRefToArgs(bookRef),
+        batchSize: options?.batchSize ?? 3,
+    });
+    return {
+        status: 'success',
+        book_id: rp.book_id,
+        generated_at: new Date().toISOString(),
+        workbench_state: mapRollingPlan(rp),
         plan: {},
     };
 }
 
 export async function buildRollingContinuationPayload(
-    _bookRef: CoreSessionState['bookRef'],
-    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+    bookRef: CoreSessionState['bookRef'],
+    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
 ): Promise<RollingContinuationPayloadResponse> {
+    const rp = await invokeApi<RustRollingPlan>('rolling_state', {
+        ...bookRefToArgs(bookRef),
+        batchSize: options?.batchSize ?? 3,
+    });
+    const ws = mapRollingPlan(rp);
+    const cardNumbers = ws.selected_card_numbers.length > 0 ? ws.selected_card_numbers : [1];
     return {
-        status: 'success', book_id: '', generated_at: '', chapter_number: 1,
-        target_file: 'chapter_draft.md', route_agent_key: 'continuation_agent',
-        file_type: 'chapter', write_scope: 'active_file_strict', dify_user: '',
-        intent: '续写下一章', workbench_state: {} as any, chapter_context_pack: {},
-        author_writing_brief: {} as any, no_prose_boundary: {} as any, plan: {},
+        status: 'success',
+        book_id: rp.book_id,
+        generated_at: new Date().toISOString(),
+        chapter_number: cardNumbers[0],
+        target_file: 'chapter_draft.md',
+        route_agent_key: 'continuation_agent',
+        file_type: 'chapter',
+        write_scope: 'active_file_strict',
+        dify_user: '',
+        intent: `请续写第${cardNumbers.join('、')}章。必须先读取 chapter_outline.md 确认章节边界，再读取 summary.md/world_model.md/status_card.md 了解当前状态，最后写入 chapter_draft.md。`,
+        workbench_state: ws,
+        chapter_context_pack: {},
+        author_writing_brief: {
+            schema_version: 1,
+            brief_type: 'rolling_author_writing_brief' as const,
+            generated_at: new Date().toISOString(),
+            book_id: rp.book_id,
+            target_file: 'chapter_draft.md' as const,
+            route_agent_key: 'continuation_agent' as const,
+            batch: { batch_size: ws.batch_size, selected_card_numbers: ws.selected_card_numbers, full_batch_available: ws.full_batch_available, remaining_executable_after_selected: ws.remaining_executable_after_selected },
+            progress_cursor: { accepted_chapter_numbers: ws.written_chapter_numbers, pending_review_chapter_numbers: [], pending_card_numbers: ws.pending_card_numbers, next_action: ws.next_action, stop_reason: ws.stop_reason },
+            chapter_cards: ws.outline_card_states.map(c => ({ number: c.number, title: c.title, goal: '', entry_scene: '', conflict: '', payoff: '', state_change: '', hook: '', constraint_refs: '', evidence_mode: '' })),
+            truth_sources: [],
+            quality_and_style: { quality_gate_locked: false, quality_gate_blocks_next_action: false, quality_gate_summary: {}, style_advisory_active: false, style_is_reference_only: false, style_summary: {}, repair_goals: {} },
+            writing_contract: { what_to_write: '', where_to_write: 'chapter_draft.md', what_not_to_do: [] },
+            no_prose_boundary: { brief_contains_generated_prose: false, brief_reads_chapter_draft_text: false, brief_writes_files: false, continuation_agent_remains_only_chapter_draft_writer: true },
+        },
+        no_prose_boundary: { payload_contains_generated_prose: false, payload_writes_chapter_draft: false, continuation_agent_remains_only_chapter_draft_writer: true },
+        plan: {},
     };
 }
 
 export async function buildRollingOutlineHandoffPayload(
-    _bookRef: CoreSessionState['bookRef'],
-    _options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
+    bookRef: CoreSessionState['bookRef'],
+    options?: { batchSize?: number; reviewGate?: 'open' | 'closed' }
 ): Promise<RollingOutlineHandoffPayloadResponse> {
+    const rp = await invokeApi<RustRollingPlan>('rolling_state', {
+        ...bookRefToArgs(bookRef),
+        batchSize: options?.batchSize ?? 3,
+    });
+    const ws = mapRollingPlan(rp);
     return {
-        status: 'success', book_id: '', generated_at: '', mode: 'replenish',
-        target_file: 'chapter_outline.md', route_agent_key: 'outline_agent',
-        file_type: 'outline', write_scope: 'active_file_strict', dify_user: '',
-        intent: '补充下一批章节卡', workbench_state: {} as any,
-        outline_handoff_brief: {}, no_prose_boundary: {} as any, plan: {},
+        status: 'success',
+        book_id: rp.book_id,
+        generated_at: new Date().toISOString(),
+        mode: 'replenish',
+        target_file: 'chapter_outline.md',
+        route_agent_key: 'outline_agent',
+        file_type: 'outline',
+        write_scope: 'active_file_strict',
+        dify_user: '',
+        intent: `当前章节卡已消耗完（next_action=${ws.next_action}）。请读取 chapter_outline.md，为下一批章节（建议 ${ws.batch_size} 章）生成新的章节卡。每章必须包含 goal/entry_scene/conflict/payoff/hook 五个字段。`,
+        workbench_state: ws,
+        outline_handoff_brief: {},
+        no_prose_boundary: { payload_contains_generated_prose: false, payload_mutates_chapter_outline: false, payload_writes_chapter_draft: false, outline_agent_owns_reviewable_outline_edits: true, continuation_agent_remains_only_chapter_draft_writer: true },
+        plan: {},
     };
 }

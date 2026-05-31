@@ -260,20 +260,14 @@ pub fn git_unstage(state: State<'_, AppState>, book_id: Option<String>, book_nam
     let id = crate::storage::resolve_book_id(&state.storage_root, book_id.as_deref(), book_name.as_deref())?;
     let book_dir = std::path::Path::new(&state.storage_root).join(&id);
     let repo = git2::Repository::open(&book_dir).map_err(|e| format!("Git error: {}", e))?;
-    let mut idx = repo.index().map_err(|e| format!("Idx: {}", e))?;
-    let file_path = std::path::Path::new(&path);
 
     // git reset HEAD -- <file>
-    let head = repo.head().ok();
-    if let Some(h) = head {
-        let commit = h.peel_to_commit().ok();
-        if let Some(c) = commit {
-            let target = std::path::Path::new(&path);
-            // Use git2 reset to restore index from HEAD for this path
-            repo.reset_default(Some(c.as_object()), &[target])
-                .map_err(|e| format!("Reset: {}", e))?;
-        }
-    }
+    let head = repo.head().map_err(|e| format!("HEAD: {}", e))?;
+    let commit = head.peel_to_commit().map_err(|e| format!("Commit: {}", e))?;
+    let target = std::path::Path::new(&path);
+    repo.reset_default(Some(commit.as_object()), &[target])
+        .map_err(|e| format!("Reset: {}", e))?;
+
     Ok(())
 }
 
