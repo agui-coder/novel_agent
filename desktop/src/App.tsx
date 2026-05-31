@@ -415,6 +415,7 @@ export default function App() {
 
 
     const prepareFileContextSwitch = (nextFile: string) => {
+        if (!isEditing) return true;
 
         if (editDraft !== editorContent) {
             store.setUiNotice({
