@@ -52,6 +52,7 @@ import { TopBar } from './components/TopBar';
 import { ActivityBar } from './components/ActivityBar';
 import { EditorCenterPanel } from './components/EditorCenterPanel';
 import { WorkbenchLeftPanel } from './components/WorkbenchLeftPanel';
+import { EditorRightPanel } from './components/EditorRightPanel';
 
 export default function App() {
     const store = useAppStore();
@@ -1423,109 +1424,44 @@ export default function App() {
     };
 
     const editorRightPanel = (
-        <div className="flex h-full min-h-0 flex-col">
-            <div className="border-b border-[rgba(255,255,255,0.032)] px-2 py-[6px]">
-                <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                        <div className="text-[11px] font-medium text-[var(--color-dark-text-main)]">
-                            {isProseReviewSurface
-                                ? '正文审阅台'
-                                : getAgentLabel(store.uiLanguage, rightPanelAgent)}
-                        </div>
-                        <div className="truncate text-[9px] text-[var(--color-dark-text-faint)]">
-                            {isProseReviewSurface
-                                ? 'chapter_draft.md · 审核 Agent / 续写 Agent'
-                                : rightPanelActiveFile}
-                        </div>
-                    </div>
-                    <div className="rounded-[8px] border border-[rgba(255,255,255,0.035)] bg-[rgba(255,255,255,0.01)] px-2 py-[2px] text-[8px] font-mono text-[var(--color-dark-text-faint)]">
-                        {getFsmStateLabel(store.uiLanguage, store.fsmState)}
-                    </div>
-                </div>
-            </div>
-            <AgentConversationList
-                agent={rightPanelAgent}
-                currentFileAgent={store.activeAgent}
-                activeConversationId={store.conversationByAgent[rightPanelAgent] ?? null}
-                activeFile={rightPanelActiveFile}
-                conversations={store.conversationIndexByAgent[rightPanelAgent] ?? []}
-                agentOptions={rightPanelAgentOptions}
-                onSwitchAgent={(agent) => {
-                    if (isProseReviewSurface) {
-                        setConversationPanelAgent(agent);
-                        void loadConversationContext(agent);
-                    } else {
-                        void handleSwitchConversationAgent(agent);
-                    }
-                }}
-                onCreateConversation={() => { void handleCreateConversation(rightPanelConversationActionScope); }}
-                onSelectConversation={(conversationId) => { void handleConversationSelect(conversationId, rightPanelConversationActionScope); }}
-                onRenameConversation={(conversationId) => { void handleRenameConversation(conversationId, rightPanelConversationActionScope); }}
-                onArchiveConversation={(conversationId) => { void handleArchiveConversation(conversationId, rightPanelConversationActionScope); }}
-                onDeleteConversation={(conversationId) => { void handleDeleteConversation(conversationId, rightPanelConversationActionScope); }}
-                disabled={store.fsmState === 'THINKING'}
-            />
-            {suppressedBackendErrors.length > 0 && (
-                <div className="border-b border-[#2b3440] bg-[#0b1119] px-3 py-2">
-                    <div className="flex items-center justify-between">
-                        <button
-                            type="button"
-                            className="text-[11px] font-mono text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
-                            onClick={() => setSuppressedDebugOpen((open) => !open)}
-                        >
-                            {suppressedDebugOpen ? '▼' : '▶'} {copy.debug.suppressedHeader(suppressedBackendErrors.length)}
-                        </button>
-                        {suppressedDebugOpen && (
-                            <button
-                                type="button"
-                                className="text-[10px] font-mono text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
-                                onClick={() => setSuppressedBackendErrors([])}
-                            >
-                                {copy.debug.clear}
-                            </button>
-                        )}
-                    </div>
-                    {suppressedDebugOpen && (
-                        <div className="app-scrollbar mt-2 max-h-36 overflow-y-auto rounded border border-[#2b3440] bg-[#0a0f18] p-2 text-[11px] font-mono text-[#9ca3af]">
-                            {[...suppressedBackendErrors].reverse().map((item) => (
-                                <div key={item.id} className="py-1 border-b border-[#1e2632] last:border-b-0">
-                                    <div className="text-[#e5e7eb]">
-                                        [{formatSuppressedBackendErrorTitle(item.code, copy)}] {item.reqId ? `(req:${item.reqId})` : ''}
-                                    </div>
-                                    <div className="text-[#9ca3af] break-all">{item.message}</div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-            <ChatPanel
-                messages={rightPanelVisibleChatMessages}
-                fsmState={store.fsmState}
-                onConfirmDraft={handleConfirm}
-                onRollbackDraft={handleRollback}
-                isConfirmDisabled={store.fsmState === 'CONFLICT'}
-                draftActionPending={store.draftActionPending}
-                editableUserMessageId={rightPanelLatestUserMessageId}
-                onRequestEditUserMessage={beginRewriteFromMessage}
-                editingUserMessageId={rewriteUserMessageId}
-                editDraftValue={commandInput}
-                onEditDraftChange={setCommandInput}
-                onSubmitEditUserMessage={handleInlineRewriteSubmit}
-                onCancelEditUserMessage={handleCancelRewrite}
-                canLandOutlineMessages={!isReviewMode && rightPanelAgent === 'outline_agent'}
-                onLandOutlineMessage={handleOutlineLandingFromMessage}
-            />
-            {!rewriteUserMessageId ? (
-                <ChatComposerDock
-                    isRunDisabled={store.fsmState === 'THINKING'}
-                    isStreaming={store.fsmState === 'THINKING'}
-                    submitLabel={copy.composer.send}
-                    onSubmit={handleCommandSubmit}
-                    onStop={handleStopStream}
-                />
-            ) : null}
-        </div>
+        <EditorRightPanel
+            chatAgent={rightPanelAgent}
+            chatActiveFile={rightPanelActiveFile}
+            visibleMessages={rightPanelVisibleChatMessages}
+            latestUserMessageId={rightPanelLatestUserMessageId}
+            agentOptions={rightPanelAgentOptions}
+            fsmState={store.fsmState}
+            isProseReviewSurface={isProseReviewSurface}
+            isReviewMode={isReviewMode}
+            editingMessageId={rewriteUserMessageId}
+            editDraftValue={commandInput}
+            uiLanguage={store.uiLanguage}
+            activeAgent={store.activeAgent}
+            conversationByAgent={store.conversationByAgent}
+            conversationIndexByAgent={store.conversationIndexByAgent}
+            suppressedErrors={suppressedBackendErrors}
+            debugOpen={suppressedDebugOpen}
+            onSwitchAgent={(agent: AgentKey) => {
+                if (isProseReviewSurface) { setConversationPanelAgent(agent); void loadConversationContext(agent); }
+                else { void handleSwitchConversationAgent(agent); }
+            }}
+            onCreateConversation={() => { void handleCreateConversation(rightPanelConversationActionScope); }}
+            onSelectConversation={(conversationId: string) => { void handleConversationSelect(conversationId, rightPanelConversationActionScope); }}
+            onRenameConversation={(conversationId: string) => { void handleRenameConversation(conversationId, rightPanelConversationActionScope); }}
+            onArchiveConversation={(conversationId: string) => { void handleArchiveConversation(conversationId, rightPanelConversationActionScope); }}
+            onDeleteConversation={(conversationId: string) => { void handleDeleteConversation(conversationId, rightPanelConversationActionScope); }}
+            onConfirmDraft={handleConfirm}
+            onRollbackDraft={handleRollback}
+            onRequestEdit={beginRewriteFromMessage}
+            onEditDraftChange={setCommandInput}
+            onSubmitEdit={handleInlineRewriteSubmit}
+            onCancelEdit={handleCancelRewrite}
+            onLandOutlineMessage={handleOutlineLandingFromMessage}
+            onCommandSubmit={handleCommandSubmit}
+            onStopStream={handleStopStream}
+            onToggleDebug={setSuppressedDebugOpen}
+            onClearErrors={setSuppressedBackendErrors}
+        />
     );
 
     const reviewCenterPanel = (
