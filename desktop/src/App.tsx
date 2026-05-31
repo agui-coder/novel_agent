@@ -8,7 +8,6 @@ import { useGitWorkbench } from './hooks/useGitWorkbench';
 import { useAgentSession } from './hooks/useAgentSession';
 import { useWorkbenchActions } from './hooks/useWorkbenchActions';
 import { AppLayout } from './layouts/AppLayout';
-import { MainlineView } from './components/MainlineView';
 import { ChatPanel } from './components/ChatPanel';
 import { OutlineLandingTargetFile } from './components/ChatMessageBubble';
 import { AgentConversationList } from './components/AgentConversationList';
