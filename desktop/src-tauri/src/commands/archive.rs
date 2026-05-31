@@ -535,7 +535,7 @@ pub fn checkout(
             "chapters" => {
                 let chapters_dir = book_dir.join("chapters");
                 if chapters_dir.exists() {
-                    let mut files: Vec<_> = std::fs::read_dir(&chapters_dir).unwrap().filter_map(|e| e.ok()).collect();
+                    let mut files: Vec<_> = std::fs::read_dir(&chapters_dir).map(|d| d.filter_map(|e| e.ok()).collect::<Vec<_>>()).unwrap_or_default();
                     files.sort_by_key(|e| e.file_name());
                     let recent: Vec<String> = files.iter().rev().take(n).rev().filter_map(|f| std::fs::read_to_string(f.path()).ok()).collect();
                     result.insert("chapters".into(), serde_json::Value::Array(recent.into_iter().map(serde_json::Value::String).collect()));

@@ -481,7 +481,7 @@ fn handle_style_diagnostics(storage_root: &str, _book_id: &str, args: &serde_jso
     let chapters_dir = book_dir.join("chapters");
     let mut source_text = String::new();
     if chapters_dir.exists() {
-        let mut files: Vec<_> = fs::read_dir(&chapters_dir).unwrap().filter_map(|e| e.ok()).collect();
+        let mut files: Vec<_> = fs::read_dir(&chapters_dir).map(|d| d.filter_map(|e| e.ok()).collect::<Vec<_>>()).unwrap_or_default();
         files.sort_by_key(|e| e.file_name());
         for f in files.iter().rev().take(source_count) {
             if let Ok(c) = fs::read_to_string(f.path()) { source_text.push_str(&c); source_text.push_str("\n\n"); }
