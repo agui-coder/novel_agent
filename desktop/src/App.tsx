@@ -51,6 +51,7 @@ import { buildOutlineLandingIntent } from './lib/outlineLanding';
 import { TopBar } from './components/TopBar';
 import { ActivityBar } from './components/ActivityBar';
 import { EditorCenterPanel } from './components/EditorCenterPanel';
+import { WorkbenchLeftPanel } from './components/WorkbenchLeftPanel';
 
 export default function App() {
     const store = useAppStore();
@@ -1176,118 +1177,41 @@ export default function App() {
         />
     );
     const workbenchLeftPanel = (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-            <div className="border-b border-[var(--color-dark-border)] px-3 py-3">
-                <div className="cursor-section-label">
-                    {isGitMode ? copy.workbench.versionControl : copy.workbench.workspace}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2.5">
-                    <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-[var(--color-dark-text-main)]">{leftPanelTitle}</div>
-                        <div className="truncate text-[10px] text-[var(--color-dark-text-faint)]">
-                            {store.bookRef.value || copy.workbench.noBookSelected}
-                        </div>
-                    </div>
-                    <div className="rounded-[8px] border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.015)] px-2 py-[3px] text-[9px] font-mono text-[var(--color-dark-text-faint)]">
-                        {isGitMode ? copy.workbench.repository : isReviewMode ? copy.workbench.reviewState : getFileTypeLabel(store.uiLanguage, store.activeFileType)}
-                    </div>
-                </div>
-            </div>
-            <WorkbenchModeToggle
-                uiLanguage={store.uiLanguage}
-                onChangeLanguage={store.setUiLanguage}
-            />
-            {repoIntegrity?.needsRepair && bootstrapState === 'loaded' && (
-                <div className="border-b border-[#583d1f] bg-[linear-gradient(180deg,#24180d_0%,#1a120a_100%)] px-3 py-3">
-                    <div className="rounded-xl border border-[#7f5a2e] bg-[#120d08] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.28)]">
-                        <div className="text-[10px] font-mono tracking-[0.14em] text-[#f2bf72]">仓库修复</div>
-                        <div className="mt-1 text-sm font-semibold text-[#fff1d6]">当前仓库核心布局不完整</div>
-                        <div className="mt-1 text-[11px] leading-5 text-[#d9bf95]">
-                            缺失或未追踪文件：{[...repoIntegrity.missingCoreFiles, ...repoIntegrity.untrackedLayoutFiles].slice(0, 3).join('、') || '核心底座'}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => { void handleRepairLayout(); }}
-                            disabled={repairPending}
-                            className="mt-3 w-full rounded-lg border border-[#f2bf72] bg-[#4a2e12] px-3 py-2 text-xs font-bold text-[#fff4e2] transition-colors hover:bg-[#61401a] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {repairPending ? '修复中…' : '修复仓库布局'}
-                        </button>
-                    </div>
-                </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-hidden">
-                {isGitMode ? (
-                    <GitBranchPanel
-                        status={store.gitStatus}
-                        branches={store.gitBranches}
-                        selectedBranchName={store.selectedGitBranchName}
-                        selectedCommitId={store.selectedGitCommitId}
-                        chapterDraftContent={store.activeFile === 'chapter_draft.md' ? (store.draftContent || store.mainlineContent) : ''}
-                        pending={store.gitActionPending}
-                        onRefresh={() => {
-                            void loadGitWorkbench();
-                        }}
-                        onSelectBranch={(branchName) => {
-                            void handleGitSelectBranch(branchName);
-                        }}
-                        onCheckout={(branchName) => {
-                            void handleGitCheckout(branchName);
-                        }}
-                        onMerge={(payload) => {
-                            void handleGitMerge(payload);
-                        }}
-                        onCreateBranch={(payload) => {
-                            void handleGitCreateBranch(payload);
-                        }}
-                        onRenameBranch={(payload) => {
-                            void handleGitRenameBranch(payload);
-                        }}
-                        onHardRollback={(targetCommit) => {
-                            void handleGitHardRollback(targetCommit);
-                        }}
-                    />
-                ) : (
-                    <Group
-                        orientation="vertical"
-                        className="h-full min-h-0"
-                        data-left-rail-stack="true"
-                        defaultLayout={leftRailVerticalLayout.defaultLayout}
-                        onLayoutChanged={leftRailVerticalLayout.onLayoutChanged}
-                    >
-                        <Panel id="left-files-panel" defaultSize="52%" minSize="18%">
-                            <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                                <div className="border-b border-[rgba(255,255,255,0.035)] px-3 py-2">
-                                    <div className="cursor-section-label">{copy.explorer.filesSection}</div>
-                                </div>
-                                <div className="min-h-0 flex-1 overflow-hidden">
-                                    <FileExplorer
-                                        key={explorerFileKey}
-                                        files={explorerFiles}
-                                        activeFile={store.activeFile}
-                                        disabled={hasPendingDraftDecision}
-                                        hotkeysEnabled={store.workbenchMode !== 'git'}
-                                        onSelectFile={handleFileSelect}
-                                    />
-                                </div>
-                            </div>
-                        </Panel>
-                        <Separator className="group relative h-3 shrink-0 cursor-row-resize bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-blue)]">
-                            <div className="absolute inset-x-4 top-1/2 h-px -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.05)] transition-all duration-150 group-hover:inset-x-3 group-hover:bg-[rgba(255,255,255,0.18)]" />
-                            <div className="absolute left-1/2 top-1/2 hidden h-[3px] w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.14)] blur-[1px] transition-opacity duration-150 group-hover:block" />
-                        </Separator>
-                        <Panel id="left-outline-panel" defaultSize="48%" minSize="20%">
-                            <div className="h-full min-h-0 overflow-hidden border-t border-[rgba(255,255,255,0.035)]">
-                                <OutlineNavigator
-                                    content={outlineSourceContent}
-                                    activeFile={store.activeFile}
-                                />
-                            </div>
-                        </Panel>
-                    </Group>
-                )}
-            </div>
-        </div>
+        <WorkbenchLeftPanel
+            bookName={store.bookRef.value}
+            activeFile={store.activeFile}
+            activeFileType={store.activeFileType}
+            uiLanguage={store.uiLanguage}
+            workbenchMode={store.workbenchMode}
+            isGitMode={isGitMode}
+            isReviewMode={isReviewMode}
+            leftPanelTitle={leftPanelTitle}
+            repoIntegrity={repoIntegrity}
+            bootstrapState={bootstrapState}
+            repairPending={repairPending}
+            outlineSourceContent={outlineSourceContent}
+            explorerFiles={explorerFiles}
+            explorerFileKey={explorerFileKey}
+            hasPendingDraftDecision={hasPendingDraftDecision}
+            leftRailVerticalLayout={leftRailVerticalLayout}
+            draftContent={store.draftContent}
+            mainlineContent={store.mainlineContent}
+            gitStatus={store.gitStatus}
+            gitBranches={store.gitBranches}
+            selectedGitBranchName={store.selectedGitBranchName}
+            selectedGitCommitId={store.selectedGitCommitId}
+            gitActionPending={store.gitActionPending}
+            onChangeLanguage={store.setUiLanguage}
+            onRepairLayout={() => { void handleRepairLayout(); }}
+            onFileSelect={handleFileSelect}
+            onGitRefresh={() => { void loadGitWorkbench(); }}
+            onGitSelectBranch={(branchName: string) => { void handleGitSelectBranch(branchName); }}
+            onGitCheckout={(branchName: string) => { void handleGitCheckout(branchName); }}
+            onGitMerge={(payload: any) => { void handleGitMerge(payload); }}
+            onGitCreateBranch={(payload: any) => { void handleGitCreateBranch(payload); }}
+            onGitRenameBranch={(payload: any) => { void handleGitRenameBranch(payload); }}
+            onGitHardRollback={(targetCommit: string) => { void handleGitHardRollback(targetCommit); }}
+        />
     );
 
 
