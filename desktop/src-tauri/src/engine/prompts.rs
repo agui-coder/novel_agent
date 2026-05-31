@@ -3,3 +3,6 @@ pub const REVIEW_PROMPT: &str = include_str!("../../prompts/review.md");
 pub const OUTLINE_DISCUSS_PROMPT: &str = include_str!("../../prompts/outline_discuss.md");
 pub const OUTLINE_COMMIT_PROMPT: &str = include_str!("../../prompts/outline_commit.md");
 pub const CLASSIFIER_PROMPT: &str = include_str!("../../prompts/classifier.md");
+pub const STYLE_AGENT_PROMPT: &str = include_str!("../../prompts/style_agent.md");
+pub const WORLD_READ_PROMPT: &str = include_str!("../../prompts/world_read_agent.md");
+pub const WORLD_ONLINE_PROMPT: &str = include_str!("../../prompts/world_online_agent.md");

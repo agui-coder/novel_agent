@@ -83,6 +83,10 @@ struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<String>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,6 +171,8 @@ pub fn chat_blocking(
             tools: tools.map(|t| t.to_vec()),
             tool_choice: tools.map(|_| "auto".into()),
             stream: false,
+            thinking: Some(true),
+            reasoning_effort: Some("high".into()),
         };
 
         let resp = match client
@@ -237,6 +243,8 @@ pub fn chat_streaming(
             tools: tools.map(|t| t.to_vec()),
             tool_choice: tools.map(|_| "auto".into()),
             stream: true,
+            thinking: Some(true),
+            reasoning_effort: Some("high".into()),
         };
 
         let resp = match client

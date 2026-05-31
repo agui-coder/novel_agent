@@ -1,4 +1,4 @@
-use crate::engine::llm::{self, Message};
+use crate::engine::llm::{self, Message, ToolCall, FunctionCall};
 use crate::engine::tools::ToolRegistry;
 use serde::Serialize;
 use std::sync::{mpsc, Arc, atomic::AtomicBool};
@@ -33,6 +33,9 @@ pub enum AgentType {
     Continuation,
     Review,
     Outline,
+    Style,
+    WorldRead,
+    WorldOnline,
 }
 
 /// Run agent, pushing events through sender as they happen.
@@ -45,6 +48,7 @@ pub fn run_agent_streaming(
     max_iterations: usize,
     sender: &mpsc::Sender<AgentEvent>,
     cancel: Option<&Arc<AtomicBool>>,
+    history: &[crate::engine::llm::Message],
 ) -> Result<(), String> {
     let task_id = uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("t").to_string();
     sender.send(AgentEvent::ack(&task_id)).ok();
@@ -53,6 +57,9 @@ pub fn run_agent_streaming(
         AgentType::Continuation => crate::engine::prompts::CONTINUATION_PROMPT,
         AgentType::Review => crate::engine::prompts::REVIEW_PROMPT,
         AgentType::Outline => crate::engine::prompts::OUTLINE_DISCUSS_PROMPT,
+        AgentType::Style => crate::engine::prompts::STYLE_AGENT_PROMPT,
+        AgentType::WorldRead => crate::engine::prompts::WORLD_READ_PROMPT,
+        AgentType::WorldOnline => crate::engine::prompts::WORLD_ONLINE_PROMPT,
     };
 
     let user_content = format!(
@@ -60,10 +67,12 @@ pub fn run_agent_streaming(
         book_id, active_file, intent
     );
 
-    let mut messages: Vec<Message> = vec![
-        Message::system(system_prompt),
-        Message::user(&user_content),
-    ];
+    let mut messages: Vec<Message> = vec![Message::system(system_prompt)];
+    // Insert conversation history (up to memory window size)
+    let max_history = match agent_type { AgentType::Continuation|AgentType::Review => 20, AgentType::WorldRead|AgentType::WorldOnline => 12, _ => 0 };
+    let skip = if history.len() > max_history { history.len() - max_history } else { 0 };
+    for msg in history.iter().skip(skip) { messages.push(msg.clone()); }
+    messages.push(Message::user(&user_content));
 
     let mut iteration = 0;
     let mut final_answer = String::new();
@@ -110,15 +119,19 @@ pub fn run_agent_streaming(
 
         if let Some(ref tc_list) = tool_calls {
             if !tc_list.is_empty() {
+                for tc in tc_list { sender.send(AgentEvent::stage(&format!("Tool: {}", &tc.function.name), "tool_call", "started")).ok(); }
+                let mut results = Vec::new();
                 for tc in tc_list {
                     let tn = &tc.function.name;
                     let args: serde_json::Value = serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({}));
-                    sender.send(AgentEvent::stage(&format!("Tool: {}", tn), "tool_call", "started")).ok();
                     let r = tools.execute(tn, book_id, &args);
                     let rs = if r.is_error { format!("ERROR: {}", r.content) } else { r.content.clone() };
+                    results.push((tc.clone(), tn.clone(), r.is_error, rs));
                     sender.send(AgentEvent::stage(&format!("Tool done: {}", tn), "tool_result", "finished")).ok();
-                    messages.push(Message::assistant_with_tools(vec![tc.clone()]));
-                    messages.push(Message::tool_result(&tc.id, tn, &rs));
+                }
+                for (tc, tn, _, rs) in results {
+                    messages.push(Message::assistant_with_tools(vec![tc]));
+                    messages.push(Message::tool_result("", &tn, &rs));
                 }
                 continue;
             }
